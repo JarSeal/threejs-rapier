@@ -1,7 +1,6 @@
 Status: draft | not-implemented
 Category: ECS, Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 1.3)
-Blocked by: p347_lod-chain-generation.md (soft: only Phase 2's `lod: 'AUTO'`)
 Blocks: p351_impostor-billboard-lod.md (needs Phase 3's per-level instanced pools), p354_gpu-driven-culling.md
 Related: \_DONE_p346_spatial-domains.md (pool instances indexable; static domains for cells), p308_terrain-scatter.md (its static instance cells are Phase 4's contract), p240_client-device-capability-sniffer.md (global LOD bias), \_DONE_p345_gpu-memory-and-draw-call-debugger.md
 
@@ -205,6 +204,15 @@ or `"lod": "AUTO"` (or `{ "auto": true, "maxPixelError": 1, "cullScreenSize": 0.
 reads the geometry's p347 chain. Each level's screen size comes from its error: a level is
 used while its world-space error `e × r` projects to at most `maxPixelError` pixels at a reference
 viewport height of 1080. This needs no per-asset tuning, and the global bias still scales it.
+
+How a chain is made stays on the asset, not the mesh (p347 Phase 2): an `*.importedAsset.json`'s
+`lodChain` generates the chains of its geometries after the import, and code-made geometry calls
+`generateLodChain`. `meshSchema` gets no `lodChain`. Several meshes can share a geometry, and its
+one chain would have to pick one mesh's options. To decide here: what `lod: 'AUTO'` does on a
+geometry without a chain. It could generate one with the default options, which hides a missing
+`lodChain` and costs a simplify at the first mesh. Or it could warn and stay on level 0. It also
+has to cover a chain that's still pending (`isLodChainPending`) when the mesh is created: stay on
+level 0 until it resolves.
 
 Code: `setMeshLod(entityId, def, world)` / `removeMeshLod(entityId, world)` in `MeshManager.ts`,
 and the same `lod` option on `createMeshEntity`'s props.

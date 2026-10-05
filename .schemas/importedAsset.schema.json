@@ -88,6 +88,63 @@
     "isPersistent": {
       "type": "boolean"
     },
+    "lodChain": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ratios": {
+              "description": "Target triangle counts, as ratios of the base's, one per level. Default [0.5, 0.25, 0.1].",
+              "type": "array",
+              "items": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              }
+            },
+            "maxError": {
+              "description": "meshoptimizer's target error cap, relative to the mesh's extent (its largest bounding box side). Default 0.05.",
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            },
+            "attributeWeights": {
+              "description": "How much normal and uv deviation count against a collapse. Default 0.5 each (0 ignores it).",
+              "type": "object",
+              "properties": {
+                "normal": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "uv": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "compactVertices": {
+              "description": "Each level gets its own trimmed vertex arrays instead of sharing the base's. Better for large meshes whose far levels use few vertices. Default false.",
+              "type": "boolean"
+            },
+            "lockBorder": {
+              "description": "Keeps the mesh's open borders in place, so tiling geometry still meets its neighbours. Default false.",
+              "type": "boolean"
+            },
+            "permissive": {
+              "description": "Lets collapses cross attribute seams. Flat-shaded geometry (a normal per face) doesn't simplify without it. Default false.",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "description": "generateLodChain options."
+        }
+      ],
+      "description": "Generate a LOD chain (p347) for every rendered geometry of the import after it loads: true for the default options, or the options. Nothing selects a level until p348's `lod` on a mesh. Skinned and morph-target geometry is skipped."
+    },
     "throwOnError": {
       "type": "boolean"
     },
@@ -758,6 +815,58 @@
       ],
       "additionalProperties": false
     },
+    "__lodChain": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "mesh": {
+            "type": "string"
+          },
+          "primitive": {
+            "type": "number"
+          },
+          "extent": {
+            "type": "number"
+          },
+          "vertices": {
+            "type": "string",
+            "enum": [
+              "BASE",
+              "WELDED",
+              "OWN"
+            ]
+          },
+          "levels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "triangles": {
+                  "type": "number"
+                },
+                "error": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "triangles",
+                "error"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "mesh",
+          "primitive",
+          "extent",
+          "vertices",
+          "levels"
+        ],
+        "additionalProperties": false
+      }
+    },
     "__saveData": {
       "type": "object",
       "propertyNames": {
@@ -871,6 +980,63 @@
             },
             "isPersistent": {
               "type": "boolean"
+            },
+            "lodChain": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "ratios": {
+                      "description": "Target triangle counts, as ratios of the base's, one per level. Default [0.5, 0.25, 0.1].",
+                      "type": "array",
+                      "items": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "exclusiveMaximum": 1
+                      }
+                    },
+                    "maxError": {
+                      "description": "meshoptimizer's target error cap, relative to the mesh's extent (its largest bounding box side). Default 0.05.",
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 1
+                    },
+                    "attributeWeights": {
+                      "description": "How much normal and uv deviation count against a collapse. Default 0.5 each (0 ignores it).",
+                      "type": "object",
+                      "properties": {
+                        "normal": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "uv": {
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "compactVertices": {
+                      "description": "Each level gets its own trimmed vertex arrays instead of sharing the base's. Better for large meshes whose far levels use few vertices. Default false.",
+                      "type": "boolean"
+                    },
+                    "lockBorder": {
+                      "description": "Keeps the mesh's open borders in place, so tiling geometry still meets its neighbours. Default false.",
+                      "type": "boolean"
+                    },
+                    "permissive": {
+                      "description": "Lets collapses cross attribute seams. Flat-shaded geometry (a normal per face) doesn't simplify without it. Default false.",
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "generateLodChain options."
+                }
+              ],
+              "description": "Generate a LOD chain (p347) for every rendered geometry of the import after it loads: true for the default options, or the options. Nothing selects a level until p348's `lod` on a mesh. Skinned and morph-target geometry is skipped."
             },
             "throwOnError": {
               "type": "boolean"

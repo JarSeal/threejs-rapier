@@ -26,6 +26,7 @@ import {
   AssetsLoadTextureResponse,
   AssetsPingResponse,
   AssetsProtocolType,
+  AssetsSimplifyGeometryResponse,
   AssetsState,
   AssetsUpProtocol,
   AssetsWorkerCapabilities,
@@ -35,6 +36,8 @@ import {
   DracoWorkerSettings,
   KTX2WorkerSettings,
 } from './AssetsAPITypes';
+import type { TransferableGeometry } from '../Import/GeometryTransfer';
+import type { ResolvedLodChainOptions } from '../Lod/LodSimplify';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
@@ -64,10 +67,21 @@ const DEFAULT_ASSETS_STATE: AssetsState = {
   fallbackToMainThread: true,
 };
 
-/** The worker capability each asset kind needs. */
-const REQUIRED_CAPABILITY: Record<AssetKind, keyof AssetsWorkerCapabilities> = {
+/** The worker capability each asset kind needs (null: none). */
+const REQUIRED_CAPABILITY: Record<AssetKind, keyof AssetsWorkerCapabilities | null> = {
   GLTF: 'gltfImageBitmapPath',
   TEXTURE: 'createImageBitmap',
+  SIMPLIFY: null,
+};
+
+/** Each asset kind's per-kind workerTarget override. */
+const KIND_TARGET_KEY: Record<
+  AssetKind,
+  'gltfWorkerTarget' | 'textureWorkerTarget' | 'simplifyWorkerTarget'
+> = {
+  GLTF: 'gltfWorkerTarget',
+  TEXTURE: 'textureWorkerTarget',
+  SIMPLIFY: 'simplifyWorkerTarget',
 };
 
 let assetsState: AssetsState = { ...DEFAULT_ASSETS_STATE };
@@ -108,6 +122,8 @@ export const initAssets = () => {
     workerTarget: assetsConfig.workerTarget ?? DEFAULT_ASSETS_STATE.workerTarget,
     gltfWorkerTarget: assetsConfig.gltfWorkerTarget,
     textureWorkerTarget: assetsConfig.textureWorkerTarget,
+    // Unlike the loads, not the shared workerTarget: simplifying is pure CPU work
+    simplifyWorkerTarget: assetsConfig.simplifyWorkerTarget ?? 'WORKER_THREAD',
     maxConcurrentLoads: Math.max(
       1,
       Math.floor(assetsConfig.maxConcurrentLoads ?? DEFAULT_ASSETS_STATE.maxConcurrentLoads)
@@ -129,8 +145,7 @@ export const getAssetsState = (): Readonly<AssetsState> => assetsState;
  * @param kind {@link AssetKind}
  */
 export const getAssetsWorkerTarget = (kind: AssetKind): AssetsWorkerTarget =>
-  (kind === 'GLTF' ? assetsState.gltfWorkerTarget : assetsState.textureWorkerTarget) ??
-  assetsState.workerTarget;
+  assetsState[KIND_TARGET_KEY[kind]] ?? assetsState.workerTarget;
 
 /** Returns the assets worker's state, and the fallbacks so far, for debug purposes. */
 export const getAssetsWorkerInfo = () => ({
@@ -464,3 +479,23 @@ export const loadGLTFInWorker = (
     draco: opts.draco,
     ktx2: opts.ktx2,
   });
+
+/**
+ * Simplifies a geometry into LOD levels in the assets worker (core/Lod/LodSimplify.ts's
+ * simplifyLodChain()). The geometry's arrays are transferred: pass copies. Call it inside
+ * {@link runAssetTask}.
+ * @param geometry the base geometry (serializeGeometry() with `copy`)
+ * @param options resolved chain options
+ * @param transfer the geometry's ArrayBuffers
+ */
+export const simplifyGeometryInWorker = async (
+  geometry: TransferableGeometry,
+  options: ResolvedLodChainOptions,
+  transfer: Set<ArrayBuffer>
+) =>
+  (
+    await requestAssetsWorker<AssetsSimplifyGeometryResponse>(
+      { type: AssetsProtocolType.SIMPLIFY_GEOMETRY, geometry, options },
+      [...transfer]
+    )
+  ).result;

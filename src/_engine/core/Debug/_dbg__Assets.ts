@@ -16,6 +16,7 @@ import {
   getKindWindowId,
   registerDraggableWindowKind,
   toggleDraggableWindow,
+  updateDraggableWindow,
 } from '../UI/DraggableWindow';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import { getGeometryRegistry } from '../Geometry';
@@ -33,6 +34,15 @@ import {
 } from '../Assets/AssetsAPI';
 import type { AssetLoadReport, AssetsWorkerTarget } from '../Assets/AssetsAPITypes';
 import type { ImportedGeometryInfo } from '../Import/ImportTypes';
+import {
+  generateLodChain,
+  getLodChain,
+  getLodChainOfLevel,
+  isLodChainPending,
+  releaseLodChain,
+  type LodChain,
+  type LodLevelVertices,
+} from '../Lod/LodChains';
 import type { GeneratedAssetFields } from '../../schemas/assetsConfigSchema';
 import {
   computeUniqueEdgeCount,
@@ -231,10 +241,15 @@ type DebugAssetsBoot = {
   workerTarget?: AssetsWorkerTarget;
   gltfWorkerTarget?: AssetsWorkerTarget;
   textureWorkerTarget?: AssetsWorkerTarget;
+  simplifyWorkerTarget?: AssetsWorkerTarget;
   /** Load the asset pipeline's source files instead of its outputs (p300 DD8 level 3) */
   loadSourceFiles?: boolean;
 };
-type WorkerTargetKey = 'workerTarget' | 'gltfWorkerTarget' | 'textureWorkerTarget';
+type WorkerTargetKey =
+  | 'workerTarget'
+  | 'gltfWorkerTarget'
+  | 'textureWorkerTarget'
+  | 'simplifyWorkerTarget';
 
 const getBootOverrides = () => lsGetItem(DEBUG_ASSETS_BOOT_LS_KEY, {}) as DebugAssetsBoot;
 /** The overrides this page load booted with (nothing else writes the key before this tab). */
@@ -290,6 +305,7 @@ const getLoadingFolder = (): DebuggerPaneItem => {
     workerTarget: overrides.workerTarget || '',
     gltfWorkerTarget: overrides.gltfWorkerTarget || '',
     textureWorkerTarget: overrides.textureWorkerTarget || '',
+    simplifyWorkerTarget: overrides.simplifyWorkerTarget || '',
   };
   const targetDropDown = (key: WorkerTargetKey, label: string): DebuggerPaneItem => ({
     key,
@@ -316,7 +332,7 @@ const getLoadingFolder = (): DebuggerPaneItem => {
       ? 'Pipeline outputs (override ignored: a production build has no sources)'
       : 'Pipeline outputs';
   const resolved = {
-    current: `GLTF: ${THREAD_TEXT[getAssetsWorkerTarget('GLTF')]}\nTextures: ${THREAD_TEXT[getAssetsWorkerTarget('TEXTURE')]}\nFiles: ${filesText}`,
+    current: `GLTF: ${THREAD_TEXT[getAssetsWorkerTarget('GLTF')]}\nTextures: ${THREAD_TEXT[getAssetsWorkerTarget('TEXTURE')]}\nLOD chains: ${THREAD_TEXT[getAssetsWorkerTarget('SIMPLIFY')]}\nFiles: ${filesText}`,
   };
 
   return {
@@ -328,6 +344,7 @@ const getLoadingFolder = (): DebuggerPaneItem => {
       targetDropDown('workerTarget', 'Default target (boot)'),
       targetDropDown('gltfWorkerTarget', 'GLTF target (boot)'),
       targetDropDown('textureWorkerTarget', 'Texture target (boot)'),
+      targetDropDown('simplifyWorkerTarget', 'LOD chain target (boot)'),
       {
         // p300 DD8 level 3: A/B the asset pipeline's outputs against their sources. Only the dev
         // server serves the sources (src/ is the Vite root); a production build ignores it.
@@ -355,7 +372,7 @@ const getLoadingFolder = (): DebuggerPaneItem => {
         label: 'Resolved',
         readonly: true,
         multiline: true,
-        rows: 3,
+        rows: 4,
       },
       { key: 'status', target: workerStatus, label: 'Worker status', readonly: true },
       {
@@ -601,6 +618,102 @@ ${
   return { html, log: () => llog('TEXTURE:***************', { id, texture, entry }) };
 };
 
+const VERTICES_TEXT: Record<LodLevelVertices, string> = {
+  BASE: "the base's",
+  WELDED: 'the welded copy',
+  OWN: 'own',
+};
+
+/** A level's own bytes: its index, plus its vertex arrays when it has its own. */
+const getLodLevelBytes = (geometryId: string, vertices: LodLevelVertices) => {
+  const geometry = getGeometryRegistry()[geometryId]?.resource;
+  if (!geometry) return undefined;
+  return vertices === 'OWN' ? getGeometryByteSize(geometry) : geometry.index?.array.byteLength;
+};
+
+const describeLodChain = (chain: LodChain) => {
+  const base = chain.levels[0];
+  const welded = chain.levels.find((l) => l.vertices === 'WELDED');
+  const weldedGeometry = welded ? getGeometryRegistry()[welded.geometryId]?.resource : undefined;
+  const levelRows = chain.levels.slice(1).map((level, i) => {
+    const bytes = getLodLevelBytes(level.geometryId, level.vertices);
+    const percent = Math.round((level.triangles / base.triangles) * 100);
+    return field(
+      `LOD${i + 1}`,
+      `${formatNumber(level.triangles)} triangles (${percent}%), error ${level.error.toFixed(4)} (≤ ~${(level.error * chain.extent).toPrecision(2)} units), ${bytes === undefined ? '—' : formatBytes(bytes)}, vertices: ${VERTICES_TEXT[level.vertices]}`
+    );
+  });
+  const { report, options } = chain;
+  return [
+    field('Levels', `${chain.levels.length} (base + ${chain.levels.length - 1})`),
+    ...levelRows,
+    weldedGeometry
+      ? field(
+          'Welded vertex arrays',
+          `${formatBytes(getGeometryByteSize(weldedGeometry) - (weldedGeometry.index?.array.byteLength ?? 0))} (shared by the levels)`
+        )
+      : '',
+    field('Extent / radius', `${chain.extent.toPrecision(3)} / ${chain.radius.toPrecision(3)}`),
+    field(
+      'Generated on',
+      report
+        ? `${describeLoadReport(report).loadedOn}, ${report.durationMs.toFixed(1)} ms (main thread's own work ${report.mainThreadMs.toFixed(2)} ms)`
+        : 'build time (asset pipeline), loaded with the GLB'
+    ),
+    field(
+      'Options',
+      `ratios ${options.ratios.join(', ')}, maxError ${options.maxError}, weights normal ${options.attributeWeights.normal} / uv ${options.attributeWeights.uv}${options.permissive ? ', permissive' : ''}${options.compactVertices ? ', compactVertices' : ''}${options.lockBorder ? ', lockBorder' : ''}`
+    ),
+  ].join('');
+};
+
+/** The info window's LOD chain section: the chain, or which chain a level belongs to, and the
+ * generate / release buttons (p347 §2.5). */
+const createLodChainCmp = (id: string) => {
+  const windowId = getKindWindowId(INFO_WIN_ID, rowKey('geometry', id));
+  const ofLevel = getLodChainOfLevel(id);
+  if (ofLevel) {
+    return CMP({
+      html: `<div>${field('LOD level', `LOD${ofLevel.level} of "${ofLevel.chain.baseId}"`)}</div>`,
+    });
+  }
+  const chain = getLodChain(id);
+  const button = (action: string, text: string, title: string) =>
+    `<button class="debuggerSmallButton" data-action="${action}" title="${esc(title)}">${esc(text)}</button>`;
+  const buttons = [
+    button(
+      'generate',
+      chain ? 'Regenerate' : 'Generate LOD chain',
+      'generateLodChain() with the default options'
+    ),
+    button(
+      'generatePermissive',
+      chain ? 'Regenerate (permissive)' : 'Generate (permissive)',
+      'With `permissive: true`: collapses across attribute seams (flat-shaded geometry needs it)'
+    ),
+    chain ? button('release', 'Release chain', 'releaseLodChain(): the levels are disposed') : '',
+  ].join(' ');
+  const cmp: TCMP = CMP({
+    html: () =>
+      `<div>${isLodChainPending(id) ? '<div>Generating…</div>' : chain ? describeLodChain(chain) : field('Chain', 'none')}<div style="margin-top: 0.6rem">${buttons}</div></div>`,
+    onClick: async (e) => {
+      const action = (e.target as HTMLElement).closest('button')?.dataset.action;
+      if (!action || isLodChainPending(id)) return;
+      if (action === 'release') {
+        releaseLodChain(id);
+      } else {
+        const pendingChain = generateLodChain(id, { permissive: action === 'generatePermissive' });
+        // Pending now: the content shows "Generating…"
+        cmp.update();
+        await pendingChain;
+      }
+      updateDraggableWindow(windowId);
+      refreshAssetsTab();
+    },
+  });
+  return cmp;
+};
+
 const createGeometryContent = (id: string) => {
   const entry = getGeometryRegistry()[id];
   const geometry = entry.resource;
@@ -641,6 +754,7 @@ const createGeometryContent = (id: string) => {
       })
     : CMP({ tag: 'span', text: '— (not indexed: every triangle has its own edges)' });
 
+  const lodChainCmp = createLodChainCmp(id);
   const p = importInfo?.customProps;
   const html = () => `<div>
 ${field('Type', importInfo ? 'Imported geometry' : generatorType ? `${generatorType} (generated)` : geometry.type)}
@@ -666,6 +780,7 @@ ${section(
     field('Est. VRAM (buffers)', formatBytes(getGeometryByteSize(geometry))),
   ].join('')
 )}
+${section('LOD chain', `${lodChainCmp}`)}
 ${pipeline?.sectionHtml ?? ''}
 ${
   importInfo && p

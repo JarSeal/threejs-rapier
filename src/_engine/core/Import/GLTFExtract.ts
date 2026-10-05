@@ -1,6 +1,11 @@
 import * as THREE from 'three/webgpu';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { isOnlyObject3D } from '../../utils/object3DHelpers';
+import {
+  getGLTFLodChainKey,
+  type ExtractedLodChain,
+  type GLTFLodChains,
+} from '../Lod/LodChainGLTF';
 import { parseCustomProps } from './CustomProps';
 import type { ImportedGeometryInfo } from './ImportTypes';
 
@@ -20,6 +25,9 @@ export type ExtractedPrimitive = {
   material: THREE.Material | THREE.Material[];
   /** `geometryId` is the preferred id; the registry step may still add a collision suffix. */
   info: ImportedGeometryInfo;
+  /** The LOD chain the asset pipeline built for this primitive (p347 Phase 3), if any. Primitives
+   * sharing a geometry share it. */
+  lodChain?: ExtractedLodChain;
 };
 
 export type ExtractResult =
@@ -43,14 +51,15 @@ const getIndexedNode = (root: THREE.Object3D, meshIndex: number | number[]) => {
 
 /**
  * Walks a parsed glTF and describes every mesh primitive in it (or only in the node picked with
- * `meshIndex`): its geometry, glTF-root-relative transform, parsed custom props and whether it
- * was DRACO-compressed. Pure: nothing is registered, disposed or logged.
+ * `meshIndex`): its geometry, glTF-root-relative transform, parsed custom props, whether it
+ * was DRACO-compressed and its prebuilt LOD chain (`opts.lodChains`, readGLTFLodChains()). Pure:
+ * nothing is registered, disposed or logged.
  */
 export const extractPrimitives = (
   gltf: GLTF,
-  opts: { importId: string; meshIndex?: number | number[] }
+  opts: { importId: string; meshIndex?: number | number[]; lodChains?: GLTFLodChains }
 ): ExtractResult => {
-  const { importId, meshIndex } = opts;
+  const { importId, meshIndex, lodChains } = opts;
   const root = getImportRoot(gltf);
   let subtreeRoot = root;
   if (meshIndex !== undefined) {
@@ -104,9 +113,14 @@ export const extractPrimitives = (
     delete userData.gltfExtensions;
     const customProps = parseCustomProps(userData);
 
+    const lodChain =
+      assoc.meshes !== undefined
+        ? lodChains?.get(getGLTFLodChainKey(assoc.meshes, assoc.primitives ?? 0))
+        : undefined;
     primitives.push({
       geometry: mesh.geometry,
       material: mesh.material,
+      ...(lodChain ? { lodChain } : {}),
       info: {
         geometryId,
         importId,

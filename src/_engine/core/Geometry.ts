@@ -92,6 +92,28 @@ export type GeoTypes =
   | THREE.CapsuleGeometry
   | THREE.ConeGeometry;
 
+type GeometryDeleteListener = (id: string, geometry: THREE.BufferGeometry) => void;
+const deleteListeners = new Set<GeometryDeleteListener>();
+
+/**
+ * Calls `listener` after a geometry was disposed and left the registry (eg. so the LOD chain of a
+ * base geometry goes with it).
+ * @returns the listener's remover
+ */
+export const onGeometryDeleted = (listener: GeometryDeleteListener) => {
+  deleteListeners.add(listener);
+  return () => deleteListeners.delete(listener);
+};
+
+/** Frees the geometry's VRAM and removes it from the registry. */
+const removeGeometry = (id: string) => {
+  const entry = geometries[id];
+  if (!entry) return;
+  entry.resource.dispose();
+  delete geometries[id];
+  for (const listener of deleteListeners) listener(id, entry.resource);
+};
+
 export const incGeometryRef = (id: string) => {
   if (geometries[id]) geometries[id].count++;
 };
@@ -100,23 +122,16 @@ export const decGeometryRef = (id: string) => {
   const entry = geometries[id];
   if (!entry) return;
   entry.count--;
-  if (entry.count <= 0 && !entry.persistent) {
-    // Free VRAM from GPU
-    entry.resource.dispose();
-    delete geometries[id];
-  }
+  if (entry.count <= 0 && !entry.persistent) removeGeometry(id);
 };
 
 export const setGeometryPersistence = (id: string, state: boolean) => {
   const geo = geometries[id];
   if (!geo) return;
   geo.persistent = state;
-  if (!state && geo.count === 0) {
-    // If the state changes from persistent to non-persistent (false),
-    // then delete and dispose the geometry if the count is 0.
-    geo.resource.dispose();
-    delete geometries[id];
-  }
+  // If the state changes from persistent to non-persistent (false),
+  // then delete and dispose the geometry if the count is 0.
+  if (!state && geo.count === 0) removeGeometry(id);
 };
 
 /**
@@ -244,20 +259,8 @@ export const getGeometry = (id: string | string[]) => {
  * @param id geometry id or array of ids
  */
 export const deleteGeometry = (id: string | string[]) => {
-  if (typeof id === 'string') {
-    const geo = geometries[id];
-    if (!geo) return;
-    geo.resource.dispose();
-    delete geometries[id];
-    return;
-  }
-  for (let i = 0; i < id.length; i++) {
-    const geoId = id[i];
-    const geo = geometries[geoId];
-    if (!geo) continue;
-    geo.resource.dispose();
-    delete geometries[geoId];
-  }
+  if (typeof id === 'string') return removeGeometry(id);
+  for (let i = 0; i < id.length; i++) removeGeometry(id[i]);
 };
 
 export const freeGeometryGPUMemory = (id: string | string[]) => {

@@ -1,5 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import {
+  GLTF_LOD_FORMAT_VERSION,
+  LOD_SIMPLIFY_VERSION,
+  type ResolvedLodChainOptions,
+} from '../../src/_engine/core/Lod/LodChainOptions';
 import type { AssetOptimize } from '../../src/_engine/schemas/assetsConfigSchema';
 import { encodePng } from './images';
 import { createKtxProvider, EncoderMissingError, type KtxProvider } from './ktxEncode';
@@ -14,6 +19,7 @@ import {
   writeOutput,
   type PipelineOutput,
 } from './outputs';
+import type { BuiltLodChain } from './lodChains';
 import { buildPackedImage, listPackFiles } from './pack';
 import type {
   createSettingsResolver,
@@ -44,6 +50,13 @@ export type PipelineAsset = {
    * a scene's latest entry that uses this file. Without it, an optimized GLB has no textures.
    */
   importTextures?: boolean;
+  /**
+   * An imported asset's LOD chain options (p347 Phase 3): the first use's that asks for one (its
+   * JSON's own, then the scenes'). Its levels are built into the GLB.
+   */
+  lodChain?: ResolvedLodChainOptions;
+  /** Another use asks for a chain with other options: the file has one chain, the first use's */
+  hasLodChainConflict?: boolean;
 };
 
 /** How the cache (§7) answered: the output was there, was copied back from the store, or was encoded */
@@ -60,6 +73,8 @@ export type PipelineOutcome =
       droppedTextures?: number;
       /** A GLB's vertex and index bytes, before and after */
       geometryBytes?: { in: number; out: number };
+      /** A GLB's LOD chains built into it (p347 Phase 3) */
+      lodChains?: BuiltLodChain[];
       /** Worth a look, but not errors (eg. an aspect ratio changed by the rounding to 4) */
       warnings: string[];
       /** Unset without a cache */
@@ -178,7 +193,7 @@ const toCacheEntry = (
 ): CacheEntry => {
   const { url, bytes } = result.output;
   if (result.status === 'passThrough') return { source: repoPath, url, bytes };
-  const { textures, droppedTextures, geometryBytes, warnings } = result;
+  const { textures, droppedTextures, geometryBytes, lodChains, warnings } = result;
   return {
     source: repoPath,
     url,
@@ -186,6 +201,7 @@ const toCacheEntry = (
     ...(textures.length ? { textures } : {}),
     ...(droppedTextures ? { droppedTextures } : {}),
     ...(geometryBytes ? { geometryBytes } : {}),
+    ...(lodChains?.length ? { lodChains } : {}),
     ...(warnings.length ? { warnings } : {}),
     ...(ktxVersion ? { ktxVersion } : {}),
   };
@@ -196,6 +212,7 @@ const fromCacheEntry = ({ entry }: CacheHit) => ({
   textures: entry.textures ?? [],
   ...(entry.droppedTextures !== undefined ? { droppedTextures: entry.droppedTextures } : {}),
   ...(entry.geometryBytes ? { geometryBytes: entry.geometryBytes } : {}),
+  ...(entry.lodChains ? { lodChains: entry.lodChains } : {}),
   warnings: entry.warnings ?? [],
 });
 
@@ -286,6 +303,10 @@ const runAsset = async (
       });
     }
     const importTextures = !!asset.importTextures;
+    // Only built with the mesh side on (else the runtime generates the chains), and only in the
+    // key when set: the keys of the assets without one don't change. The simplifier is engine
+    // code and the format is what the runtime reads, so both versions are in it too.
+    const lodChain = settings.mesh ? asset.lodChain : undefined;
     keyInput = {
       type: 'importedAsset',
       files: listGLTFFiles(source.file, json),
@@ -295,6 +316,15 @@ const runAsset = async (
         // Without importTextures the textures are dropped, whatever their settings
         textures: importTextures ? settings.textures : null,
         mesh: settings.mesh,
+        ...(lodChain
+          ? {
+              lodChain: {
+                options: lodChain,
+                simplifier: LOD_SIMPLIFY_VERSION,
+                format: GLTF_LOD_FORMAT_VERSION,
+              },
+            }
+          : {}),
         output: getLogicalPath(source),
       },
     };
@@ -324,6 +354,7 @@ const runAsset = async (
       const { encodeGLTFAsset } = await import('./gltf');
       const encoded = await encodeGLTFAsset(source, settings, {
         importTextures: !!asset.importTextures,
+        lodChain: settings.mesh ? asset.lodChain : undefined,
         getKtx,
         warn,
       });
@@ -364,5 +395,20 @@ export const processAsset = async (
 ): Promise<PipelineResult> => {
   const start = performance.now();
   const outcome = await runAsset(asset, resolveSettings, opts);
+  // Not cached: they're about the uses, not the encode
+  if (outcome.status === 'optimized' && asset.lodChain) {
+    const warnings: string[] = [];
+    if (!outcome.settings.mesh) {
+      warnings.push(
+        `lodChain: the geometry is kept as it is (${outcome.settings.passThrough.mesh}), so its LOD chains are generated at runtime`
+      );
+    }
+    if (asset.hasLodChainConflict) {
+      warnings.push(
+        "lodChain: the uses of this file ask for different options, and the file has one chain: the first use's (the JSON's own, then the scenes')"
+      );
+    }
+    if (warnings.length) outcome.warnings = [...outcome.warnings, ...warnings];
+  }
   return { ...outcome, durationMs: Math.round(performance.now() - start) };
 };

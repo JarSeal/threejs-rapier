@@ -33,6 +33,10 @@ declare const __PROJECT_METADATA__: {
     author: string;
   };
   pkgVersion: string;
+  license: string;
+  packages: Record<string, string>;
+  buildTools: Record<string, string>;
+  build: { commit: string; hasLocalChanges: boolean; time: string };
   versionChecksum: string;
   versionChecksumString: string;
 };

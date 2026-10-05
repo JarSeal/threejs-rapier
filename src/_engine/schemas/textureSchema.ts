@@ -50,7 +50,7 @@ export const TextureAssetSchema = z.object({
   __sourcePath: z.string().optional(),
   /** Bytes on disk (all six faces for a cube texture), baked in by gatherAppData. */
   __fileSize: z.number().optional(),
-  ...GeneratedAssetFieldsSchema.shape,
+  ...GeneratedAssetFieldsSchema.omit({ __lodChain: true }).shape,
 });
 
 export type TextureAsset = z.infer<typeof TextureAssetSchema>;

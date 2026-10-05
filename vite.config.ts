@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { defineConfig, type ViteDevServer } from 'vite';
 import wasm from 'vite-plugin-wasm';
 import basicSsl from '@vitejs/plugin-basic-ssl';
@@ -52,6 +53,17 @@ const createVersionChecksumString = (m?: typeof meta) => {
   return `${appVersion}-${appCodename}_${engVersion}-${engCodename}_${tkVersion}-${tkCodename}_${pkgVersion}`;
 };
 
+/** A git command's output, or '' when git or the repo isn't there. */
+const readGit = (args: string) => {
+  try {
+    return execSync(`git ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    return '';
+  }
+};
+
 const appVersion = pkg.app_metadata?.version || (pkg.version ? `${pkg.version}-pkg` : '');
 const engineVersion = pkg.engine_metadata?.version || (pkg.version ? `${pkg.version}-pkg` : '');
 const meta = {
@@ -87,6 +99,19 @@ const meta = {
     author: pkg.engine_metadata?.author || '',
   },
   pkgVersion: pkg.version || '',
+  license: pkg.license || '',
+  // The About dialog's package list: the runtime dependencies and the main build tools
+  packages: { ...pkg.dependencies } as Record<string, string>,
+  buildTools: {
+    vite: pkg.devDependencies.vite,
+    typescript: pkg.devDependencies.typescript,
+  } as Record<string, string>,
+  // The commit and time of this build (the dev server's start in dev)
+  build: {
+    commit: readGit('rev-parse --short HEAD'),
+    hasLocalChanges: readGit('status --porcelain --untracked-files=no') !== '',
+    time: new Date().toISOString(),
+  },
   versionChecksum: '',
   versionChecksumString: '',
 };
@@ -106,6 +131,10 @@ export default defineConfig({
     minify: true,
     reportCompressedSize: true,
   },
+  // ES module workers: an IIFE worker can't be code-split, and the assets worker loads the
+  // meshopt simplifier on demand (docs/plans/_DONE_p347_lod-chain-generation.md, Phase 0). The dev server
+  // loads workers as modules either way.
+  worker: { format: 'es' },
   optimizeDeps: {
     // Deps only the assets worker imports: Vite's dep scan doesn't follow `?worker` imports, so
     // without these, the first dev run re-optimizes when the worker starts and reloads the page
@@ -113,6 +142,8 @@ export default defineConfig({
       'three/addons/loaders/HDRLoader.js',
       'three/addons/loaders/KTX2Loader.js',
       'three/addons/libs/meshopt_decoder.module.js',
+      'meshoptimizer/simplifier',
+      'meshoptimizer/encoder',
     ],
   },
   server: {

@@ -1,8 +1,8 @@
 Status: stub — not-implemented
 Category: Merging, LOD
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 3)
-Blocked by: p372_mesh-merge-groups.md, p347_lod-chain-generation.md, p348_ecs-lod-selection.md
-Related: p353_macro-streaming-grid.md (FAR cells show these proxies), p351_impostor-billboard-lod.md (baked albedo, impostors as the next level), p306_terrain-blocks-and-procedural-terrain-meshes.md (a block with its dressing as one cluster)
+Blocked by: p372_mesh-merge-groups.md, p348_ecs-lod-selection.md
+Related: \_DONE_p347_lod-chain-generation.md (the simplifier that makes the proxies), p353_macro-streaming-grid.md (FAR cells show these proxies), p351_impostor-billboard-lod.md (baked albedo, impostors as the next level), p306_terrain-blocks-and-procedural-terrain-meshes.md (a block with its dressing as one cluster)
 
 # HLOD: Merged Cluster Proxies — Stub
 

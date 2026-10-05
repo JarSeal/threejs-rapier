@@ -4,13 +4,15 @@ import { createHash } from 'crypto';
 import { KTX_VERSION } from './ktxTool';
 import { AEK_ASSETS_DIR, getOutputFile } from './outputs';
 import { ROOT } from './sources';
+import type { BuiltLodChain } from './lodChains';
 import type { EncodedTexture } from './textures';
 
 /**
  * The content-hash cache (p300 §7). An encode is keyed by everything that decides its bytes:
  * the source bytes (every file a pack reads, a .gltf's external files), the settings that apply
- * (sorted keys), the asset's own inputs (sRGB, `importTextures`, the output's logical path),
- * {@link PIPELINE_VERSION} and the pinned tool versions. Two tiers:
+ * (sorted keys), the asset's own inputs (sRGB, `importTextures`, a GLB's resolved `lodChain` with
+ * the simplifier and LOD format versions, the output's logical path), {@link PIPELINE_VERSION} and
+ * the pinned tool versions. Two tiers:
  * - `assets.lock.json` (committed, like the outputs it points to, DD3): key → output URL and the
  *   result's metadata. A hit needs the entry and its file in `aek-assets/`, nothing else: a clone
  *   without `.cache/` or `ktx` uses the committed outputs as they are.
@@ -40,6 +42,8 @@ export type CacheEntry = {
   textures?: EncodedTexture[];
   droppedTextures?: number;
   geometryBytes?: { in: number; out: number };
+  /** A GLB's LOD chains (p347 Phase 3), for the generated data's `__lodChain` */
+  lodChains?: BuiltLodChain[];
   warnings?: string[];
   /** The `ktx` that encoded it, when one did (the key has the pinned version) */
   ktxVersion?: string;

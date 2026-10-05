@@ -42,6 +42,8 @@ export const releaseSceneOwnedAssets = (sceneId: string) => {
   }
 
   for (const [id, entry] of Object.entries(getGeometryRegistry())) {
+    // Gone already: released with an earlier one (a base geometry's LOD levels)
+    if (!getGeometryRegistry()[id]) continue;
     if (entry.persistent || entry.count > 0 || !isOwned(entry.resource)) continue;
     deleteGeometry(id);
     released.geometries.push(id);

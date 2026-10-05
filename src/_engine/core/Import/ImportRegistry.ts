@@ -19,6 +19,12 @@ import {
   deserializeTexture,
   releaseTransferableImage,
 } from './TextureTransfer';
+import type { LodChainOptions } from '../Lod/LodChainOptions';
+import {
+  deserializeLodChain,
+  readGLTFLodChains,
+  type ExtractedLodChain,
+} from '../Lod/LodChainGLTF';
 import type { ImportAssetParams, ImportedAssetManifest, ImportedGeometryInfo } from './ImportTypes';
 
 type ImportRecord = {
@@ -89,12 +95,58 @@ const logWarnings = (manifest: ImportedAssetManifest) => {
   }
 };
 
+/** Starts the LOD chains an import asks for (`lodChain`, p347): one per rendered geometry that
+ * has no chain yet and none pending. Not awaited by the import. LodChains is loaded on first use,
+ * so apps that never ask for a chain don't download it. generateLodChain refuses (and warns about)
+ * skinned and morph-target geometry. */
+const requestLodChains = (manifest: ImportedAssetManifest, lodChain: true | LodChainOptions) => {
+  const geometryIds = new Set<string>();
+  for (const { geometryId, customProps } of manifest.geometries) {
+    // Collider only: never rendered (spawnImportedAsset gives it no mesh)
+    if (customProps.isPhysObj && !customProps.keepMesh) continue;
+    geometryIds.add(geometryId);
+  }
+  if (!geometryIds.size) return;
+  const opts = lodChain === true ? undefined : lodChain;
+  import('../Lod/LodChains')
+    .then(({ generateLodChain, getLodChain, isLodChainPending }) => {
+      for (const geometryId of geometryIds) {
+        // Released while the module loaded, or already chained (the first options win)
+        if (!doesGeoExist(geometryId)) continue;
+        if (getLodChain(geometryId) || isLodChainPending(geometryId)) continue;
+        generateLodChain(geometryId, opts).catch((err) =>
+          lerror(`Import "${manifest.id}": LOD chain for geometry "${geometryId}" failed.`, err)
+        );
+      }
+    })
+    .catch((err) => lerror(`Import "${manifest.id}": could not load the LOD chain module.`, err));
+};
+
+/** Registers the LOD chains the asset pipeline built into the file (p347 Phase 3), whatever the
+ * import's `lodChain` says: the file is shared by every use, and its levels were downloaded
+ * anyway. Awaited, so a `lodChain` request right after the import finds them. */
+const registerPrebuiltLodChains = async (
+  importId: string,
+  prebuilt: { geometryId: string; chain: ExtractedLodChain }[]
+) => {
+  try {
+    const { registerPrebuiltLodChain } = await import('../Lod/LodChains');
+    for (const { geometryId, chain } of prebuilt) registerPrebuiltLodChain(geometryId, chain);
+  } catch (err) {
+    lerror(`Import "${importId}": could not load the LOD chain module.`, err);
+  }
+};
+
 const LOAD_ERROR_MESSAGE = 'loading or parsing the file failed.';
 
 /** The "load + extract" stage of an import: the only part that differs by thread. */
 type LoadOutcome =
   | {
-      primitives: { geometry: THREE.BufferGeometry; info: ImportedGeometryInfo }[];
+      primitives: {
+        geometry: THREE.BufferGeometry;
+        info: ImportedGeometryInfo;
+        lodChain?: ExtractedLodChain;
+      }[];
       textures: RegisteredGLTFTextures | null;
       /** Disposes everything the load created except the kept (registered) geometries and the
        * registered textures. */
@@ -129,7 +181,8 @@ const loadOnMainThread = async (
     return { error: LOAD_ERROR_MESSAGE, cause: err };
   }
 
-  const extracted = extractPrimitives(gltf, { importId: id, meshIndex });
+  const lodChains = await readGLTFLodChains(gltf);
+  const extracted = extractPrimitives(gltf, { importId: id, meshIndex, lodChains });
   if (extracted.error !== undefined) {
     disposeGLTFLeftovers(gltf, {});
     return { error: extracted.error };
@@ -168,10 +221,16 @@ const loadInWorker = async (
   if (response.error !== undefined) return { error: response.error };
 
   const geometries = response.geometries.map(deserializeGeometry);
-  const primitives = response.primitives.map(({ geometryIndex, info }) => ({
-    geometry: geometries[geometryIndex],
-    info,
-  }));
+  const lodChains = new Map(
+    response.lodChains.map(({ geometryIndex, chain }) => [
+      geometryIndex,
+      deserializeLodChain(chain, geometries[geometryIndex]),
+    ])
+  );
+  const primitives = response.primitives.map(({ geometryIndex, info }) => {
+    const lodChain = lodChains.get(geometryIndex);
+    return { geometry: geometries[geometryIndex], info, ...(lodChain ? { lodChain } : {}) };
+  });
 
   // One source per image: textures sharing an image share its source, as GLTFLoader's clones do
   const sources = createTransferredSources(response.images);
@@ -255,8 +314,10 @@ const runImport = async (
   /** Nodes sharing one glTF mesh share one BufferGeometry: register it once. */
   const idByGeometry = new Map<THREE.BufferGeometry, string>();
   const geometries: ImportedGeometryInfo[] = [];
+  /** Only for a geometry registered by this import: a reused one keeps what it has */
+  const prebuiltLodChains: { geometryId: string; chain: ExtractedLodChain }[] = [];
   for (let i = 0; i < primitives.length; i++) {
-    const { geometry } = primitives[i];
+    const { geometry, lodChain } = primitives[i];
     const info = textures
       ? { ...primitives[i].info, textureSlots: textures.slotsPerPrimitive[i] }
       : primitives[i].info;
@@ -297,8 +358,13 @@ const runImport = async (
     });
     keepGeometries.add(geometry);
     geometries.push(registeredInfo);
+    if (lodChain) {
+      prebuiltLodChains.push({ geometryId, chain: lodChain });
+      for (const level of lodChain.levels) keepGeometries.add(level.geometry);
+    }
   }
   loaded.disposeLeftovers(keepGeometries);
+  if (prebuiltLodChains.length) await registerPrebuiltLodChains(id, prebuiltLodChains);
 
   const manifest: ImportedAssetManifest = {
     id,
@@ -318,20 +384,8 @@ const runImport = async (
   return manifest;
 };
 
-/**
- * Imports the assets of a .glb/.gltf file: registers one geometry per mesh primitive in the
- * geometry registry (as `${id}/${nodeName}`, with `userData.importInfo`) and, with importTextures,
- * the textures of their glTF material slots. Returns a manifest describing them (node transforms,
- * parsed Blender custom props, texture slots). Creates no entities and imports no glTF materials.
- *
- * A repeated call with the same id returns the cached manifest while all of its geometries are
- * still registered (re-imports otherwise), and parallel calls share one import.
- * @param params {@link ImportAssetParams}
- * @returns Promise<{@link ImportedAssetManifest} | null> (null on error, unless throwOnError)
- */
-export const importAssetAsync = async (
-  params: ImportAssetParams
-): Promise<ImportedAssetManifest | null> => {
+/** importAssetAsync without the LOD chain request: a cached, shared or fresh import. */
+const resolveImport = async (params: ImportAssetParams): Promise<ImportedAssetManifest | null> => {
   const id = params.id || getDefaultImportId(params.fileName || '');
 
   const sourceKey = getSourceKey(params);
@@ -359,11 +413,33 @@ export const importAssetAsync = async (
     retagImportOwner(record);
     return record.manifest;
   }
-  if (pendingImports.has(id)) return importAssetAsync(params);
+  if (pendingImports.has(id)) return resolveImport(params);
 
   const promise = runImport(params, id, sourceKey).finally(() => pendingImports.delete(id));
   pendingImports.set(id, { promise, sourceKey });
   return promise;
+};
+
+/**
+ * Imports the assets of a .glb/.gltf file: registers one geometry per mesh primitive in the
+ * geometry registry (as `${id}/${nodeName}`, with `userData.importInfo`) and, with importTextures,
+ * the textures of their glTF material slots. Returns a manifest describing them (node transforms,
+ * parsed Blender custom props, texture slots). Creates no entities and imports no glTF materials.
+ *
+ * A repeated call with the same id returns the cached manifest while all of its geometries are
+ * still registered (re-imports otherwise), and parallel calls share one import.
+ *
+ * With `lodChain`, the rendered geometries that have no LOD chain get one after the import (also
+ * when the manifest was cached), without delaying it.
+ * @param params {@link ImportAssetParams}
+ * @returns Promise<{@link ImportedAssetManifest} | null> (null on error, unless throwOnError)
+ */
+export const importAssetAsync = async (
+  params: ImportAssetParams
+): Promise<ImportedAssetManifest | null> => {
+  const manifest = await resolveImport(params);
+  if (manifest && params.lodChain) requestLodChains(manifest, params.lodChain);
+  return manifest;
 };
 
 /**

@@ -4,6 +4,37 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-05 — lod-chain-generation
+
+### Engine 4.7.0 (Afternoon)
+
+**Added**
+
+- LOD chains (`core/Lod/`): `generateLodChain(geometryId, opts?)` simplifies a registered geometry with meshoptimizer into levels registered as geometries `${baseId}#lod${n}`. Each level records its triangle count and error, relative to the chain's `extent` (the base's largest bounding box side) and including the normal and uv deviation.
+  - Levels share the base's vertex attributes (only the index differs) unless `compactVertices` gives each its own. A non-indexed base is welded first. Material groups are simplified per group and rebuilt.
+  - Options: `ratios` (default `[0.5, 0.25, 0.1]`), `maxError` (0.05), `attributeWeights`, `compactVertices`, `lockBorder` (tiling geometry) and `permissive` (flat-shaded geometry doesn't simplify without it). A chain without levels warns.
+  - Skinned and morph-target geometry is refused. Nothing selects a level yet.
+  - Also `getLodChain`, `getLodChains`, `getLodChainOfLevel`, `isLodChainPending` and `releaseLodChain`. The chain holds a ref on each level and is released with its base (`onGeometryDeleted` in `core/Geometry.ts`). Levels take the base's scene owner.
+- The simplifier runs in the assets worker (new kind `SIMPLIFY`) or on the main thread. `AppConfig.assets.simplifyWorkerTarget` (env `VITE_ASSETS_SIMPLIFY_WORKER_TARGET`, plus a boot override in the Assets tab) defaults to `WORKER_THREAD`, whatever `workerTarget` is. meshoptimizer loads on first use on both threads.
+- `lodChain` (`true` or the options) on `*.importedAsset.json` and `ImportAssetParams`: `importAssetAsync` generates a chain for each rendered geometry after the import, without being awaited.
+- Build-time chains: a GLB built by the asset pipeline carries its chains (levels as meshes `<mesh>__lod<n>` that no node uses, described by the root's `aekLodChains` extras). The import registers them (`LodChain.origin: 'BUILD'`) and doesn't simplify on the client. The generated data's `__lodChain` lists each primitive's levels for tooling.
+- Assets tab: the geometry info window shows a geometry's chain (per level: triangles, error, bytes, shared or own vertices), with "Generate LOD chain" and release buttons.
+- The Ækasha symbol, a black and white Æ with rounded corners: a UI icon (`getSvgIcon('aekasha')`, `core/UI/icons/svg/aekasha.svg`, in `currentColor`) and the favicon: `favicon.svg` (white on a dark browser theme), `favicon.ico` (16, 32, 48, with a white halo for dark tabs) and `apple-touch-icon.png` in `src/public/`, linked from `index.html`.
+- About Ækasha dialog (`core/Debug/_dbg__About.ts`, `openAboutDialog()`), opened by the Æ button left of undo / redo (debug mode): the engine, toolkit and app versions, the version checksum and the build (commit, local changes, time), the runtime packages and main build tools, the runtime (environment, renderer, GPU, viewport, browser) and physics (every backend in `ENGINES` with its package version, status, thread, transform transport, SharedArrayBuffer availability, timestep and sub-steps, solver, gravity, interpolation, background behavior, body counts). "Copy info" copies it all as text, for bug reports.
+- A physics backend in `Physics/ENGINES.ts` has a display `name` and its npm `packageName`.
+- `PROJECT_METADATA` (`__PROJECT_METADATA__`, from `vite.config.ts`) has `license`, `packages` (the runtime dependencies), `buildTools` (vite, typescript) and `build` (`commit`, `hasLocalChanges`, `time`).
+
+**Changed**
+
+- The workers build as ES modules (`worker: { format: 'es' }` in `vite.config.ts`), so they can load chunks on demand.
+- `meshoptimizer` is a runtime dependency (it was a dev dependency).
+
+### Project
+
+**Added**
+
+- The asset pipeline builds an imported asset's `lodChain` into its GLB (`devTools/assetPipeline/lodChains.ts`), with the mesh side on. Uses of one file share one output, with the first use's options; a use with other options is warned. The cache key has the resolved options, the simplifier version and the GLB format version, so assets without `lodChain` keep their keys.
+
 ## 2026-10-04 — asset-optimization-pipeline
 
 ### Engine 4.6.0 (Afternoon)

@@ -1,0 +1,139 @@
+@use '../../styles/variables.scss';
+
+.dialogContent {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1rem 1.2rem 1.2rem;
+}
+
+.panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.4rem 0.8rem 0 0;
+  scrollbar-color: variables.$debugTextColor variables.$debugGuiBackgroundLighter2;
+  scrollbar-width: thin;
+}
+
+.header {
+  display: flex;
+  gap: 1.6rem;
+  align-items: flex-start;
+  padding: 0.6rem 0 1.4rem;
+}
+
+.symbol {
+  flex-shrink: 0;
+  color: variables.$white;
+
+  :global(.uiIcon) {
+    display: block;
+    width: 6.4rem;
+    height: 6.4rem;
+
+    svg {
+      width: 100%;
+      height: 100%;
+    }
+  }
+}
+
+.name {
+  margin: 0;
+  font-size: 1.8rem;
+  color: variables.$white;
+}
+
+.version {
+  margin-top: 0.2rem;
+  font-size: 1.2rem;
+  color: variables.$debugTextColor;
+}
+
+.description {
+  margin: 0.8rem 0 0;
+  font-size: 1.2rem;
+  line-height: 1.4;
+  color: variables.$debugTextColor;
+}
+
+.credits {
+  margin-top: 0.6rem;
+  font-size: 1.1rem;
+  color: variables.$debugTextColorDark;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  margin-top: 0.8rem;
+  font-size: 1.2rem;
+
+  a {
+    color: variables.$debugTextColor;
+
+    &:hover {
+      color: variables.$white;
+    }
+  }
+}
+
+.section {
+  margin-top: 1.6rem;
+
+  h4 {
+    margin: 0 0 0.4rem;
+    font-size: 1.3rem;
+    color: variables.$white;
+  }
+}
+
+.rows {
+  display: grid;
+  grid-template-columns: 16rem 1fr;
+  margin: 0;
+
+  dt,
+  dd {
+    margin: 0;
+    padding: 0.5rem 0;
+    border-top: 0.1rem solid rgba(variables.$debugTextColor, 0.12);
+    font-size: 1.2rem;
+  }
+
+  dt {
+    padding-right: 1rem;
+    color: variables.$debugTextColorDark;
+  }
+
+  dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: variables.$debugTextColor;
+    user-select: text;
+  }
+
+  @media screen and (max-width: variables.$breakpointSmall) {
+    grid-template-columns: 1fr;
+
+    dd {
+      padding-top: 0;
+      border-top: 0;
+    }
+  }
+}
+
+.footer {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: 0.8rem;
+  padding-top: 1rem;
+  border-top: 0.1rem solid variables.$debugTextColorDark;
+
+  :global(.debuggerClearLSDialogButton) {
+    margin: 0;
+  }
+}

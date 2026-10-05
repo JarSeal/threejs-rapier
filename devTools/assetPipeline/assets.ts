@@ -5,6 +5,10 @@ import {
   ImportedAssetSchema,
   type ImportedAsset,
 } from '../../src/_engine/schemas/importedAssetSchema';
+import {
+  resolveLodChainOptions,
+  type ResolvedLodChainOptions,
+} from '../../src/_engine/core/Lod/LodChainOptions';
 import type { PipelineAsset } from './pipeline';
 import {
   createPackSource,
@@ -33,11 +37,18 @@ type AssetData = {
   pack?: TextureAsset['pack'];
   texOpts?: TextureAsset['texOpts'];
   importTextures?: ImportedAsset['importTextures'];
+  lodChain?: ImportedAsset['lodChain'];
   __saveData?: Record<string, object[] | undefined>;
 };
 
 /** One use of an asset: the JSON as it is, or merged with a scene's latest save entry. */
-type AssetUse = { source: AssetSource | PackSource; isSrgb: boolean; importTextures: boolean };
+type AssetUse = {
+  source: AssetSource | PackSource;
+  isSrgb: boolean;
+  importTextures: boolean;
+  /** An imported asset's `lodChain`, resolved (p347 Phase 3) */
+  lodChain: ResolvedLodChainOptions | null;
+};
 
 /**
  * The source and the encode inputs of an asset's data, as the gatherer merges it for a scene
@@ -51,16 +62,22 @@ export const resolveAssetUse = (
 ): AssetUse | { error: string } | null => {
   const isSrgb = data.texOpts?.colorSpace === 'srgb';
   const importTextures = !!data.importTextures;
-  if (data.pack) return { source: createPackSource(jsonFile, data.pack), isSrgb, importTextures };
+  const lodChain = data.lodChain
+    ? resolveLodChainOptions(data.lodChain === true ? undefined : data.lodChain)
+    : null;
+  if (data.pack) {
+    return { source: createPackSource(jsonFile, data.pack), isSrgb, importTextures, lodChain };
+  }
   if (!data.fileName) return null;
   const source = resolveAssetSource({ jsonFile, fileName: data.fileName, path: data.path });
-  return 'error' in source ? source : { source, isSrgb, importTextures };
+  return 'error' in source ? source : { source, isSrgb, importTextures, lodChain };
 };
 
 /**
  * The key of an encode: the JSON (its `optimize` applies), the source and, for a texture, its
- * colour space. A GLB's `importTextures` isn't part of it: every use of a file shares one output,
- * with its textures when any use imports them (step 5).
+ * colour space. A GLB's `importTextures` and `lodChain` aren't part of it: every use of a file
+ * shares one output, with its textures when any use imports them (step 5), and with LOD chains
+ * when any use asks for them (p347 Phase 3, the first use's options).
  */
 export const getPipelineAssetKey = (type: PipelineAssetType, jsonFile: string, use: AssetUse) => {
   const source = use.source.kind === 'remote' ? use.source.url : use.source.repoPath;
@@ -134,6 +151,14 @@ export const collectPipelineAssets = (assetJsons: AssetJson[]) => {
       const existing = assets.get(key);
       if (existing) {
         if (use.importTextures) existing.importTextures = true;
+        if (use.lodChain && !existing.lodChain) {
+          existing.lodChain = use.lodChain;
+        } else if (
+          use.lodChain &&
+          JSON.stringify(use.lodChain) !== JSON.stringify(existing.lodChain)
+        ) {
+          existing.hasLodChainConflict = true;
+        }
         continue;
       }
       assets.set(key, {
@@ -142,7 +167,12 @@ export const collectPipelineAssets = (assetJsons: AssetJson[]) => {
         jsonFile: toRepoPath(jsonFile),
         source: use.source,
         ...(data.optimize !== undefined ? { optimize: data.optimize } : {}),
-        ...(type === 'texture' ? { isSrgb: use.isSrgb } : { importTextures: use.importTextures }),
+        ...(type === 'texture'
+          ? { isSrgb: use.isSrgb }
+          : {
+              importTextures: use.importTextures,
+              ...(use.lodChain ? { lodChain: use.lodChain } : {}),
+            }),
       });
     }
   }

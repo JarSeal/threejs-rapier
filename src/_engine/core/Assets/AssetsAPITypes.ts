@@ -4,6 +4,8 @@
 
 import type { KTX2LoaderWorkerConfig } from 'three/addons/loaders/KTX2Loader.js';
 import type { TransferableGeometry } from '../Import/GeometryTransfer';
+import type { ResolvedLodChainOptions, SimplifiedLodChain } from '../Lod/LodSimplify';
+import type { TransferableLodChain } from '../Lod/LodChainGLTF';
 import type { ImportedGeometryInfo } from '../Import/ImportTypes';
 import type { TransferableImage, TransferableTexture } from '../Import/TextureTransfer';
 import type { TextureMapKeys } from '../Material';
@@ -11,16 +13,19 @@ import type { TextureMapKeys } from '../Material';
 /** Where an asset kind is loaded. */
 export type AssetsWorkerTarget = 'MAIN_THREAD' | 'WORKER_THREAD';
 
-/** The asset kinds that can be loaded in the assets worker. Each has its own workerTarget. */
-export type AssetKind = 'GLTF' | 'TEXTURE';
+/** The asset kinds that can be loaded (or, for SIMPLIFY, LOD chains generated) in the assets
+ * worker. Each has its own workerTarget. */
+export type AssetKind = 'GLTF' | 'TEXTURE' | 'SIMPLIFY';
 
 /** Resolved assets config (AppConfig.assets with the defaults filled in). */
 export type AssetsState = {
   /** Shared default for all asset kinds. */
   workerTarget: AssetsWorkerTarget;
-  /** Per-kind overrides; undefined falls back to workerTarget. */
+  /** Per-kind overrides; undefined falls back to workerTarget. SIMPLIFY's is always set (its
+   * default is 'WORKER_THREAD'). */
   gltfWorkerTarget?: AssetsWorkerTarget;
   textureWorkerTarget?: AssetsWorkerTarget;
+  simplifyWorkerTarget?: AssetsWorkerTarget;
   /** Max number of requests in flight in the worker at once, the rest wait in a queue. */
   maxConcurrentLoads: number;
   /** A worker request (and the worker handshake) not answered in this time falls back (or fails). */
@@ -102,6 +107,8 @@ export enum AssetsProtocolType {
   LOAD_HDR_TEXTURE = 3,
   /** A .glb/.gltf file: fetched, parsed (DRACO decoded) and its mesh primitives extracted. */
   LOAD_GLTF = 4,
+  /** A geometry's LOD chain: simplified by meshoptimizer (core/Lod/LodSimplify.ts). */
+  SIMPLIFY_GEOMETRY = 5,
 }
 
 // UP (main thread → worker). Every request has a requestId; the worker answers each one with
@@ -140,11 +147,20 @@ export type AssetsLoadGLTFRequest = {
   ktx2: KTX2WorkerSettings | null;
 };
 
+/** The geometry's arrays are copies, transferred: the main thread's geometry stays usable. */
+export type AssetsSimplifyGeometryRequest = {
+  type: AssetsProtocolType.SIMPLIFY_GEOMETRY;
+  requestId: number;
+  geometry: TransferableGeometry;
+  options: ResolvedLodChainOptions;
+};
+
 export type AssetsUpProtocol =
   | AssetsPingRequest
   | AssetsLoadTextureRequest
   | AssetsLoadHDRTextureRequest
-  | AssetsLoadGLTFRequest;
+  | AssetsLoadGLTFRequest
+  | AssetsSimplifyGeometryRequest;
 
 // DOWN (worker → main thread)
 
@@ -194,6 +210,8 @@ export type AssetsLoadGLTFResponse = {
   error?: string;
   geometries: TransferableGeometry[];
   primitives: { geometryIndex: number; info: ImportedGeometryInfo }[];
+  /** The asset pipeline's prebuilt LOD chains (p347 Phase 3), one per base in `geometries`. */
+  lodChains: { geometryIndex: number; chain: TransferableLodChain }[];
   /** Empty without importTextures. ImageBitmaps, or KTX2 textures' compressed mip levels. */
   images: TransferableImage[];
   /** Empty without importTextures. */
@@ -202,9 +220,17 @@ export type AssetsLoadGLTFResponse = {
   textureSlotsPerPrimitive: Partial<Record<TextureMapKeys, number>>[];
 };
 
+/** LodSimplify's simplifyLodChain() result, run in the worker. Its arrays are transferred. */
+export type AssetsSimplifyGeometryResponse = {
+  type: AssetsProtocolType.SIMPLIFY_GEOMETRY;
+  requestId: number;
+  result: SimplifiedLodChain;
+};
+
 export type AssetsDownProtocol =
   | AssetsErrorResponse
   | AssetsPingResponse
   | AssetsLoadTextureResponse
   | AssetsLoadHDRTextureResponse
-  | AssetsLoadGLTFResponse;
+  | AssetsLoadGLTFResponse
+  | AssetsSimplifyGeometryResponse;
