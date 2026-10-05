@@ -460,6 +460,14 @@ export const initDebugCamera = async (world: ECSWorld) => {
 export const toggleDebugCamera = (world: ECSWorld, useDebugCam: boolean) =>
   useDebug(debugCamera)?.toggleDebugCamera(world, useDebugCam, setActiveCamera);
 
+/**
+ * Enables or disables the scene debug camera's canvas input (its OrbitControls) right away.
+ * ViewManager.ts turns it off while an editor view is active. Debug env only.
+ * @param enabled (boolean)
+ */
+export const setSceneDebugCameraInputEnabled = (enabled: boolean) =>
+  useDebug(debugCamera)?.setSceneDebugCameraInputEnabled(enabled, getECSWorld());
+
 export const isDebugCameraActive = (): boolean => {
   if (activeCameraEntityId === null) return false;
   const world = getECSWorld();

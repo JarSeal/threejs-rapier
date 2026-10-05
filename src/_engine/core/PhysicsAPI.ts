@@ -313,11 +313,17 @@ export const stepPhysics = (
   updateTimer();
   let dt = timer.getDelta();
 
-  if (!loopState.masterPlay || !loopState.appPlay || !physicsState.worldStepEnabled) {
+  if (
+    !loopState.masterPlay ||
+    !loopState.appPlay ||
+    loopState.isSceneSuspended ||
+    !physicsState.worldStepEnabled
+  ) {
     // Explicit pause (unrelated to window visibility) always halts stepping outright —
     // backgroundBehavior only governs what happens while the window is hidden. Switching
     // the world step off counts as one too, so switching it back on resumes cleanly instead
-    // of catching up on the time it was off.
+    // of catching up on the time it was off, and so does a scene suspended by an editor view
+    // (ViewManager.ts).
     if (!physicsState.isPaused) setPhysicsPauseTime();
     physicsState.isPaused = true;
     timerRunning = false;

@@ -30,6 +30,24 @@ let panelRefreshCallback: (() => void) | null = null;
 /** Set while another debug tool moves the debug camera itself (the axes gizmo's drag orbit):
  * debugCameraSystem then keeps the OrbitControls disabled instead of re-enabling them. */
 let isControlsSuspended = false;
+/** False while an editor view is active (ViewManager.ts): the scene is suspended and the
+ * canvas belongs to the view, so the OrbitControls stay disabled, also when a scene loads
+ * meanwhile. */
+let isSceneInputEnabled = true;
+
+/**
+ * Enables or disables the scene debug camera's canvas input (its OrbitControls), right away:
+ * debugCameraSystem doesn't run while an editor view suspends the scene. ViewManager.ts only
+ * (through CameraManager's setSceneDebugCameraInputEnabled).
+ * @param enabled (boolean)
+ * @param world (ECSWorld) the world the debug camera is in
+ */
+export const setSceneDebugCameraInputEnabled = (enabled: boolean, world: ECSWorld) => {
+  isSceneInputEnabled = enabled;
+  for (const [entityId, data] of world.getStorage(ComponentType.ORBIT_CONTROLS)) {
+    data.controls.enabled = enabled && !world.isDisabled(entityId) && !isControlsSuspended;
+  }
+};
 
 /**
  * Suspends (disables) the debug camera's OrbitControls while another debug tool moves the
@@ -63,7 +81,7 @@ export const attachOrbitControls = (entityId: number, world: ECSWorld, sceneId: 
   const { position, target, enabled } = props;
   obj.position.set(position.x, position.y, position.z);
   controls.target.set(target.x, target.y, target.z);
-  controls.enabled = enabled;
+  controls.enabled = enabled && isSceneInputEnabled;
   controls.update();
 
   controls.addEventListener('end', () => {
@@ -93,7 +111,7 @@ export function debugCameraSystem(world: ECSWorld) {
 
   for (const [entityId, data] of storage) {
     const isDisabled = world.isDisabled(entityId);
-    data.controls.enabled = !isDisabled && !isControlsSuspended;
+    data.controls.enabled = !isDisabled && !isControlsSuspended && isSceneInputEnabled;
 
     if (isDisabled) continue;
 
@@ -162,7 +180,7 @@ export const debugCamSceneChange = (newSceneId: string, world: ECSWorld) => {
 
   // Update OrbitControls
   controls.target.set(target.x, target.y, target.z);
-  controls.enabled = enabled;
+  controls.enabled = enabled && isSceneInputEnabled;
   controls.update();
 
   // Sync ECS Transform

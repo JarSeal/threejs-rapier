@@ -92,11 +92,9 @@ In this plan the editor is a viewer: clicking a material shows it on the ball. A
    - **Unavailable** materials (a TSL material without a `tslMaterialFileObjects` entry, ie. a production-gathered build) are listed but disabled, with the reason in the tooltip.
    - On view exit the copy is deleted; on enter it is created again from `selectedMaterialId`. So nothing the editor holds can outlive a scene switch that released its textures.
 4. **Editor camera.**
-   - Its own `PerspectiveCamera` (fov 45, near 0.01, far 100) and `OrbitControls` on the canvas, enabled only while the view is active. It is not an ECS entity: the view owns it, like a viewport owns its camera.
-   - `mainUpdate` runs `controls.update()` unless the gizmo suspended the controls; the camera is exposed as the p083 `ViewCameraRig`, so the axes gizmo follows it and can align and orbit it.
-   - Aspect: updated with an `addResizer('materialEditorCamera', …)` resizer and on every enter.
+   - Built with p083's `createViewCamera` (p083 DD7, `core/Debug/Editors/_dbg__ViewCamera.ts`), which every editor view shares. It provides the camera with its OrbitControls (enabled only while the view is active, not an ECS entity), `controls.update()` in `mainUpdate` unless the gizmo suspended the controls, the aspect resizer, and the `ViewCameraRig` the axes gizmo follows, aligns and orbits. This plan only configures it: `viewId: 'materialEditor'`, fov 45, near 0.01, far 100.
    - **Default pose**: position `(0, 0.4, 3.2)`, target `(0, 0, 0)` (the ball fills about half the height).
-   - **Per-material pose**: saved on the controls' `end` event (like `_dbg__DebugCamera.ts:69-74`) into that material's editor record `AEK_debugMatEditorMat_<id>` as `camera: { position, target, fov }`. Loading a material applies its pose, or the default when it has none. With no material selected, the pose goes to the UI state (DD8).
+   - **Per-material pose**: the pose key is the material id (`setPoseKey(materialId)` in `loadEditorMaterial`). The editor passes a `store` that saves the pose into that material's editor record `AEK_debugMatEditorMat_<id>` as `camera: { position, target, fov }`, so p085's clear button clears it with the rest. Loading a material applies its pose, or the default when it has none. With no material selected (`setPoseKey(null)`), the pose is the view's own pose in the helper's default store (`AEK_debugViewCams`).
    - "The camera data is kept in the material's debug data" is implemented as this per-material LS record. The JSON `debugData` is not written in this epic; saving to JSON is the later save plan.
 5. **The material selector (bottom drawer).**
    - Fixed to the bottom, from the left edge to the right edge of the canvas, `z-index: 10100`: above the stats panel and on-screen tools (so a shown stats panel is under it), below the right drawer (10200) and the toaster.
@@ -121,25 +119,25 @@ In this plan the editor is a viewer: clicking a material shows it on the ball. A
    - In this plan the tabs are **Params** (a read-only "Material" section: id, name, type, source path, description, TSL file, and the texture ids it uses) and **Settings** ("Reset camera to default", and the camera's pose as read-only values). p085 adds the editable content.
 7. **Pause and play.** `update(delta)` (p083 DD5) drives an optional slow auto-rotation of the preview object (p085 exposes it; off by default), so the pause button has something to pause. TSL materials that animate with the wall-clock `time` node keep moving, as in the scene.
 8. **Editor UI state** (LS `AEK_debugMatEditorUI`, written on each change, read on first enter):
-   - `selectedMaterialId`, `noMaterialCamera`
+   - `selectedMaterialId` (the camera pose without a material is in `AEK_debugViewCams`, DD4)
    - `selector: { isOpen, filterText, scrollTop }`
    - `drawer: { isOpen, currentTabId, scrollPos: Record<tabId, number> }`
    - With p083's saved view, a refresh returns to the editor with the same material, camera pose, drawers, tab, filter and scroll positions. A `selectedMaterialId` that no longer exists is dropped.
 
 ## Files touched
 
-| File                                                                              | Change                                                                       |
-| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `src/_engine/debug/MaterialEditor.ts` (new)                                       | Thin debug entry                                                             |
-| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditor.ts` (new)           | View def, stage, camera rig, `loadEditorMaterial`, UI state                  |
-| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditorSelector.ts` (new)   | Bottom drawer: header, filter, grid, cards                                   |
-| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditorTabs.ts` (new)       | Params/Settings tab defs (info + camera reset here)                          |
-| `src/_engine/core/Debug/Editors/Material/MaterialEditor.module.scss` (new)        | Selector layout, cards, responsive offsets, notice                           |
-| `src/_engine/core/Debug/Editors/_dbg__EditorDrawer.ts` (new)                      | Reusable right drawer instance                                               |
-| `src/_engine/core/Debug/_dbg__DebuggerGUI.ts`, `src/_engine/debug/DebuggerGUI.ts` | Export `_buildDebuggerTabContent`, `hydrateDebuggerTabState`                 |
-| `src/_engine/core/UI/icons/SvgIcon.ts`, `icons/svg/material-sphere.svg` (new)     | `material` icon (DD1)                                                        |
-| `src/_engine/InitApp.ts`                                                          | `registerMaterialEditor()` in the debug block                                |
-| `.claude/CLAUDE.md`                                                               | One line under the "Views" paragraph: the material editor and where it lives |
+| File                                                                              | Change                                                                               |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `src/_engine/debug/MaterialEditor.ts` (new)                                       | Thin debug entry                                                                     |
+| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditor.ts` (new)           | View def, stage, `createViewCamera` config and store, `loadEditorMaterial`, UI state |
+| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditorSelector.ts` (new)   | Bottom drawer: header, filter, grid, cards                                           |
+| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditorTabs.ts` (new)       | Params/Settings tab defs (info + camera reset here)                                  |
+| `src/_engine/core/Debug/Editors/Material/MaterialEditor.module.scss` (new)        | Selector layout, cards, responsive offsets, notice                                   |
+| `src/_engine/core/Debug/Editors/_dbg__EditorDrawer.ts` (new)                      | Reusable right drawer instance                                                       |
+| `src/_engine/core/Debug/_dbg__DebuggerGUI.ts`, `src/_engine/debug/DebuggerGUI.ts` | Export `_buildDebuggerTabContent`, `hydrateDebuggerTabState`                         |
+| `src/_engine/core/UI/icons/SvgIcon.ts`, `icons/svg/material-sphere.svg` (new)     | `material` icon (DD1)                                                                |
+| `src/_engine/InitApp.ts`                                                          | `registerMaterialEditor()` in the debug block                                        |
+| `.claude/CLAUDE.md`                                                               | One line under the "Views" paragraph: the material editor and where it lives         |
 
 ## Phases
 
