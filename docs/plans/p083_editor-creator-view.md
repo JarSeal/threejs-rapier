@@ -5,7 +5,7 @@ Related (all implemented; their plan files have been removed, see `.claude/CLAUD
 
 # Editor-Creator View — Epic and View Switching Core
 
-Today the debug mode has one view: the scene. This epic adds **editor/creator views** next to it. An editor view replaces what the canvas shows (its own scene, camera, lights and environment) while the loaded scene stays in memory, frozen and hidden. Switching back resumes the scene exactly where it was.
+Today the debug mode has one view: the running game/app with its debugger. This epic names it the **Runtime** view, the editor's main view, and adds **editor/creator views** next to it. An editor view replaces what the canvas shows (its own scene, camera, lights and environment) while the loaded scene stays in memory, frozen and hidden. Switching back to Runtime resumes the scene exactly where it was. The view buttons ("Runtime", "Material editor", …) sit in a new group in the top on-screen row, each with its own icon (DD6).
 
 The first editor is the **material editor**. It starts as a viewer with a few editable parameters. Later editors (skybox, animation, particles, …) plug into the same view system. A later "save" plan will write editor results back to the asset JSON, which makes the editors useful for prototyping and, later, as the base of a production configurator.
 
@@ -13,11 +13,11 @@ This file is the epic. It also holds the first implementation plan: the **view s
 
 ## Sub-plans
 
-| Plan                                             | Scope                                                                                                                                                            | Blocked by | Engine bump |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------- |
-| `p083_editor-creator-view.md` (this file)        | View registry, scene suspension in the main loop, view tools group, HUD rules per view, undo buckets per view, gizmo camera rig, active view restored on refresh | —          | minor       |
-| `p084_material-editor-stage-and-selector.md`     | Material editor view: stage (ball, lights, environment), editor camera with per-material memory, bottom material selector with filter, right drawer shell        | p083       | minor       |
-| `p085_material-editor-params-and-persistence.md` | Basic editable params (Params tab), editor settings (Settings tab), per-material LS + clear, undo/redo, full state restored on refresh                           | p084       | minor       |
+| Plan                                             | Scope                                                                                                                                                                                                    | Blocked by | Engine bump |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------- |
+| `p083_editor-creator-view.md` (this file)        | View registry, scene suspension in the main loop, view tools group with the Runtime view's button and icon, HUD rules per view, undo buckets per view, gizmo camera rig, active view restored on refresh | —          | minor       |
+| `p084_material-editor-stage-and-selector.md`     | Material editor view: stage (ball, lights, environment), editor camera with per-material memory, bottom material selector with filter, right drawer shell                                                | p083       | minor       |
+| `p085_material-editor-params-and-persistence.md` | Basic editable params (Params tab), editor settings (Settings tab), per-material LS + clear, undo/redo, full state restored on refresh                                                                   | p084       | minor       |
 
 All three can land on one branch (one engine minor bump at merge) or on separate branches (a minor bump each).
 
@@ -25,9 +25,11 @@ All three can land on one branch (one engine minor bump at merge) or on separate
 
 ## Naming
 
-- **View**: what the whole canvas shows and what the main loop ticks. There is always exactly one active view. The built-in `SCENE` view is today's behaviour. Editor views are registered by modules.
+- **View**: what the whole canvas shows and what the main loop ticks. There is always exactly one active view.
+- **Runtime view** (button label "Runtime", id `runtime`): the built-in view, today's behaviour: the loaded scene running with the game/app debugger (drawer, switch tools, draggable windows). It is the editor's main view: the app boots into it and every editor view returns to it.
+- **Editor view**: any other view (the material editor first). Editor views are registered by modules.
 - **Viewport** (p080): an extra rectangle composited _over_ the active view's frame. The axes gizmo is a viewport. Views and viewports are independent: viewports render over any view.
-- **Suspended scene**: the loaded scene while a non-scene view is active. It is not rendered and none of its per-frame work runs.
+- **Suspended scene**: the loaded scene while an editor view is active. It is not rendered and none of its per-frame work runs.
 
 ## Context (grounded in code)
 
@@ -48,20 +50,21 @@ All three can land on one branch (one engine minor bump at merge) or on separate
 - **Undo buckets** (`core/Debug/_dbg__UndoRedo.ts:57-84`): `perScene` actions go into the current scene's bucket (`getCurrentSceneId()`), `global` ones into `_global`; undo works on the current scene's bucket merged with the global one.
 - **Inputs.** `setAllInputsEnabled(false)` (`Input/InputState.ts`) gates app keyboard, mouse and touch handlers (`KeyboardInput.ts:180,201,267`, `MouseInput.ts:113,222`, `TouchInput.ts:91`). `SceneLoader.loadScene` uses it during loads.
 - **Boot** (`InitApp.ts`): debug modules register, then `appStartFn()` loads the first scene, then `initMainLoop()` renders the first frame and, in debug, `initDebugTools()`.
-- **Icons**: `getSvgIcon` keys (`core/UI/icons/SvgIcon.ts`); the scene dropdown uses `easel`. There is no material icon yet.
+- **Icons**: `getSvgIcon` keys (`core/UI/icons/SvgIcon.ts`), imported as raw SVG files from `core/UI/icons/svg/`: 16×16 viewBox, `fill="currentColor"`, mostly solid shapes. The scene dropdown uses `easel` and the play group `infinity`, `pause`, `playFill` (prod test play) and `stop`. There is no view or material icon yet.
 
 ## Design decisions
 
 1. **An engine-core view registry, used only by debug views for now.**
    - New `src/_engine/core/ViewManager.ts`. It lives in core (not `_dbg__`) because a future production configurator needs it, but no view is registered in production, so the cost there is one `activeView === null` check.
    - API:
-     - `SCENE_VIEW_ID = 'scene'`
+     - `RUNTIME_VIEW_ID = 'runtime'`
      - `registerView(def: ViewDef)`, `unregisterView(id)`
-     - `setActiveView(id)`, `getActiveViewId()`, `getActiveView()`, `isSceneViewActive()`
+     - `setActiveView(id)`, `getActiveViewId()`, `getActiveView()`, `isRuntimeViewActive()`
      - `isViewPlaying()`, `toggleViewPlay(value?)` (see DD5)
      - `addViewChangeListener(fn)`, returning its remover
-   - `ViewDef`:
-     - `id`, `title`, `icon: SvgIconKey`, `orderNr?` (position in the view tools group; the scene view is always first)
+   - The Runtime view is built in, not a `ViewDef`: `ViewManager` holds its button data (`title: 'Runtime'`, `icon: 'runtime'`), and `getActiveView()` returns `null` while it is active.
+   - `ViewDef` (editor views):
+     - `id`, `title` (the button's tooltip and switch toast, eg. "Material editor"), `icon: SvgIconKey`, `orderNr?` (position in the view tools group; the Runtime view is always first)
      - `scene: THREE.Scene`, the view's own private scene (never added to the root scene)
      - `getCamera(): THREE.Camera | null`
      - `getCameraRig?(): ViewCameraRig | null` (DD7)
@@ -71,7 +74,7 @@ All three can land on one branch (one engine minor bump at merge) or on separate
      - `toggleDrawer?()`: what `h` does in this view
    - `setActiveView` is serialised: a switch that is still running its `onEnter` makes the next call wait. Switching to the active view is a no-op.
 2. **Scene suspension happens in the main loop, not in the scene.**
-   - While a non-scene view is active, `mainLoopForDebug` skips, for the scene:
+   - While an editor view is active, `mainLoopForDebug` skips, for the scene:
      - every world's `updateMainLoop`, `updateAppLoop`, `updateLateMainLoop` (and so `updatePhysicsStep`)
      - `runSceneMainLoopers`, `runSceneAppLoopers`, `runSceneMainLateLoopers`
      - `countRayCastFrames` and held-key polling
@@ -80,46 +83,59 @@ All three can land on one branch (one engine minor bump at merge) or on separate
    - **Physics** sees the suspension as an explicit pause: `LoopState` gets `isSceneSuspended`, and `stepPhysics` adds it to its pause check. `notePhysicsAppPause()` runs every suspended frame, so resuming never catches up on the hidden time. This works the same in both worker targets, because nothing is stepped.
    - **Elapsed time** (`getElapsedTime`) stands still while the scene is suspended, like during a master pause, and the first delta after resuming is discarded. Scene code that reads it resumes without a jump.
    - The production loops are not changed in this plan. Views in production are a future plan.
-3. **Entering and leaving a non-scene view** (done by `ViewManager`, in this order).
+3. **Entering and leaving an editor view** (done by `ViewManager`, in this order).
    - Enter:
      1. Set `loopState.isSceneSuspended = true` (through a `MainLoop` setter).
      2. `setAllInputsEnabled(false)`, so app keyboard/mouse/touch handlers ignore input (debug key bindings still run).
      3. Disable the scene debug camera's OrbitControls right away (a new `setSceneDebugCameraInputEnabled(false)` in `_dbg__DebugCamera.ts` that sets the flag and `controls.enabled = false`).
-     4. Body classes: `aekNonSceneView` and `aekView_<id>`. Remove `debugDrawerOpen` (the scene drawer's own `isOpen` state is kept).
+     4. Body classes: `aekEditorView` and `aekView_<id>`. Remove `debugDrawerOpen` (the scene drawer's own `isOpen` state is kept).
      5. `await view.onEnter()`.
      6. `updateOnScreenTools()` and persist the active view id (DD9).
    - Leave: the reverse. `view.onExit()`, remove the body classes, restore `debugDrawerOpen` from `getDrawerState().isOpen`, re-enable the debug camera input, `setAllInputsEnabled(true)` (unless a scene load is running, which re-enables it itself), clear the suspension, update the on-screen tools.
    - Switching between two editor views is `onExit` of one and `onEnter` of the other; the scene stays suspended.
 4. **HUD rules per view** (a body class plus one SCSS rule, like p130's disabled on-screen tools).
-   - `body.aekNonSceneView #hudRoot > :not(.aekKeepInViews) { display: none }`. That hides the scene debug drawer, the bottom switch tools, draggable windows, the debugger scene loader and any app HUD, without touching their state.
+   - `body.aekEditorView #hudRoot > :not(.aekKeepInViews) { display: none }`. That hides the scene debug drawer, the bottom switch tools, draggable windows, the debugger scene loader and any app HUD, without touching their state.
    - Kept (global class `aekKeepInViews`): the top on-screen row (DD6), the undo/redo group, the stats container, the debug toaster, the viewports layer if it is inside the HUD root, and every editor view's own UI.
    - `display: none` keeps the hidden CMPs mounted, so returning to the scene shows them as they were.
 5. **Play and pause per view.**
    - The **master loop** button stays global (`toggleMainPlay`): it stops everything in every view.
-   - The **pause** button acts on the active view: in the scene view it is `toggleAppPlay` (unchanged); in an editor view it toggles that view's own play flag (`toggleViewPlay`), which gates `view.update`.
+   - The **pause** button acts on the active view: in the Runtime view it is `toggleAppPlay` (unchanged); in an editor view it toggles that view's own play flag (`toggleViewPlay`), which gates `view.update`.
    - So pausing the editor's animation never changes the scene's `appPlay`, and the suspended scene is frozen whatever its `appPlay` is.
    - The view play flags are persisted with the active view (DD9).
 6. **The view tools group** (on-screen tools, `IS_DEBUG_ENV` only, never in prod test mode).
-   - A new `ToolTypes` member `'VIEW'` and a `viewTools()` builder in `_dbg__OnScreenTools.ts`: one icon button per registered view, in order, with the usual `active` state. The scene view uses the `easel` icon; views bring their own icon.
+   - A new `ToolTypes` member `'VIEW'` and a `viewTools()` builder in `_dbg__OnScreenTools.ts`: one icon button per view, in order: **Runtime** first, then the registered editor views (the material editor's **Material editor** button, p084).
+     - Each button shows only its icon (`getSvgIcon(icon)`, the same size as the play group's icons), like every other on-screen tool. Its name is the `title` and `aria-label` ("Runtime", "Material editor"), and the active view's button has the usual `active` state.
+     - A switch shows a debug toast with the view's icon and title (`addDebugToast`, like F1 does for the debug camera), so the name is visible once without a hover.
    - It sits in its own group **left of the play group**. Both go into a new fixed, centred flex row (`onScreenTopRow`, global class `aekKeepInViews`) that takes over the play group's current positioning and its `debugDrawerOpen` shift. In prod test mode the row only holds the play group, so it looks as it does today.
-   - With only the scene view registered, the group is not shown.
-   - Per view: in a non-scene view the play group hides the "Play in production test mode" button (master loop and pause stay), and `switchTools` is not built (it is also hidden by DD4). The undo/redo group is unchanged.
+   - With only the Runtime view (no editor view registered), the group is not shown.
+   - Per view: in an editor view the play group hides the "Play in production test mode" button (master loop and pause stay), and `switchTools` is not built (it is also hidden by DD4). The undo/redo group is unchanged.
    - `setActiveView` calls `updateOnScreenTools()`; `registerView`/`unregisterView` call `updateOnScreenTools('VIEW')`.
+   - **View icons.** A view icon is drawn for the 16×16 set (`fill="currentColor"`, solid shapes with ~1.1-1.3 strokes, no ids, masks or gradients, since the same SVG is inlined many times), and it must not look like a play group icon (no play triangle: `playFill` is the prod-test button right next to the group). The editor icons show their subject on its own (the material editor's is a shaded sphere, p084 DD1), so later editors (skybox, animation, particles) get one recognisable glyph each.
+   - **The Runtime icon** (`runtime`, `icons/svg/runtime-view.svg`): a solid cube, the live 3D world, inside four viewfinder corners, "what the camera sees right now". It stands apart from the outlined `geometry` cube and from the editor subjects.
+     ```svg
+     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-runtime-view" viewBox="0 0 16 16">
+       <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" d="M1.15 4.3V2.6a1.45 1.45 0 0 1 1.45-1.45h1.7m7.4 0h1.7a1.45 1.45 0 0 1 1.45 1.45v1.7m0 7.4v1.7a1.45 1.45 0 0 1-1.45 1.45h-1.7m-7.4 0H2.6a1.45 1.45 0 0 1-1.45-1.45v-1.7"/>
+       <path d="M8 3.3 12.3 5.65 8 8 3.7 5.65z"/>
+       <path d="M3.3 6.4 7.55 8.75v4.95L3.3 11.35z"/>
+       <path d="M12.7 6.4 8.45 8.75v4.95l4.25-2.35z"/>
+     </svg>
+     ```
+     The three cube faces are separate shapes with a ~0.8 px gap between them, which draws the edges without a stroke and stays readable at 16 px on light and dark backgrounds.
 7. **Camera rig for the gizmo, and view frame listeners.**
    - `ViewCameraRig = { camera: THREE.Camera; controls: OrbitControls; setControlsSuspended(suspended: boolean): void }`.
-   - The axes gizmo resolves its rig through one function: in the scene view, today's behaviour (the active camera; the ECS debug camera entity and `setDebugCameraControlsSuspended` when the debug camera is active); in an editor view, `view.getCameraRig()`, always treated like "debug camera active" (visible when "Show axes gizmo" is on, clickable, align and drag work).
-   - The body of `axesGizmoSystem` becomes `tickAxesGizmo()`. The ECS system keeps calling it in the scene view. In an editor view the default world does not run, so `ViewManager` exposes `addViewFrameListener(fn)`: listeners run once per frame, only while a non-scene view is active, before `view.mainUpdate` (the same "before the controls update" order the gizmo has today).
+   - The axes gizmo resolves its rig through one function: in the Runtime view, today's behaviour (the active camera; the ECS debug camera entity and `setDebugCameraControlsSuspended` when the debug camera is active); in an editor view, `view.getCameraRig()`, always treated like "debug camera active" (visible when "Show axes gizmo" is on, clickable, align and drag work).
+   - The body of `axesGizmoSystem` becomes `tickAxesGizmo()`. The ECS system keeps calling it in the Runtime view. In an editor view the default world does not run, so `ViewManager` exposes `addViewFrameListener(fn)`: listeners run once per frame, only while an editor view is active, before `view.mainUpdate` (the same "before the controls update" order the gizmo has today).
    - Editor camera rigs run their own `controls.update()` in `mainUpdate` and respect `setControlsSuspended`, like `debugCameraSystem` does.
    - The env ball (p115) will use the same rig resolver.
 8. **Keys and undo in editor views.**
-   - `h` (`sc-toggle-debug-drawer`) calls a new `toggleActiveViewDrawer()`: the debug drawer in the scene view, `view.toggleDrawer()` in an editor view (a no-op if the view has none).
-   - `F1` (debug camera toggle) is a no-op in an editor view. `F8` (gizmo) and undo/redo work everywhere.
+   - `h` (`sc-toggle-debug-drawer`) calls a new `toggleActiveViewDrawer()`: the debug drawer in the Runtime view, `view.toggleDrawer()` in an editor view (a no-op if the view has none).
+   - `F1` (debug camera toggle) is a no-op in an editor view. `F10` (gizmo), `F8` (profiler) and undo/redo work everywhere.
    - Undo: `getSceneBucketId()` in `_dbg__UndoRedo.ts` returns `__view:<id>` while an editor view is active. So `perScene` actions recorded in an editor land in that view's own history, undo there never touches the hidden scene, and `global` actions stay visible in every view. The history tab (scene drawer) is hidden in editor views anyway.
 9. **The active view survives a refresh.**
    - LS key `AEK_debugViews`: `{ activeViewId: string; viewPlay: Record<string, boolean> }`, written on every switch and play toggle.
-   - Restore: once, right after `initMainLoop()`'s first `renderScene()` in `InitApp.ts` (debug env only). The first scene has loaded by then (or keeps loading in the background, suspended: loads are promise-driven, not loop-driven). If the saved view is not registered (eg. it was removed), fall back to the scene view and clear the key.
+   - Restore: once, right after `initMainLoop()`'s first `renderScene()` in `InitApp.ts` (debug env only). The first scene has loaded by then (or keeps loading in the background, suspended: loads are promise-driven, not loop-driven). If the saved view is not registered (eg. it was removed), fall back to the Runtime view and clear the key.
    - Restoring the editor's own state (material, camera, drawers, tabs) is up to each view (p084, p085).
-10. **Scene loads while an editor view is active.** The editor UI offers no way to load a scene, but app code or HMR can. `loadScene` keeps working: it loads in the background, its loader UI is hidden by DD4, and it re-enables inputs at its end, so `ViewManager` re-applies `setAllInputsEnabled(false)` from a `registerOnAllSceneEnterings` hook while a non-scene view is active. The new scene is suspended as soon as it exists, because suspension is a loop state, not a scene state.
+10. **Scene loads while an editor view is active.** The editor UI offers no way to load a scene, but app code or HMR can. `loadScene` keeps working: it loads in the background, its loader UI is hidden by DD4, and it re-enables inputs at its end, so `ViewManager` re-applies `setAllInputsEnabled(false)` from a `registerOnAllSceneEnterings` hook while an editor view is active. The new scene is suspended as soon as it exists, because suspension is a loop state, not a scene state.
 
 ## Files touched
 
@@ -128,8 +144,9 @@ All three can land on one branch (one engine minor bump at merge) or on separate
 | `src/_engine/core/ViewManager.ts` (new)                                                                               | View registry, `setActiveView` (enter/leave sequence), view play flags, frame listeners, LS persistence and restore                              |
 | `src/_engine/core/MainLoop.ts`                                                                                        | `isSceneSuspended` in `LoopState` + setter; suspended branch in `mainLoopForDebug`; `advanceElapsedTime` rule; view render path in `renderScene` |
 | `src/_engine/core/PhysicsAPI.ts`                                                                                      | `stepPhysics` treats `loopState.isSceneSuspended` as a pause                                                                                     |
-| `src/_engine/debug/OnScreenTools.ts`, `core/Debug/_dbg__OnScreenTools.ts`, `OnScreenTools.module.scss`                | `'VIEW'` tool type, `viewTools()`, top row container, per-view play group and switch tools                                                       |
-| `src/_engine/styles/index.scss` (or a new `ViewManager.module.scss`)                                                  | `aekNonSceneView` HUD rule, `aekKeepInViews`                                                                                                     |
+| `src/_engine/debug/OnScreenTools.ts`, `core/Debug/_dbg__OnScreenTools.ts`, `OnScreenTools.module.scss`                | `'VIEW'` tool type, `viewTools()` (Runtime + editor view buttons, switch toast), top row container, per-view play group and switch tools         |
+| `src/_engine/core/UI/icons/SvgIcon.ts`, `icons/svg/runtime-view.svg` (new)                                            | `runtime` icon (DD6)                                                                                                                             |
+| `src/_engine/styles/index.scss` (or a new `ViewManager.module.scss`)                                                  | `aekEditorView` HUD rule, `aekKeepInViews`                                                                                                       |
 | `src/_engine/core/Debug/_dbg__Stats.ts`, `_dbg__UndoRedo.ts`, `_dbg__DebuggerGUI.ts`, `UI/Toaster.ts`, `Viewports.ts` | Add `aekKeepInViews` where the element must stay visible (stats, toaster, undo group, viewports layer)                                           |
 | `src/_engine/core/Debug/_dbg__UndoRedo.ts`                                                                            | View-aware `getSceneBucketId()`                                                                                                                  |
 | `src/_engine/core/Debug/_dbg__AxesGizmo.ts`                                                                           | Rig resolver, `tickAxesGizmo()`, frame listener in editor views                                                                                  |
@@ -147,8 +164,8 @@ Each phase compiles, lints and leaves the app working.
    - `ViewManager.ts`, the `MainLoop`/`PhysicsAPI` changes, the enter/leave sequence without the on-screen tools.
    - Verify with a throwaway, uncommitted test view (a private scene with a spinning cube and its own `PerspectiveCamera`) switched from the browser console: the scene freezes and hides, physics resumes without a jump, both worker targets.
 2. **HUD rules, view tools group and keys.**
-   - Body classes and the HUD SCSS rule, `aekKeepInViews` on the kept elements, the top row container, `viewTools()`, per-view play group, `h`/`F1` routing.
-   - Still no committed view, so the group stays hidden; the test view from Phase 1 shows it.
+   - Body classes and the HUD SCSS rule, `aekKeepInViews` on the kept elements, the top row container, `viewTools()` with the `runtime` icon, the switch toast, per-view play group, `h`/`F1` routing.
+   - Still no committed editor view, so the group stays hidden; the test view from Phase 1 shows it (with any existing icon until p084 adds `material`).
 3. **Gizmo rig, undo buckets, refresh restore.**
    - `ViewCameraRig`, the gizmo refactor (`tickAxesGizmo`, frame listeners), view-aware undo buckets, `AEK_debugViews` persistence and restore.
 4. **Docs.** The CLAUDE.md "Views" paragraph. (The version bump happens with the epic's merge, see Sub-plans.)
@@ -179,13 +196,14 @@ Each phase compiles, lints and leaves the app working.
 - `yarn dev`, `?isDebug=true`, with the Phase 1 test view:
   - Switching to the test view shows only its scene. The physics bodies, character and `Math.sin`-driven scene loopers are frozen; switching back resumes them from the same pose, with no physics catch-up burst, in both `MAIN_THREAD` and `WORKER_THREAD` targets.
   - `getElapsedTime()` doesn't advance while the view is active.
-  - Canvas drags in the test view don't move the scene debug camera; app key bindings (eg. character movement) do nothing; `h` does nothing in a view without a drawer; `F1` does nothing; `F8` toggles the gizmo, which follows the view camera and can align/drag it.
+  - Canvas drags in the test view don't move the scene debug camera; app key bindings (eg. character movement) do nothing; `h` does nothing in a view without a drawer; `F1` does nothing; `F10` toggles the gizmo, which follows the view camera and can align/drag it.
   - Pause in the test view stops its animation; the scene's `appPlay` (loop tab) is unchanged. The master loop button stops everything.
   - The switch tools, debug drawer, draggable windows and app HUD are hidden and come back unchanged; stats, undo/redo and toasts stay.
   - Undo in the test view doesn't undo scene actions recorded before the switch; back in the scene they are still undoable.
-  - Refresh with the test view active returns to it; unregistering it and refreshing falls back to the scene view.
+  - Refresh with the test view active returns to it; unregistering it and refreshing falls back to the Runtime view.
+  - The view tools group shows the Runtime button (`runtime` icon) first and the test view's button after it; hovering shows their titles, the active one is highlighted, and a switch shows the toast. The `runtime` icon is crisp at 16 px on the on-screen tools' background and doesn't read as a play group button.
 - Production build (`yarn build`, `dist-stats/bundle-stats.html`): no view is registered and `ViewManager.ts` is present but idle; the `_dbg__` changes stay out of the main chunk.
-- Use the `run-aekasha-js` skill for screenshots of the scene view, the test view and the view tools group in both drawer states.
+- Use the `run-aekasha-js` skill for screenshots of the Runtime view, the test view and the view tools group in both drawer states.
 
 ## Implementation notes
 

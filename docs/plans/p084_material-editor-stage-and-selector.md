@@ -6,7 +6,7 @@ Related: p083_editor-creator-view.md (epic), `createDebuggerTab` (p105, implemen
 
 # Material Editor — Stage, Camera and Material Selector
 
-The first editor view of the p083 epic. It registers a `materialEditor` view (a material icon in the view tools group) with:
+The first editor view of the p083 epic. It registers a `materialEditor` view (the **Material editor** button with its `material` icon, right of the **Runtime** button in the view tools group) with:
 
 - a **stage**: one ball in the middle, lit by the editor's own lights and environment (the scene's skybox and lights are not used);
 - its **own camera** with OrbitControls, a default pose, and a pose remembered per material;
@@ -36,7 +36,7 @@ In this plan the editor is a viewer: clicking a material shows it on the ball. A
 
 ```
 ┌──────────────────────────────────────────────────────────────┬───────────────┐
-│ [↶][↷]         [scene][material] [∞][⏸]              (gizmo) │ MATERIAL  ✕   │
+│ [↶][↷]       [runtime][material] [∞][⏸]              (gizmo) │ MATERIAL  ✕   │
 │                                                              │ testTslMat    │
 │                                                              │ [Params][Set.]│
 │                          ( ball )                            │               │
@@ -62,7 +62,16 @@ In this plan the editor is a viewer: clicking a material shows it on the ball. A
      - `MaterialEditor.module.scss`
    - `src/_engine/core/Debug/Editors/_dbg__EditorDrawer.ts` (+ SCSS): the right drawer, written for reuse by later editors (DD6).
    - `registerMaterialEditor()` is called in `InitApp.ts`'s `IS_DEBUG_ENV` block, after `registerDebuggerGUI()` and `registerAxesGizmoModule()`, so it is registered before p083 restores the saved view.
-   - New icon `material` (a shaded sphere SVG in the same 16×16 style as the other icons) in `core/UI/icons/SvgIcon.ts`.
+   - The view def: `id: 'materialEditor'`, `title: 'Material editor'` (the button's tooltip and the switch toast, p083 DD6), `icon: 'material'`, `orderNr: 0` (the first editor, right after Runtime).
+   - **The Material editor icon** (`material`, `core/UI/icons/svg/material-sphere.svg`, registered in `core/UI/icons/SvgIcon.ts`): a material preview ball, the subject of the editor (p083 DD6's icon rules). An outlined sphere, lit from the upper left: a solid crescent of core shadow on the lower right and a short specular arc in the lit part. The arc instead of a highlight dot keeps it from reading as an eye at 16 px, and it is a shaded sphere, not the `geometry` cube or the `texture` image, so it doesn't look like an asset type.
+     ```svg
+     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-material-sphere" viewBox="0 0 16 16">
+       <circle cx="8" cy="8" r="6.45" fill="none" stroke="currentColor" stroke-width="1.1"/>
+       <path d="M11.04 2.25A6.5 6.5 0 1 1 2.25 11.04 6.3 6.3 0 0 0 11.04 2.25"/>
+       <path fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" d="M4.3 6.6a3.4 3.4 0 0 1 2.3-2.3"/>
+     </svg>
+     ```
+     The crescent is the sphere (centre 8,8, r 6.5) minus a circle moved up-left (centre 5.9,5.9, r 6.3); its two arcs meet at (11.04, 2.25) and (2.25, 11.04).
 2. **The stage** (a private `THREE.Scene`, created on the first enter and kept while the view is registered).
    - **Preview object**: a `SphereGeometry(1, 128, 64)` mesh at the origin (UVs for textured materials).
      - Non-mesh material types get a fitting object: `POINTS` → `Points` on the same sphere geometry; `LINEBASIC`/`LINEDASHED` → `LineSegments` of its `WireframeGeometry` (plus `computeLineDistances()` for dashes); `SPRITE` → a `Sprite`.
@@ -128,7 +137,7 @@ In this plan the editor is a viewer: clicking a material shows it on the ball. A
 | `src/_engine/core/Debug/Editors/Material/MaterialEditor.module.scss` (new)        | Selector layout, cards, responsive offsets, notice                           |
 | `src/_engine/core/Debug/Editors/_dbg__EditorDrawer.ts` (new)                      | Reusable right drawer instance                                               |
 | `src/_engine/core/Debug/_dbg__DebuggerGUI.ts`, `src/_engine/debug/DebuggerGUI.ts` | Export `_buildDebuggerTabContent`, `hydrateDebuggerTabState`                 |
-| `src/_engine/core/UI/icons/SvgIcon.ts`, `icons/svg/material-sphere.svg` (new)     | `material` icon                                                              |
+| `src/_engine/core/UI/icons/SvgIcon.ts`, `icons/svg/material-sphere.svg` (new)     | `material` icon (DD1)                                                        |
 | `src/_engine/InitApp.ts`                                                          | `registerMaterialEditor()` in the debug block                                |
 | `.claude/CLAUDE.md`                                                               | One line under the "Views" paragraph: the material editor and where it lives |
 
@@ -136,7 +145,7 @@ In this plan the editor is a viewer: clicking a material shows it on the ball. A
 
 Each phase compiles, lints and leaves the app working.
 
-1. **View, stage and camera.** Register the view with the icon, the stage (ball, lights, studio environment, background), the camera rig with the default pose, and `loadEditorMaterial` hard-wired to the first material. Check the `RoomEnvironment` PMREM on WebGPU and on WebGL2 (`forceWebGL`) and record the outcome in the Implementation notes.
+1. **View, stage and camera.** Register the view with its title and the `material` icon (the view tools group appears, Runtime + Material editor), the stage (ball, lights, studio environment, background), the camera rig with the default pose, and `loadEditorMaterial` hard-wired to the first material. Check the `RoomEnvironment` PMREM on WebGPU and on WebGL2 (`forceWebGL`) and record the outcome in the Implementation notes.
 2. **Material selector.** Bottom drawer, cards, filter, click to load, texture loading, the load token, errors and unavailable materials, non-mesh preview objects.
 3. **Right drawer.** `_dbg__EditorDrawer.ts`, the two tabs with their info content, the `debugDrawerOpen` shift, `h`, and the selector's responsive offsets.
 4. **Persistence.** Per-material camera pose, UI state, and restore on refresh.
@@ -165,7 +174,7 @@ Each phase compiles, lints and leaves the app working.
 
 - `yarn lint` and `yarn build` pass (the Stop hook also runs them).
 - `yarn dev`, `?isDebug=true`:
-  - The material button switches to the editor: grey background, the ball, no scene objects, no skybox; the scene button switches back to the unchanged, resumed scene.
+  - The view tools group shows **Runtime** and **Material editor** (titles on hover, the active one highlighted). The Material editor button switches to the editor: grey background, the ball, no scene objects, no skybox; the Runtime button switches back to the unchanged, resumed scene. Each switch shows its toast. The `material` icon is crisp at 16 px and doesn't read as an eye.
   - Every material in the selector loads: `testMaterial` (PHONG), `testTslMat` (TSL with a texture), the three toolkit materials. A material the current scene doesn't use still loads its textures.
   - The filter narrows by id and by name, the count updates, `Escape` clears it, and `h`/`F10` don't fire while typing.
   - With the right drawer open, the selector's cards all stay visible at each breakpoint (resize from wide to `$breakpointXSmall`). With the stats panel on, it sits under the selector.

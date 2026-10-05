@@ -29,11 +29,66 @@ If for some reason this plan can't or shouldn't be created with this specificati
 ************************************
 
 UNDER_CONSTRUCTION
-Create "" plan in docs/plans/p.md
+Create "Billboard text and decal text features" plan set, from priority 390 onwards.
 
-Category: 
+Category: Text
 
+We should be able to add billboard text entities to the world (or attach them to the other entities). If they shouldn't be entities, then give a reason why not and suggest an alternative. I did some research and was quite interested in the SDF/MSDF text method but did not fully understand it. Study the different possibilities considering performance and text quality/sharpness. I would like to have the text symbols be able to (if not all then some) have these features:
+- world-space text
+- UI text
+- labels
+- debug overlays
+- distance fields
+- outlines
+- color pulse
+- glow
+- drop shadows
+- blur
+- world space sizing or fixed sizing options
+- option to have it as a billboard or have it have regular world plane orientation
+- fade in/fade out as the text is added to or removed from a world/scene
+(these features should not affect performance if turned off)
 
+If we need to somehow import different fonts, we should be have a helper to transform fonts into Aekasha fonts and this could be a command line tool with a package.json script which defines the font which we want to import. If it is not needed, then describe the font formats that can be used. If the fonts are too large of a set (sometimes we only need for example numbers), then research the possibility to only select certain characters from a font. Could this be a build optimization to include only characters that are used (if opted in, because this would not work for all cases such as dynamic text, player names etc.)? I am not sure if this how modern engines build these nowadays, but if I am way of, please suggest something else.
+
+We should also be able to add text decals to meshes. I am not sure if this requires a separate material or a custom node we can attach to any TSL material, but we should be able to add text to meshes with positioning and orientation, and if possible also be able to add some effects to the text (such as worn out text). If it would act the same way as adding any decals to a mesh then the whole decal system should be added as a plan here as well.
+
+Debugger wise the decals should be editable from the material editor. There is a plan for the material editor view so these decal feature(s) should be blocked by that. In the material editor we should be able to attach decals, edit the text (if text decal), select the placement, select color, FX, what else? What about normal and other maps for the text, can they be implemented (maybe not as maps but normal map as a value that would make the text look like thick paint or something like that if possible)? I don't yet have the saving feature (I need a backend to handle saving files), but I would love to have the option to bake the decal onto the material if possible, so keep that in mind for future implementations.
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+************************************
+
+Create "Refactor dynamic character code" plan in docs/plans/p070_refactor-dynamic-character-code.md
+
+Category: Character
+
+UNDER_CONSTRUCTION
+The dynamic character sensors are currently failing for some cases. For example the wall glide does not work if the character jumps on a ledge, it gets stuck (for example the side of the stairs when the character is a bit over a part of the stairs but not completely and it also happens for a thin ledge or moving platform). Also the slope detection fails and I am able to jump up a slope that should be impossible. This needs fixing as well. Then when the character jumps over an object that it should clear by jumping, one of the sensors causes a small nudge or sometimes just stops the player from moving in the direction it is headed. Fix this. Also the overall code should be more readable and developer friendly (not sure if this has already been done, but check please).
+
+We should also add/change some of the features:
+- For the character that moves to the direction pressed on the keyboard (pressing left arrow or A moves the player left/west, pressing up arrow or W moves the player up/north, etc.) we need to add a property for rotating the character fully to the direction it was heading. Currently if we move the player only a little to the opposite direction it was headed, the rotation stops at the moment the movement key is lifted. If this new property would be turned on, the character would continue to turn (with the _rotateSpeed speed) to the latest direction it was heading even if the movement was stopped. If the new property is turned off, it would behave the same way as it does now. Default is turned on.
+- We should add the possibility to add graceTime, meaning that when jumping off a ledge, we could define a time after passing the ledge that player could still perform a jump (by default it is 0).
+- Make the crouch mode actually change the physics object to a crouched capsule character and change the mesh to fit that shape.
+- Could we add a prop to define a limiter for how much the player can move while in the air (0 = real life so that the player cannot move after jumping or starting to fall, only change direction).
+- One bug: When a player jumps on top of a dynamic object (eg. a box) several times in a row, the jump force increases. We should cap the jump force to a constant value.
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+************************************
+
+Create "Start editor view" plan in docs/plans/p090_start-editor-view.md
+
+Category: Debugger
+
+UNDER_CONSTRUCTION
+There should be a debugger "Start view" for the scene view where the engine is not running but the debug camera is still movable and if we change the entity position values, they should change. We currently have the "Runtime view" I am not sure how this should be implemented (could we just have the first frame with the master loop paused? I don't know, study and suggest something.), but the master loop and pause on-screen buttons should be disabled. Design an icon for the "Start view". Changing the view from the "Runtime" view to the "Start" view should only pause the "Runtime"  view and when returned to it, the app should continue where it left of.
+
+This plan should also introduce the select and transform tools (positioned on the center of the left side of the screen). The transform tools should also work in the "Runtime view". These tools are:
+- Selection tool [shortcut Ctrl + 1]: Should select the mouse pointer targeted entity in the scene and if double clicked, it should open the edit entity window. When the entity is selected we need to somehow display that it is selected (I would love for it to have an outline, but I would not want to force PostFX on it. If there is way to do it without PostFX and it is not too costly, then do it, otherwise a pulsating wireframe and/or bounding box is fine, or then something else that is user friendly, study the possibilities)
+- Transform tool [shortcut Ctrl + 2]: TODO (snapping tools and local/world pos tools should appear)
+- Rotation tool [shortcut Ctrl + 3]: TODO (snapping tools and local/world pos tools should appear)
+- Scale tool [shortcut Ctrl + 4]: TODO (snapping tools and local/world pos tools should appear)
 
 If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
