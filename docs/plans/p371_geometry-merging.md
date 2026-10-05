@@ -2,7 +2,7 @@ Status: draft | not-implemented
 Category: Merging, Geometry, Assets
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 1.1)
 Blocks: p372_mesh-merge-groups.md
-Related: p347_lod-chain-generation.md (same worker path; merged geometry can get a chain), \_DONE_p300_asset-optimization-pipeline-plan.md (the GLB step D3 extends), p308_terrain-scatter.md (merging item types per cell)
+Related: \_DONE_p347_lod-chain-generation.md (same worker path; merged geometry can get a chain), \_DONE_p300_asset-optimization-pipeline-plan.md (the GLB step D3 extends), p308_terrain-scatter.md (merging item types per cell)
 
 # Geometry Merging
 

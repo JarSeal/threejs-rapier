@@ -1,4 +1,4 @@
-// LOD chain options (docs/plans/p347_lod-chain-generation.md §2.2). Import-free: the asset pipeline
+// LOD chain options (docs/plans/_DONE_p347_lod-chain-generation.md §2.2). Import-free: the asset pipeline
 // resolves them in Node without loading three.
 
 export type LodChainOptions = {

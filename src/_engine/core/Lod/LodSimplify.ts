@@ -1,4 +1,4 @@
-// Simplifies a geometry into a LOD chain with meshoptimizer (docs/plans/p347_lod-chain-generation.md
+// Simplifies a geometry into a LOD chain with meshoptimizer (docs/plans/_DONE_p347_lod-chain-generation.md
 // §2.2): each level's index, its triangle count and error, and with compactVertices its own vertex
 // arrays. Runs in the assets worker and, on MAIN_THREAD or a fallback, on the main thread, so keep it
 // free of imports that touch `window`/`document`. meshoptimizer is imported on the first call: apps
@@ -160,7 +160,7 @@ const compactLevel = (
 };
 
 /**
- * Simplifies a geometry into LOD levels (docs/plans/p347_lod-chain-generation.md §2.2). Each level
+ * Simplifies a geometry into LOD levels (docs/plans/_DONE_p347_lod-chain-generation.md §2.2). Each level
  * is simplified from the base, per group range, to its ratio of the base's triangles within
  * `maxError`. A level that drops less than 10 % from the previous one is left out, and the chain
  * stops once no group can go further. A base without an index is welded first.

@@ -2,7 +2,7 @@ Status: draft | spike-gated, not-implemented
 Category: Merging, Rendering
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 2.2)
 Blocked by: p372_mesh-merge-groups.md
-Related: p348_ecs-lod-selection.md (§4.4's `BatchedMesh` spike is this plan's Phase 0, run once), p309_terrain-decals.md (its runtime decal pools are `BatchedMesh`es; its WebGPU risk is answered here), p347_lod-chain-generation.md (shared-vertex chains), p354_gpu-driven-culling.md
+Related: p348_ecs-lod-selection.md (§4.4's `BatchedMesh` spike is this plan's Phase 0, run once), p309_terrain-decals.md (its runtime decal pools are `BatchedMesh`es; its WebGPU risk is answered here), \_DONE_p347_lod-chain-generation.md (shared-vertex chains), p354_gpu-driven-culling.md
 
 # BatchedMesh Batches (movable and per-member-culled content)
 

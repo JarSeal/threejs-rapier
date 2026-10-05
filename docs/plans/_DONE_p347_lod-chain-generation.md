@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-2 implemented
+Status: implemented (Phases 0-3)
 Category: Assets, Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 1.1)
 Blocks: p348_ecs-lod-selection.md Phase 2 (`lod: 'AUTO'` reads these chains)
@@ -282,7 +282,7 @@ clean). (The tree was the target, but it can't be simplified: Phase 0.)
   the boot scene's load (68 ms, 0.6 ms on the main thread). Not checked: the cached-manifest path on
   a scene re-enter.
 
-### Phase 3 — Build time (after p300 Phase 2)
+### Phase 3 — Build time (after p300 Phase 2) — done
 
 1. gltf-transform step writing `__lod<n>` meshes (§2.4); `GLTFExtract.ts` chain attachment;
    `__lodChain` in generated data.

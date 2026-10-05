@@ -107,7 +107,7 @@ export default defineConfig({
     reportCompressedSize: true,
   },
   // ES module workers: an IIFE worker can't be code-split, and the assets worker loads the
-  // meshopt simplifier on demand (docs/plans/p347_lod-chain-generation.md, Phase 0). The dev server
+  // meshopt simplifier on demand (docs/plans/_DONE_p347_lod-chain-generation.md, Phase 0). The dev server
   // loads workers as modules either way.
   worker: { format: 'es' },
   optimizeDeps: {

@@ -1,4 +1,4 @@
-// Build-time LOD chains in a GLB (docs/plans/p347_lod-chain-generation.md Phase 3). The asset
+// Build-time LOD chains in a GLB (docs/plans/_DONE_p347_lod-chain-generation.md Phase 3). The asset
 // pipeline (devTools/assetPipeline/lodChains.ts) writes each chain's levels as meshes no node
 // references (`<mesh>__lod<n>`, a single primitive each), described by the root's extras: glTF
 // viewers and GLTFLoader's scene parse don't touch them, and this file loads them explicitly. Not
