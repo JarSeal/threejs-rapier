@@ -105,8 +105,13 @@ const writeLS = (data: ViewCamsLSData) => {
   else lsRemoveItem(LS_KEY);
 };
 
-/** The default store: one record per view in 'AEK_debugViewCams'. */
-const createLSStore = (viewId: string): ViewCameraStore => ({
+/**
+ * The default store: one record per view in LocalStorage 'AEK_debugViewCams'. An editor's own
+ * store can hand it the keys it doesn't keep itself (eg. the view's own pose, `null`).
+ * @param viewId (string) the view id
+ * @returns ({@link ViewCameraStore})
+ */
+export const createViewCameraLSStore = (viewId: string): ViewCameraStore => ({
   load: (key) => {
     const record = readLS()[viewId];
     return key === null ? record?.view : record?.keys?.[key];
@@ -152,7 +157,7 @@ const _size = new THREE.Vector2();
 export const createViewCamera = (opts: ViewCameraOpts): ViewCamera => {
   const { viewId } = opts;
   const defaultPose = copyPose(opts.defaultPose);
-  const store = opts.store ?? createLSStore(viewId);
+  const store = opts.store ?? createViewCameraLSStore(viewId);
 
   const camera = new THREE.PerspectiveCamera(
     defaultPose.fov,
@@ -279,7 +284,7 @@ export const createViewCamera = (opts: ViewCameraOpts): ViewCamera => {
 export const clearViewCameraPoses = (viewId: string) => {
   const instance = instances.get(viewId);
   if (!instance) {
-    createLSStore(viewId).clear();
+    createViewCameraLSStore(viewId).clear();
     return;
   }
   instance.store.clear();

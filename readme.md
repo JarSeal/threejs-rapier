@@ -60,6 +60,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 - A tabbed **debug drawer** (`h`) built on Tweakpane, with tabs for stats, main loop, renderer, physics, ECS, assets, PostFX (with a GPU profiler), skybox, spatial index, LOD, ray casting and characters. Its state is saved to localStorage.
 - A **profiler window**, opened from the on-screen stats panels, the stats tab, the top on-screen tools or `F8`. Its tabs: an overview of frame, GPU, physics and memory figures; an objects breakdown (in view and total, with bars and short history); GPU memory (memory by category and owner, draw calls, a budget and leak-hunting snapshots); and settings. It measures only while it is open, and it can be enabled in production test mode.
 - A **debug fly camera** (`F1`), an axes gizmo (`F10`), an environment ball (`F9`) and a debug scene loader.
+- **Editor views**, switched from the top on-screen tools: an editor takes over the whole canvas with its own scene, orbit camera and drawers, while the game scene is suspended and resumes exactly where it was. The first is the **material editor**: every project material on a preview ball in a studio stage, picked from a filterable list, with each material's camera pose and the editor's layout kept over reloads.
 - **Undo/redo** for changes made in the debugger.
 - **Physics visualizers**: collider wireframes colored by body state, ray helpers, and query statistics.
 - **Edit windows per entity** (lights, cameras, ECS worlds, PostFX passes, physics entities, assets, characters), several open at a time, kept over reloads and scene changes. Double-clicking a window's header (or the Debug tools tab's "Center and fit all windows") brings windows back to the top of the screen, fitted to it.
@@ -81,6 +82,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 | Content pipeline       | `devTools/gatherAppData.ts` walks `src/`, validates every asset JSON file with Zod, generates typed runtime data and emits JSON Schema for editor autocomplete. It runs on every file save through a Vite plugin.                                                              |
 | Asset pipeline         | Textures are encoded to KTX2 (Basis UASTC or ETC1S) and transcoded at load to whatever the device reads (BC7, ASTC, ETC2), in the transcoder's own workers. GLBs get meshopt geometry. Outputs are content-hashed, cached and committed.                                       |
 | LOD selection          | One distance and one multiply per entity (the camera terms are computed once per frame), after frustum culling. Only an entity whose level changed is touched; a pool instance moves between level meshes by a swap-remove. An optional cap spreads the selection over frames. |
+| Editor views           | An editor view takes over the frame: no ECS stage, scene looper or physics step runs, and physics resumes without catching up, so a visit to an editor keeps a scene deterministic. The editor renders its own scene and camera, with the viewports on top.                    |
 | Tree-shaking           | Debug implementations live in `_dbg__*` files that are loaded only through a dynamic `import()` behind `IS_DEBUG_ENV`, so production bundles don't contain them.                                                                                                               |
 | Save data              | Each asset file stores per-scene override history stamped with the engine, toolkit and app versions, and the gatherer warns when an entry comes from another major version.                                                                                                    |
 | Versioning             | Engine, toolkit and app are versioned independently, with release tags and a checksum meta tag in the built HTML.                                                                                                                                                              |
@@ -353,7 +355,7 @@ The example scenes in [`src/app/`](src/app/) cover more: a physics and joints te
 
 Planned work is specified in [`docs/plans/`](docs/plans/), where a lower number means a higher priority. Highlights:
 
-- An editor/creator view and a material editor
+- Editable params with undo/redo in the material editor, then saving its results to the material JSON
 - Physics objects in the scene JSON schema, physics world bounds, multibody joints and physics snapshot restore
 - Component query caching
 - A client device capability sniffer, impostor (billboard) LODs and GPU-driven culling

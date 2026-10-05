@@ -111,6 +111,22 @@ export const lsRemoveItem = (key: string) => {
 };
 
 /**
+ * Returns the LocalStorage keys that start with the prefix provided
+ * @param prefix (string) key prefix, eg. 'AEK_debugMatEditorMat_'
+ * @returns (string[]) the full keys, in LocalStorage's order
+ */
+export const lsGetKeysWithPrefix = (prefix: string) => {
+  checkStorage('local');
+  if (!lsAvailable) return [];
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(prefix)) keys.push(key);
+  }
+  return keys;
+};
+
+/**
  * Returns a possible value from the SessionStorage based on the key provided
  * @param key (string) key of SessionStorage item
  * @param defaultValue ({@link StorageValue}) if no value is found with the key provided then the default value is returned

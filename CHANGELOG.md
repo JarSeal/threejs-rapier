@@ -4,6 +4,42 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-06 — editor-creator-view
+
+### Engine 4.9.0 (Afternoon)
+
+**Added**
+
+- Views (`core/ViewManager.ts`): a view is what the whole canvas shows and what the main loop ticks. The built-in **Runtime** view is the loaded scene; editor views are registered by debug modules with `registerView({ id, title, icon, orderNr?, scene, getCamera, getCameraRig?, onEnter?, onExit?, mainUpdate?, update?, toggleDrawer? })` and switched with `setActiveView(id)` (calls run one after another; a failed `onEnter` returns to the Runtime view and resolves `false`). Also `unregisterView`, `getViews`, `getActiveViewId`, `getActiveView`, `getActiveViewCamera` and `isRuntimeViewActive`.
+  - While an editor view is active the scene is suspended: no ECS stage of any world, no scene looper, no held keys and no physics step run, and `getElapsedTime()` stands still. Physics resumes without catching up, so a visit to an editor view keeps a scene deterministic. The loop runs the view's `mainUpdate` and, while it plays, its `update`, then renders its scene and camera (no PostFX) with the viewports on top.
+  - `toggleViewPlay()` / `isViewPlaying()`: the active view's own play flag (in the Runtime view, the app loop's). The pause button and F7 call it.
+  - `addViewFrameListener(fn, 'BEFORE_UPDATE' | 'AFTER_RENDER')` for debug tools that must run in every view (the axes gizmo, the env ball and the profiler's samplers use it), and `addViewChangeListener`.
+  - The active view and each view's play flag are saved (`AEK_debugViews`), and `restoreSavedView()` switches back to the view after a refresh.
+  - `renderFrameWhileMasterPaused()` (`MainLoop.ts`) renders one frame, so a switch shows the new view while the master loop is paused.
+- A view tools group in the top on-screen row, left of the play group: Runtime, then each editor view, with a toast on every switch. It shows only when an editor view is registered. New icons: `runtime` and `material`.
+- Editor view rules for the rest of the debugger:
+  - Input: `setAppInputsSuspended` (`Input/InputState.ts`) stops mouse, touch, held keys and every key binding without `isDebugKey`, which the engine's debug keys and the CONFIG.ts `debugKeys` have. A scene load doesn't lift it.
+  - HUD: `<body>` gets `aekEditorView` and `aekView_<id>`, and the scene's HUD is hidden as it was. `KEEP_IN_VIEWS_CLASS` (`core/HUD.ts`) keeps an element (the top row, undo/redo, stats, the toaster, the viewports layer, debug dialogs), and a draggable window kind registered with `keepInViews: true` (the profiler) is kept too.
+  - The scene drawer keeps its open state while a view is active (`setDrawerSuspendedByView`) and leaves `debugDrawerOpen` to the editor's own drawer.
+  - Undo: `perScene` actions recorded in an editor view go to that view's own history.
+  - Profiler: in an editor view the census counts the view's scene against its camera, under the view's title.
+- Camera rigs (`ViewCameraRig`, `core/Debug/Camera/_dbg__CameraRig.ts`): the axes gizmo follows, aligns and orbits the active view's camera, and the env ball follows it and shows the view scene's own environment.
+- `createViewCamera({ viewId, defaultPose, near?, far?, store? })` (`core/Debug/Editors/_dbg__ViewCamera.ts`): every editor view's orbit camera, with its rig and a pose saved per view and per pose key (eg. per material) in `AEK_debugViewCams` or the editor's own store. `createViewCameraLSStore` and `clearViewCameraPoses(viewId)` go with it.
+- `createEditorDrawer` (`core/Debug/Editors/_dbg__EditorDrawer.ts`): an editor view's right drawer, built like the scene debug drawer and mounting ordinary debugger tab definitions. Each editor creates its own.
+- The **material editor**, the first editor view (`materialEditor`, the `material` icon, `debug/MaterialEditor.ts` → `core/Debug/Editors/Material/`):
+  - A stage of its own: a preview ball (points, lines or a sprite for those material types, a notice for types it can't preview), its own lights, a studio environment (`RoomEnvironment`) and a grey background. The scene's sky box and lights aren't used.
+  - It shows an editor copy of the material (`__matEditor__<id>`), so the scene's own instance is never changed. The copy lives only while the view is active, and the material's textures are loaded on demand. A material that fails to load shows a toast and a magenta ball.
+  - A bottom drawer lists every project material (`*.material.json`) as a card with a swatch, its type and a `TSL` badge, filtered by id and name. Its right edge follows the right drawer.
+  - The right drawer has a **Params** tab (the material's info: status, id, name, type, source, description, TSL file and textures) and a **Settings** tab (the camera's pose and "Reset camera to default").
+  - Each material keeps its own camera pose (`AEK_debugMatEditorMat_<id>`), and a refresh brings back the selected material, its pose, both drawers, the tab, the filter and the scroll positions (`AEK_debugMatEditorUI`).
+- `lsGetKeysWithPrefix(prefix)` (`utils/LocalAndSessionStorage.ts`).
+
+**Changed**
+
+- The play group moved into a centred top row (`onScreenTopRow`) with the view tools; it still shifts with the open drawer.
+- In an editor view, `h` toggles the view's own drawer (`toggleActiveViewDrawer()`), F1 and F5 do nothing, and `o` / `p` do nothing (the switch tools aren't built there).
+- The debug camera is a camera rig too: the gizmo's align and drag suspend its controls through `setDebugCameraControlsSuspended`, and its pose is saved to `AEK_debugCams` when a gizmo move ends.
+
 ## 2026-10-05 — ecs-lod-selection
 
 ### Engine 4.8.0 (Afternoon)

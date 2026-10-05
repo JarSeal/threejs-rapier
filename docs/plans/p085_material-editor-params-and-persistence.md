@@ -1,7 +1,6 @@
 Status: draft | not-implemented
 Category: Editor-Creator View, Materials
-Blocked by: p084_material-editor-stage-and-selector.md (editor view, editor copy, right drawer, per-material record)
-Related: \_DONE_p083_editor-creator-view.md (epic; undo buckets per view), the debugger undo engine (`core/Debug/_dbg__UndoRedo.ts`, p060-p062, implemented: undo recording pattern), `createDebuggerTab` (p105, implemented: pane bindings, clear-LS buttons)
+Related: \_DONE_p083_editor-creator-view.md (epic; undo buckets per view), \_DONE_p084_material-editor-stage-and-selector.md (implemented: editor view, editor copy, right drawer, per-material record), the debugger undo engine (`core/Debug/_dbg__UndoRedo.ts`, p060-p062, implemented: undo recording pattern), `createDebuggerTab` (p105, implemented: pane bindings, clear-LS buttons)
 
 # Material Editor — Editable Params, Settings and Persistence
 

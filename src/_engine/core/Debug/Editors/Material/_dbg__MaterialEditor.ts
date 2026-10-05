@@ -21,13 +21,23 @@ import type { MaterialAsset } from '../../../../schemas/materialSchema';
 import { textureMapKeys } from '../../../../utils/constants';
 import { addDebugToast } from '../../../../debug/DebuggerGUI';
 import { createViewCamera, type ViewCamera } from '../_dbg__ViewCamera';
-import { createEditorDrawer, type EditorDrawer } from '../_dbg__EditorDrawer';
+import {
+  createEditorDrawer,
+  type EditorDrawer,
+  type EditorDrawerState,
+} from '../_dbg__EditorDrawer';
 import {
   createMaterialSelector,
   type MaterialSelector,
   type MaterialSelectorEntry,
+  type MaterialSelectorState,
 } from './_dbg__MaterialEditorSelector';
 import { createMaterialEditorTabs } from './_dbg__MaterialEditorTabs';
+import {
+  createMaterialCameraStore,
+  readMaterialEditorUIState,
+  writeMaterialEditorUIState,
+} from './_dbg__MaterialEditorStore';
 import { lerror, lwarn } from '../../../../utils/Logger';
 import styles from './MaterialEditor.module.scss';
 
@@ -105,6 +115,10 @@ let loadingMaterialId: string | null = null;
 let drawerMaterialId: string | null = null;
 /** Why a material failed to load, by material id (cleared by its next successful load). */
 const failures = new Map<string, string>();
+/** The selector's and the right drawer's UI state, as saved (read at registration, kept in sync
+ * by their onStateChange; the UI is created with it on the first enter). */
+let selectorState: Partial<MaterialSelectorState> = {};
+let drawerState: Partial<EditorDrawerState> = {};
 /** The stage's settings (constants here; p085 makes them editable per material). */
 const stageSettings = {
   /** Turns per second of the preview object (in `update`, so the view's pause stops it). */
@@ -193,8 +207,29 @@ const getViewCamera = () => {
     defaultPose: { position: { x: 0, y: 0.6, z: 4.8 }, target: { x: 0, y: 0, z: 0 }, fov: 45 },
     near: 0.01,
     far: 100,
+    // A material's pose in its record, the view's own (no material) in 'AEK_debugViewCams'
+    store: createMaterialCameraStore(MATERIAL_EDITOR_VIEW_ID),
   });
   return viewCam;
+};
+
+/** Applies the pose of a material (its saved one, or the default), or the view's own pose (null).
+ * The same key keeps the camera where it is (its pose is saved on every move). */
+const applyCameraPoseKey = (materialId: string | null) => {
+  if (viewCam && viewCam.getPoseKey() !== materialId) viewCam.setPoseKey(materialId);
+};
+
+const persistUIState = () =>
+  writeMaterialEditorUIState({
+    selectedMaterialId,
+    selector: selectorState,
+    drawer: drawerState,
+  });
+
+const setSelectedMaterialId = (materialId: string | null) => {
+  if (selectedMaterialId === materialId) return;
+  selectedMaterialId = materialId;
+  persistUIState();
 };
 
 type GeneratedData = {
@@ -392,13 +427,14 @@ const showLoadError = (materialId: string, message: string, err?: unknown) => {
 
 /**
  * Shows a project material on the preview object: loads its missing textures, creates its editor
- * copy and deletes the previous one. A load that a newer one overtakes is discarded.
+ * copy and deletes the previous one, and applies the material's camera pose. A load that a newer
+ * one overtakes is discarded. The selection is saved (restored after a refresh).
  * @param materialId (string | null) a `*.material.json` id, null for none
  * @returns (Promise<boolean>) whether this load put its material on the stage
  */
 export const loadEditorMaterial = async (materialId: string | null) => {
   const token = ++loadToken;
-  selectedMaterialId = materialId;
+  setSelectedMaterialId(materialId);
   loadingMaterialId = null;
   setNotice('');
   // Loaded on the next enter: the copy only lives while the view is active
@@ -407,6 +443,7 @@ export const loadEditorMaterial = async (materialId: string | null) => {
   if (!materialId) {
     deleteCurrentCopy();
     showPreview('MESH', null);
+    applyCameraPoseKey(null);
     refreshUI();
     return false;
   }
@@ -414,15 +451,17 @@ export const loadEditorMaterial = async (materialId: string | null) => {
   const asset = getMaterialAssets()[materialId];
   if (!asset) {
     lwarn(`Could not find material "${materialId}", in loadEditorMaterial.`);
-    selectedMaterialId = null;
+    setSelectedMaterialId(null);
     deleteCurrentCopy();
     showPreview('MESH', null);
+    applyCameraPoseKey(null);
     refreshUI();
     return false;
   }
   const unavailableReason = getUnavailableReason(asset);
   if (unavailableReason) {
     showLoadError(materialId, unavailableReason);
+    applyCameraPoseKey(materialId);
     refreshUI();
     return false;
   }
@@ -431,6 +470,7 @@ export const loadEditorMaterial = async (materialId: string | null) => {
   if (kind === 'NONE') {
     deleteCurrentCopy();
     showPreview('NONE', null);
+    applyCameraPoseKey(materialId);
     setNotice(`Preview not supported for ${asset.type}`);
     failures.delete(materialId);
     refreshUI();
@@ -447,6 +487,8 @@ export const loadEditorMaterial = async (materialId: string | null) => {
   const copyId = MATERIAL_EDITOR_COPY_PREFIX + materialId;
   // Right before creating, in the same task: createMaterial returns a registered id as it is
   deleteCurrentCopy();
+  // With the swap (the previous material kept its pose while this one's textures loaded)
+  applyCameraPoseKey(materialId);
   try {
     const copy = createMaterial({
       ...getMaterialProps(asset),
@@ -484,6 +526,11 @@ const createUI = (): EditorUI => {
     getSelectedId: () => selectedMaterialId,
     getLoadingId: () => loadingMaterialId,
     getFailure: (id) => failures.get(id),
+    initialState: selectorState,
+    onStateChange: (state) => {
+      selectorState = state;
+      persistUIState();
+    },
   });
   drawerMaterialId = selectedMaterialId;
   const drawer = createEditorDrawer({
@@ -491,6 +538,11 @@ const createUI = (): EditorUI => {
     parent: hud,
     togglerText: 'Material',
     headingLabel: 'MATERIAL',
+    initialState: drawerState,
+    onStateChange: (state) => {
+      drawerState = state;
+      persistUIState();
+    },
     getTitle: () => {
       const asset = selectedMaterialId ? getMaterialAssets()[selectedMaterialId] : undefined;
       return asset ? asset.debugData?.name || asset.id : 'No material selected';
@@ -513,10 +565,14 @@ const onEnter = () => {
   const s = (stage ??= createStage());
   ensureEnvironment(s.scene);
   getViewCamera().onEnter();
+  // Right away, not after the textures: nothing else is on the stage yet (the load keeps it)
+  applyCameraPoseKey(selectedMaterialId);
   ui ??= createUI();
+  // Before the selector's scroll: an open drawer's debugDrawerOpen narrows the selector, and a
+  // scroll restored at full width (fewer rows) would be clamped and saved that way
+  ui.drawer.setActive(true);
   // The HUD was hidden outside the view (display: none loses the scroll position)
   ui.selector.restoreScroll();
-  ui.drawer.setActive(true);
   isEntered = true;
   // Not awaited: the view shows the stage while the textures load
   void loadEditorMaterial(selectedMaterialId);
@@ -539,6 +595,14 @@ export const _registerMaterialEditorView = () => {
   // The scene is created here (no GPU work); the environment, the camera and the UI need the
   // renderer, the canvas and the HUD, so they are created on the first enter
   stage ??= createStage();
+  // Here, not on the first enter: a loadEditorMaterial call before that wins over the saved one
+  const saved = readMaterialEditorUIState();
+  selectorState = saved.selector;
+  drawerState = saved.drawer;
+  const savedId = saved.selectedMaterialId;
+  if (savedId && getMaterialAssets()[savedId]) selectedMaterialId = savedId;
+  // A material that no longer exists is dropped
+  else if (savedId) persistUIState();
   registerView({
     id: MATERIAL_EDITOR_VIEW_ID,
     title: 'Material editor',
