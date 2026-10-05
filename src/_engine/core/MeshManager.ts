@@ -29,6 +29,7 @@ import { getGeometry } from './Geometry';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import { setFrustumCullingEnabled } from './ECS/ObjectFrustumCullingSystem';
 import { IS_DEBUG_ENV } from './Config';
+import type { LodDef } from './Lod/LodTypes';
 
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
@@ -51,6 +52,8 @@ export type MeshProps = {
   appId?: string;
   /** Native Object3D.frustumCulled (Three.js's own per-mesh render-list culling). Defaults to Three's own default (true). */
   frustumCullingEnabled?: boolean;
+  /** Levels of detail, see {@link setMeshLod}. */
+  lod?: LodDef;
 };
 
 /** Debug only: warns about a geometry or material that isn't the registered one under its id (it
@@ -240,7 +243,49 @@ export const createMeshEntity = (
     setFrustumCullingEnabled(entityId, true, world);
   }
 
+  // Last: the LOD's level 0 is the mesh as created, and its add hook pre-warms the other levels
+  // when the mesh has preWarm
+  if (props.lod) setMeshLod(entityId, props.lod, world);
+
   return entityId;
+};
+
+/**
+ * Gives a mesh entity levels of detail (docs/plans/p348_ecs-lod-selection.md): from the next
+ * frame, lodSelectionSystem picks a level by the mesh's screen size and lodApplySystem swaps its
+ * geometry, material(s) and `castShadow`. Level 0 is the mesh's own unless it names others. Every
+ * level's assets are held (ref counted) until the LOD is removed or the entity deleted, and
+ * pre-warmed when the mesh was created with `preWarm`. Replaces a LOD the mesh already has (back
+ * to level 0 first). The definition is read, not copied: after changing its levels, set it again.
+ * @param entityId a mesh entity created with createMeshEntity
+ * @param def the levels, `screenSize` descending
+ * @param ecsWorld the entity's world (default: the default world)
+ */
+export const setMeshLod = (entityId: number, def: LodDef, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+  // addComponent overwrites without the remove hook: it would keep the old levels' refs and take
+  // the current (maybe coarser) level as level 0
+  removeMeshLod(entityId, world);
+  world.addComponent(entityId, ComponentType.LOD, {
+    def,
+    level: -1,
+    applied: -1,
+    radius: 0,
+    _levels: [],
+  });
+};
+
+/**
+ * Removes a mesh entity's levels of detail: it goes back to level 0, shows again if the LOD hid
+ * it, and the other levels' assets are released. A no-op without a LOD.
+ * @param entityId a mesh entity
+ * @param ecsWorld the entity's world (default: the default world)
+ */
+export const removeMeshLod = (entityId: number, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+  if (world.hasComponent(entityId, ComponentType.LOD)) {
+    world.removeComponent(entityId, ComponentType.LOD);
+  }
 };
 
 export const disposeMesh = (entityId: number, ecsWorld?: ECSWorld) => {
