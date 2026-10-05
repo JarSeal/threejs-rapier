@@ -35,7 +35,7 @@ import { texture, uniform, uv } from 'three/tsl';
 import { registerGPUMemorySource } from '../debug/GPUMemory';
 import type { TCMP } from '../utils/CMP';
 import { lwarn } from '../utils/Logger';
-import { getHUDRootCMP } from './HUD';
+import { getHUDRootCMP, KEEP_IN_VIEWS_CLASS } from './HUD';
 import { getCurrentSceneId, registerOnAllSceneExits } from './Scene';
 import styles from './Viewports.module.scss';
 
@@ -187,7 +187,8 @@ const ensureLayer = () => {
   layerCmp = getHUDRootCMP().add({
     id: LAYER_ID,
     idAttr: true,
-    class: styles.viewportsLayer,
+    // Viewports render over every view (ViewManager.ts)
+    class: [styles.viewportsLayer, KEEP_IN_VIEWS_CLASS],
     // First in the HUD root, so it is below the rest of the HUD also in DOM order
     prepend: true,
   });

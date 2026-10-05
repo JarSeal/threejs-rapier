@@ -261,6 +261,16 @@ export const toggleDrawer = (openOrClose?: 'OPEN' | 'CLOSE') => {
 };
 
 /**
+ * Hides the drawer while an editor view is active (ViewManager.ts), or shows it again. Its open
+ * state is kept; while hidden, its tab isn't refreshed and the `debugDrawerOpen` body class is
+ * the editor view's. Debug environment only.
+ * @param suspended (boolean) whether an editor view is active
+ */
+export const setDrawerSuspendedByView = (suspended: boolean) => {
+  useDebug(debugGUI)?._setDrawerSuspendedByView(suspended);
+};
+
+/**
  * Creates (or replaces, by id) a debugger tab: the menu button, the heading row and the content
  * (CMP sections, declarative Tweakpane panes and lists). Persisted `state` values are hydrated
  * right away (also in prod test mode, where the drawer itself doesn't exist).

@@ -8,9 +8,9 @@ import {
   toggleDebugCamera,
 } from '../CameraManager';
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../../core/Config';
-import { getHUDRootCMP } from '../../core/HUD';
+import { getHUDRootCMP, KEEP_IN_VIEWS_CLASS } from '../../core/HUD';
 import { isAnyLightHelperVisible, toggleAllLightHelpers } from '../LightManager';
-import { getReadOnlyLoopState, toggleAppPlay, toggleMainPlay } from '../../core/MainLoop';
+import { getReadOnlyLoopState, toggleMainPlay } from '../../core/MainLoop';
 import { getPhysicsState } from '../../core/PhysicsAPI';
 import { getCurrentSceneId, getGeneratedAppData } from '../../core/Scene';
 import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
@@ -31,7 +31,21 @@ import {
   isProfilerWindowOpen,
   toggleProfilerWindow,
 } from '../../debug/Profiler';
+import {
+  getActiveView,
+  getActiveViewId,
+  getViews,
+  isRuntimeViewActive,
+  isViewPlaying,
+  RUNTIME_VIEW_BUTTON,
+  RUNTIME_VIEW_ID,
+  setActiveView,
+  toggleViewPlay,
+} from '../ViewManager';
 
+/** The fixed, centred row at the top: the view tools, then the play tools. */
+let topRowCMP: TCMP | null = null;
+let viewToolsCMP: TCMP | null = null;
 let playToolsCMP: TCMP | null = null;
 let switchToolsCMP: TCMP | null = null;
 let undoRedoToolsCMP: TCMP | null = null;
@@ -132,11 +146,68 @@ const createOnScreenDropDown = (
   return dropDown.cmp;
 };
 
+/** The top row (created on first use). Kept in editor views, like its groups. */
+const getTopRow = () => {
+  if (!topRowCMP) {
+    topRowCMP = getHUDRootCMP().add({
+      class: [styles.onScreenTopRow, 'onScreenTopRow', KEEP_IN_VIEWS_CLASS],
+    });
+  }
+  return topRowCMP;
+};
+
+// VIEW TOOLS
+// One button per view (ViewManager.ts): the Runtime view first, then the editor views. Debug
+// environment only (never prod test mode), and only when an editor view is registered.
+
+/** Switches to a view and shows a toast of it (a view tools button). */
+const switchViewWithToast = async (id: string) => {
+  if (id === getActiveViewId()) return;
+  if (!(await setActiveView(id))) return;
+  const view = id === RUNTIME_VIEW_ID ? RUNTIME_VIEW_BUTTON : getViews().find((v) => v.id === id);
+  if (view) addDebugToast({ title: view.title, icon: getSvgIcon(view.icon) });
+};
+
+const viewTools = () => {
+  if (viewToolsCMP) viewToolsCMP.remove();
+  viewToolsCMP = null;
+
+  if (!IS_DEBUG_ENV || IS_PROD_TEST_MODE) return;
+  const editorViews = getViews();
+  if (!editorViews.length) return;
+
+  // Left of the play tools in the top row
+  viewToolsCMP = CMP({
+    class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'viewTools'],
+    prepend: true,
+  });
+
+  const activeId = getActiveViewId();
+  const buttons = [RUNTIME_VIEW_BUTTON, ...editorViews];
+  for (let i = 0; i < buttons.length; i++) {
+    const { id, title, icon } = buttons[i];
+    viewToolsCMP.add(
+      CMP({
+        class: [
+          styles.onScreenTool,
+          'onScreenTool',
+          ...(id === activeId ? [styles.active, 'onScreenToolActive'] : []),
+        ],
+        html: () => `<button>${getSvgIcon(icon)}</button>`,
+        attr: { title, 'aria-label': title },
+        onClick: (e) => {
+          e.stopPropagation();
+          switchViewWithToast(id);
+        },
+      })
+    );
+  }
+
+  getTopRow().add(viewToolsCMP);
+};
+
 // PLAY TOOLS
 const playTools = () => {
-  const hudRootCMP = getHUDRootCMP();
-  if (!hudRootCMP) return;
-
   if (playToolsCMP) playToolsCMP.remove();
   playToolsCMP = null;
 
@@ -150,19 +221,7 @@ const playTools = () => {
 
   const buttonBaseClasses = [styles.onScreenTool, 'onScreenTool'];
 
-  if (!IS_PROD_TEST_MODE) {
-    // Play prod test
-    const playProdTestBtn = CMP({
-      class: buttonBaseClasses,
-      html: () => `<button>${getSvgIcon('playFill')}</button>`,
-      attr: { title: 'Play in production test mode (F5)' },
-      onClick: (e) => {
-        e.stopPropagation();
-        _playInProdTestMode();
-      },
-    });
-    playToolsCMP.add(playProdTestBtn);
-  } else {
+  if (IS_PROD_TEST_MODE) {
     // Stop prod test
     const stopProdTestBtn = CMP({
       class: buttonBaseClasses,
@@ -174,6 +233,18 @@ const playTools = () => {
       },
     });
     playToolsCMP.add(stopProdTestBtn);
+  } else if (isRuntimeViewActive()) {
+    // Play prod test (Runtime view only: an editor view keeps the master loop and pause)
+    const playProdTestBtn = CMP({
+      class: buttonBaseClasses,
+      html: () => `<button>${getSvgIcon('playFill')}</button>`,
+      attr: { title: 'Play in production test mode (F5)' },
+      onClick: (e) => {
+        e.stopPropagation();
+        _playInProdTestMode();
+      },
+    });
+    playToolsCMP.add(playProdTestBtn);
   }
 
   // App loop button
@@ -195,22 +266,23 @@ const playTools = () => {
   });
   playToolsCMP.add(mainLoopBtn);
 
-  const appLoopBtn = CMP({
-    class: [
-      ...buttonBaseClasses,
-      ...(!loopState.appPlay ? [styles.active, 'onScreenToolActive'] : []),
-    ],
+  // Pauses the active view: the app loop in the Runtime view, an editor view's own play flag
+  // (its `update`) in an editor view
+  const isPlaying = isViewPlaying();
+  const pausedTarget = getActiveView() ? 'view' : 'app loop';
+  const pauseBtn = CMP({
+    class: [...buttonBaseClasses, ...(!isPlaying ? [styles.active, 'onScreenToolActive'] : [])],
     html: () => `<button>${getSvgIcon('pause')}</button>`,
     attr: {
-      title: `Pause app loop (F7, currently ${loopState.appPlay ? 'playing' : 'not playing'})`,
+      title: `Pause ${pausedTarget} (F7, currently ${isPlaying ? 'playing' : 'not playing'})`,
     },
     onClick: (e) => {
       e.stopPropagation();
-      toggleAppPlay();
+      toggleViewPlay();
       _updateOnScreenTools('PLAY');
     },
   });
-  playToolsCMP.add(appLoopBtn);
+  playToolsCMP.add(pauseBtn);
 
   // Profiler window (loaded in prodTest only when it is enabled there)
   if (isProfilerAvailable()) {
@@ -230,7 +302,7 @@ const playTools = () => {
     playToolsCMP.add(profilerBtn);
   }
 
-  hudRootCMP.add(playToolsCMP);
+  getTopRow().add(playToolsCMP);
 };
 
 // SWITCH TOOLS
@@ -239,7 +311,12 @@ const switchTools = () => {
   if (!hudRootCMP) return;
 
   if (switchToolsCMP) switchToolsCMP.remove();
+  switchToolsCMP = null;
   dropDowns.clear();
+  // Runtime view only: they act on the scene (an editor view hides its HUD, and the o / p
+  // dropdown shortcuts do nothing there)
+  if (!isRuntimeViewActive()) return;
+
   switchToolsCMP = CMP({ class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'switchTools'] });
 
   const isDebugActive = isDebugCameraActive();
@@ -361,7 +438,7 @@ const undoRedoTools = () => {
 
   if (undoRedoToolsCMP) undoRedoToolsCMP.remove();
   undoRedoToolsCMP = CMP({
-    class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'undoRedoTools'],
+    class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'undoRedoTools', KEEP_IN_VIEWS_CLASS],
   });
 
   const aboutBtn = CMP({
@@ -408,6 +485,7 @@ export const _InitOnScreenTools = () => {
     return;
   }
 
+  viewTools();
   playTools();
   switchTools();
   undoRedoTools();
@@ -423,6 +501,9 @@ const updateTool = (toolType: ToolTypes) => {
       break;
     case 'UNDO':
       undoRedoTools();
+      break;
+    case 'VIEW':
+      viewTools();
       break;
   }
 };

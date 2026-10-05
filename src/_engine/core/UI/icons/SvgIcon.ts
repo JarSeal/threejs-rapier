@@ -35,6 +35,7 @@ import profilerIcon from './svg/profiler-pulse.svg?raw';
 import redoIcon from './svg/arrow-90deg-right.svg?raw';
 import rocketIcon from './svg/rocket.svg?raw';
 import rocketTakeoffIcon from './svg/rocket-takeoff-fill.svg?raw';
+import runtimeViewIcon from './svg/runtime-view.svg?raw';
 import spatialGridIcon from './svg/spatial-grid.svg?raw';
 import speedometerIcon from './svg/speedometer.svg?raw';
 import stopIcon from './svg/stop-fill.svg?raw';
@@ -84,6 +85,7 @@ const icons = {
   redo: redoIcon,
   rocket: rocketIcon,
   rocketTakeoff: rocketTakeoffIcon,
+  runtime: runtimeViewIcon,
   spatialGrid: spatialGridIcon,
   speedometer: speedometerIcon,
   stop: stopIcon,

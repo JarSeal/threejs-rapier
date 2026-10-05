@@ -15,19 +15,32 @@
 import type * as THREE from 'three/webgpu';
 import type { SvgIconKey } from './UI/icons/SvgIcon';
 import { setSceneDebugCameraInputEnabled } from './CameraManager';
-import { setAllInputsEnabled } from './Input/InputState';
+import { setAppInputsSuspended } from './Input/InputState';
 import {
   isAppPlaying,
   renderFrameWhileMasterPaused,
   setSceneSuspended,
   toggleAppPlay,
 } from './MainLoop';
-import { registerOnAllSceneEnterings } from './Scene';
-import { isCurrentlyLoading } from './SceneLoader';
+import { setDrawerSuspendedByView, toggleDrawer } from '../debug/DebuggerGUI';
+import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { lerror, lwarn } from '../utils/Logger';
 
 /** The built-in Runtime view's id: the loaded scene with the game/app debugger. */
 export const RUNTIME_VIEW_ID = 'runtime';
+
+/** The Runtime view's view tools button (it has no {@link ViewDef}). */
+export const RUNTIME_VIEW_BUTTON: Readonly<{ id: string; title: string; icon: SvgIconKey }> = {
+  id: RUNTIME_VIEW_ID,
+  title: 'Runtime',
+  icon: 'runtime',
+};
+
+/** On <body> while an editor view is active: hides the suspended scene's HUD (styles/index.scss)
+ * except the elements with KEEP_IN_VIEWS_CLASS (HUD.ts). */
+const EDITOR_VIEW_BODY_CLASS = 'aekEditorView';
+/** On <body> while that editor view is active (`aekView_<id>`), for the view's own styles. */
+const getViewBodyClass = (id: string) => `aekView_${id}`;
 
 /** An editor view (the Runtime view is built in, not a ViewDef). */
 export type ViewDef = {
@@ -74,19 +87,6 @@ const afterRenderListeners: ViewFrameListener[] = [];
 const changeListeners = new Set<ViewChangeListener>();
 /** setActiveView calls run one after another (see setActiveView). */
 let switchQueue: Promise<unknown> = Promise.resolve();
-let isSceneEnterHookRegistered = false;
-
-/** A scene load re-enables the inputs at its end (SceneLoader.ts). A scene loaded while an
- * editor view is active (by app code or HMR) is suspended as soon as it exists, since suspension
- * is a loop state, but its inputs stay off. Registered with the first view, so this module does
- * nothing at load time. */
-const registerSceneEnterHook = () => {
-  if (isSceneEnterHookRegistered) return;
-  isSceneEnterHookRegistered = true;
-  registerOnAllSceneEnterings('viewManagerSuspendedScene', () => {
-    if (isSuspended) setAllInputsEnabled(false);
-  });
-};
 
 /**
  * Registers an editor view. A view with the same id is replaced, unless it is active.
@@ -105,8 +105,8 @@ export const registerView = (def: ViewDef) => {
     }
     lwarn(`View with id "${def.id}" already exists, in registerView. Replacing it.`);
   }
-  registerSceneEnterHook();
   views.set(def.id, def);
+  updateOnScreenTools('VIEW');
 };
 
 /**
@@ -117,6 +117,16 @@ export const unregisterView = async (id: string) => {
   if (!views.has(id)) return;
   if (getActiveViewId() === id) await setActiveView(RUNTIME_VIEW_ID);
   views.delete(id);
+  updateOnScreenTools('VIEW');
+};
+
+/** The registered editor views, in the view tools group's order (`orderNr`, then registration
+ * order). The Runtime view ({@link RUNTIME_VIEW_BUTTON}) is not one of them. */
+export const getViews = () => {
+  const list = [...views.values()];
+  // A stable sort, so the views without an orderNr keep their registration order, last
+  const order = (view: ViewDef) => view.orderNr ?? Number.MAX_SAFE_INTEGER;
+  return list.sort((a, b) => order(a) - order(b));
 };
 
 /** The id of the active view ({@link RUNTIME_VIEW_ID} for the Runtime view). */
@@ -148,6 +158,16 @@ export const toggleViewPlay = (value?: boolean) => {
     return;
   }
   viewPlay[id] = value ?? !isViewPlaying(id);
+};
+
+/** What the debug drawer key (h) does: the debug drawer in the Runtime view, the editor view's
+ * `toggleDrawer` in an editor view (nothing when it has none, or during a switch). */
+export const toggleActiveViewDrawer = () => {
+  if (!isSuspended) {
+    toggleDrawer();
+    return;
+  }
+  activeView?.toggleDrawer?.();
 };
 
 /**
@@ -199,16 +219,23 @@ export const runActiveViewAfterRender = (delta: number) => {
 const suspendScene = () => {
   isSuspended = true;
   setSceneSuspended(true);
-  // App keyboard, mouse and touch handlers ignore input (debug key bindings still run)
-  setAllInputsEnabled(false);
+  // App keyboard, mouse and touch bindings ignore input (debug key bindings still run). A flag of
+  // its own, so a scene loaded meanwhile (app code, HMR) doesn't lift it at the load's end, and
+  // the new scene is suspended as soon as it exists (suspension is a loop state)
+  setAppInputsSuspended(true);
   // Its OrbitControls listen on the canvas, and debugCameraSystem doesn't run to disable them
   setSceneDebugCameraInputEnabled(false);
+  // Hides the scene's HUD; the debug drawer keeps its open state but leaves debugDrawerOpen to
+  // the editor view
+  document.body.classList.add(EDITOR_VIEW_BODY_CLASS);
+  setDrawerSuspendedByView(true);
 };
 
 const resumeScene = () => {
+  setDrawerSuspendedByView(false);
+  document.body.classList.remove(EDITOR_VIEW_BODY_CLASS);
   setSceneDebugCameraInputEnabled(true);
-  // A running scene load re-enables them itself at its end
-  if (!isCurrentlyLoading()) setAllInputsEnabled(true);
+  setAppInputsSuspended(false);
   setSceneSuspended(false);
   isSuspended = false;
 };
@@ -243,6 +270,7 @@ const switchView = async (id: string) => {
     } catch (err) {
       lerror(`View "${leaving.id}" onExit failed, in setActiveView.`, err);
     }
+    document.body.classList.remove(getViewBodyClass(leaving.id));
     // Until the next view has entered, the canvas keeps its last frame (MainLoop's renderScene)
     activeView = null;
   } else {
@@ -250,12 +278,15 @@ const switchView = async (id: string) => {
   }
 
   if (next) {
+    document.body.classList.add(getViewBodyClass(id));
     try {
       await next.onEnter?.();
     } catch (err) {
       lerror(`View "${id}" onEnter failed, in setActiveView. Returning to the Runtime view.`, err);
+      document.body.classList.remove(getViewBodyClass(id));
       resumeScene();
       notifyViewChange(RUNTIME_VIEW_ID, prevId);
+      updateOnScreenTools();
       renderFrameWhileMasterPaused();
       return false;
     }
@@ -265,6 +296,9 @@ const switchView = async (id: string) => {
   }
 
   notifyViewChange(id, prevId);
+  // The view tools' active button, the play group's pause button, and the switch tools (only
+  // built in the Runtime view)
+  updateOnScreenTools();
   renderFrameWhileMasterPaused();
   return true;
 };

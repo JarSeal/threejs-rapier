@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phases 1-2 implemented
 Category: Editor-Creator View
 Blocks: p084_material-editor-stage-and-selector.md, p085_material-editor-params-and-persistence.md
 Related (all implemented; their plan files have been removed, see `.claude/CLAUDE.md` and the code): p080 viewports (`core/Viewports.ts`; the axes gizmo must follow the editor camera), p060/p062 debugger undo (`core/Debug/_dbg__UndoRedo.ts`; undo buckets per view), p105 `createDebuggerTab` (the editor drawers reuse its declarative tabs), p110-p115 layered sky box (later editors: skybox), p130 on-screen tools disabler (`DebugToolsState.onScreenTools`; the view tools group joins its disabled set)
@@ -169,10 +169,10 @@ All three can land on one branch (one engine minor bump at merge) or on separate
 
 Each phase compiles, lints and leaves the app working.
 
-1. **ViewManager and suspension, no UI.**
+1. **ViewManager and suspension, no UI.** — done
    - `ViewManager.ts`, the `MainLoop`/`PhysicsAPI` changes, the enter/leave sequence without the on-screen tools.
    - Verify with a throwaway, uncommitted test view (a private scene with a spinning cube and its own `PerspectiveCamera`) switched from the browser console: the scene freezes and hides, physics resumes without a jump, both worker targets.
-2. **HUD rules, view tools group and keys.**
+2. **HUD rules, view tools group and keys.** — done
    - Body classes and the HUD SCSS rule, `aekKeepInViews` on the kept elements, the top row container, `viewTools()` with the `runtime` icon, the switch toast, per-view play group, `h`/`F1` routing.
    - Still no committed editor view, so the group stays hidden; the test view from Phase 1 shows it (with any existing icon until p084 adds `material`).
 3. **Gizmo rig, undo buckets, refresh restore.**
@@ -232,3 +232,15 @@ Each phase compiles, lints and leaves the app working.
   - `renderFrameWhileMasterPaused()` (`MainLoop.ts`) renders one frame after a switch while the master loop is paused, so the canvas shows the new view.
   - The debug camera gate (`setSceneDebugCameraInputEnabled`, reached through `CameraManager.ts`) is a flag that `attachOrbitControls`, `debugCamSceneChange` and `debugCameraSystem` all respect. That way a scene loaded while an editor view is active can't re-enable the controls, whatever order the scene-enter hooks run in.
 - **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2 on WSL2, a throwaway test view loaded from the console, both worker targets): in the view, `getElapsedTime()` and the physics sub-step total stand still, physics reports paused, inputs and the debug camera's OrbitControls are off; the view's pause stops its `update` and leaves the scene's `appPlay` alone. Back in the Runtime view, the first frame takes 0 sub-steps and the next ones take the same count per frame as before the switch (no catch-up burst), and the inputs and OrbitControls are back on.
+
+### Phase 2
+
+- **Code drift since the plan.** `setAllInputsEnabled(false)` also stops the debug key bindings (`KeyboardInput.ts`'s `dispatchKeyEvent` returns before any binding), so DD3's "debug key bindings still run" didn't hold: in Phase 1's test view, F6, F7, F8, F10 and undo/redo did nothing. The draggable windows DD4 hides include the profiler window and the debug dialogs (About, key shortcuts, clear-LS confirmations).
+- **As built.**
+  - Inputs: a separate flag, `setAppInputsSuspended` (`Input/InputState.ts`), not `setAllInputsEnabled`. Mouse, touch, held keys and every key binding without `isDebugKey` ignore input while it is set. `registerDefaultDebugKeyBindings` sets `isDebugKey` on the engine's debug keys and the CONFIG.ts `debugKeys`. A scene load's re-enable at its end no longer lifts the suspension, so DD10's `registerOnAllSceneEnterings` hook was dropped. Debug keys stay off during scene loads, as before.
+  - `KEEP_IN_VIEWS_CLASS` (`'aekKeepInViews'`) lives in `core/HUD.ts`. It is on the top row, the undo/redo group, the stats container, the debug toaster, the viewports layer, debug dialogs (`isDebugWindow` with a backdrop, plus the backdrop) and the windows of a kind registered with `keepInViews: true` (`DraggableWindowKindOpts`, not persisted; the profiler window uses it).
+  - The scene drawer: `setDrawerSuspendedByView` (`debug/DebuggerGUI.ts`). It keeps `isOpen`, pauses the open tab's refresh (the tab host's `isVisible` is false while suspended), and leaves `debugDrawerOpen` to the editor view, also when the drawer is rebuilt or toggled by code meanwhile.
+  - Keys: `h` → `toggleActiveViewDrawer()` (ViewManager). F1 and F5 are no-ops in an editor view (F5 follows its hidden button). F7 is the pause button's key, so it calls `toggleViewPlay()` too, with a "View paused / playing" toast in an editor view. `o` / `p` do nothing there, since the switch tools aren't built.
+  - `getViews()` returns the editor views in button order (`orderNr`, then registration order). `RUNTIME_VIEW_BUTTON` holds the Runtime button's data.
+  - The `runtime` icon's viewfinder corners are filled outlines of DD6's 1.3 stroke (same shape). Every on-screen and toast icon rule sets `path { fill }`, which overrides the `fill="none"` of a stroked path.
+- **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2, Phase 1's test view imported from the page): the view group appears on registration (Runtime active, then "Test view") left of the play group, and both shift with the drawer. In the test view: the drawer, switch tools and scene HUD are hidden, `debugDrawerOpen` is off, undo/redo, stats, the top row and toasts stay, the prod test play button is gone, F7 and the pause button toggle only the view's play flag (`appPlay` unchanged), F6 stops the master loop, `h` and F1 do nothing. Back in the Runtime view the drawer comes back open with `debugDrawerOpen`, the switch tools are rebuilt, and each switch shows its toast.

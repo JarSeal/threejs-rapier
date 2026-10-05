@@ -7,7 +7,7 @@ import {
   PROJECT_METADATA,
 } from './core/Config';
 import { initAssets } from './core/Assets/AssetsAPI';
-import { createHudContainer, getHUDRootCMP } from './core/HUD';
+import { createHudContainer, getHUDRootCMP, KEEP_IN_VIEWS_CLASS } from './core/HUD';
 import {
   registerDefaultDebugKeyBindings,
   registerDefaultProdTestKeyBindings,
@@ -166,6 +166,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       getHUDRootCMP().add(
         createToaster({
           id: DEBUG_TOASTER_ID,
+          // Shown in every view (ViewManager.ts)
+          className: KEEP_IN_VIEWS_CLASS,
           settings: {
             animationTimeMs: 200,
             verticalPosition: 'bottom',

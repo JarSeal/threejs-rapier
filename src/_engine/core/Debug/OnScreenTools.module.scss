@@ -54,13 +54,24 @@
   }
 }
 
-:global(.playTools) {
+// The top row: the view tools (debug env, with an editor view registered), then the play tools.
+// Only its groups take clicks, not the gap between them. debugDrawerOpen is set by whichever
+// right-side drawer is open: the debug drawer, or an editor view's own one.
+.onScreenTopRow {
+  display: flex;
+  gap: 0.6rem;
+  position: fixed;
+  z-index: 10000;
   top: 1.6rem;
   left: 50%;
   transform: translateX(-50%);
-  transition:
-    transform 0.2s ease-in-out,
-    opacity 0.2s ease-in-out;
+  transition: transform 0.2s ease-in-out;
+  pointer-events: none;
+
+  .onScreenToolGroup {
+    position: static;
+    pointer-events: auto;
+  }
 
   :global(.debugDrawerOpen) & {
     transform: translateX(calc(-50% - (variables.$drawerWidth / 2)));

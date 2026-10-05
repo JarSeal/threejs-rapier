@@ -6,7 +6,7 @@ import { getCanvasElem } from '../Renderer';
 import { getCurrentSceneId } from '../Scene';
 import { lwarn } from '../../utils/Logger';
 import { pickTargetsAt, type PickOpts } from './InputPicking';
-import { areAllInputsEnabled } from './InputState';
+import { areAppInputsEnabled } from './InputState';
 import type { BindingMeta, EnabledInDebugCam, TargetList } from './InputSharedTypes';
 
 // Only gestures that start on the canvas count (touches on the HUD/debug UI are ignored).
@@ -88,7 +88,7 @@ const isInputInDebugCamInvalid = (enabledInDebugCam?: EnabledInDebugCam) =>
 
 const isBindingActive = (binding: TouchBinding) =>
   touchInputsEnabled &&
-  areAllInputsEnabled() &&
+  areAppInputsEnabled() &&
   binding.enabled !== false &&
   !isInputInDebugCamInvalid(binding.enabledInDebugCam) &&
   (!binding.sceneId || binding.sceneId === getCurrentSceneId());
