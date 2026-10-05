@@ -20,6 +20,9 @@ Earlier releases are only recorded in the git history.
 - Build-time chains: a GLB built by the asset pipeline carries its chains (levels as meshes `<mesh>__lod<n>` that no node uses, described by the root's `aekLodChains` extras). The import registers them (`LodChain.origin: 'BUILD'`) and doesn't simplify on the client. The generated data's `__lodChain` lists each primitive's levels for tooling.
 - Assets tab: the geometry info window shows a geometry's chain (per level: triangles, error, bytes, shared or own vertices), with "Generate LOD chain" and release buttons.
 - The Ækasha symbol, a black and white Æ with rounded corners: a UI icon (`getSvgIcon('aekasha')`, `core/UI/icons/svg/aekasha.svg`, in `currentColor`) and the favicon: `favicon.svg` (white on a dark browser theme), `favicon.ico` (16, 32, 48, with a white halo for dark tabs) and `apple-touch-icon.png` in `src/public/`, linked from `index.html`.
+- About Ækasha dialog (`core/Debug/_dbg__About.ts`, `openAboutDialog()`), opened by the Æ button left of undo / redo (debug mode): the engine, toolkit and app versions, the version checksum and the build (commit, local changes, time), the runtime packages and main build tools, the runtime (environment, renderer, GPU, viewport, browser) and physics (every backend in `ENGINES` with its package version, status, thread, transform transport, SharedArrayBuffer availability, timestep and sub-steps, solver, gravity, interpolation, background behavior, body counts). "Copy info" copies it all as text, for bug reports.
+- A physics backend in `Physics/ENGINES.ts` has a display `name` and its npm `packageName`.
+- `PROJECT_METADATA` (`__PROJECT_METADATA__`, from `vite.config.ts`) has `license`, `packages` (the runtime dependencies), `buildTools` (vite, typescript) and `build` (`commit`, `hasLocalChanges`, `time`).
 
 **Changed**
 

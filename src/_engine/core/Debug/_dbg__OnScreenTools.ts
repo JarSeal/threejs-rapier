@@ -25,6 +25,7 @@ import { addDebugToast, DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerGUI
 import { DebugModuleRef, loadDebugModule, useDebug } from '../../utils/helpers';
 import { getDebugToolsState } from '../../debug/DebugToolsManager';
 import { canRedo, canUndo, redoLastAction, undoLastAction } from '../../debug/UndoRedo';
+import { openAboutDialog } from './_dbg__About';
 import {
   isProfilerAvailable,
   isProfilerWindowOpen,
@@ -349,8 +350,8 @@ const switchTools = () => {
   hudRootCMP.add(switchToolsCMP);
 };
 
-// UNDO / REDO TOOLS
-// Debug environment only (never prod test mode, which has no debugger to make edits with) —
+// ABOUT AND UNDO / REDO TOOLS
+// The About Ækasha button, then undo and redo. Debug environment only (never prod test mode, which has no debugger to make edits with) —
 // the IS_PROD_TEST_MODE early returns in _InitOnScreenTools/_updateOnScreenTools keep it out.
 // The undo/redo module refreshes this group itself (updateOnScreenTools('UNDO')) whenever
 // the history changes.
@@ -362,6 +363,17 @@ const undoRedoTools = () => {
   undoRedoToolsCMP = CMP({
     class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'undoRedoTools'],
   });
+
+  const aboutBtn = CMP({
+    class: [styles.onScreenTool, styles.aboutTool, 'onScreenTool'],
+    html: () => `<button>${getSvgIcon('aekasha')}</button>`,
+    attr: { title: 'About Ækasha' },
+    onClick: (e) => {
+      e.stopPropagation();
+      openAboutDialog();
+    },
+  });
+  undoRedoToolsCMP.add(aboutBtn);
 
   const undoBtn = CMP({
     class: [styles.onScreenTool, 'onScreenTool'],

@@ -593,6 +593,15 @@ export const PROJECT_METADATA: {
   };
   /** package.json version number */
   pkgVersion: string;
+  /** package.json license (SPDX id) */
+  license: string;
+  /** The runtime dependencies' versions from package.json (package name → version). */
+  packages: Record<string, string>;
+  /** The main build tools' versions from package.json (vite, typescript). */
+  buildTools: Record<string, string>;
+  /** This build: the short git commit ('' without git), whether tracked files had uncommitted
+   * changes, and the build time (ISO; the dev server's start time in dev). */
+  build: { commit: string; hasLocalChanges: boolean; time: string };
   /** Version hash created from versionChecksumString. */
   versionChecksum: string;
   /** Version string created from all version data:
