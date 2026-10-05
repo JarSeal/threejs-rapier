@@ -29,7 +29,7 @@ import { getGeometry } from './Geometry';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import { setFrustumCullingEnabled } from './ECS/ObjectFrustumCullingSystem';
 import { IS_DEBUG_ENV } from './Config';
-import type { LodDef } from './Lod/LodTypes';
+import type { LodDef, MeshLodDef } from './Lod/LodTypes';
 
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
@@ -52,8 +52,8 @@ export type MeshProps = {
   appId?: string;
   /** Native Object3D.frustumCulled (Three.js's own per-mesh render-list culling). Defaults to Three's own default (true). */
   frustumCullingEnabled?: boolean;
-  /** Levels of detail, see {@link setMeshLod}. */
-  lod?: LodDef;
+  /** Levels of detail, or `AUTO` from the geometry's LOD chain, see {@link setMeshLod}. */
+  lod?: MeshLodDef;
 };
 
 /** Debug only: warns about a geometry or material that isn't the registered one under its id (it
@@ -250,22 +250,20 @@ export const createMeshEntity = (
   return entityId;
 };
 
-/**
- * Gives a mesh entity levels of detail (docs/plans/p348_ecs-lod-selection.md): from the next
- * frame, lodSelectionSystem picks a level by the mesh's screen size and lodApplySystem swaps its
- * geometry, material(s) and `castShadow`. Level 0 is the mesh's own unless it names others. Every
- * level's assets are held (ref counted) until the LOD is removed or the entity deleted, and
- * pre-warmed when the mesh was created with `preWarm`. Replaces a LOD the mesh already has (back
- * to level 0 first). The definition is read, not copied: after changing its levels, set it again.
- * @param entityId a mesh entity created with createMeshEntity
- * @param def the levels, `screenSize` descending
- * @param ecsWorld the entity's world (default: the default world)
- */
-export const setMeshLod = (entityId: number, def: LodDef, ecsWorld?: ECSWorld) => {
-  const world = ecsWorld || getECSWorld();
-  // addComponent overwrites without the remove hook: it would keep the old levels' refs and take
-  // the current (maybe coarser) level as level 0
-  removeMeshLod(entityId, world);
+/** Per world: the `AUTO` LODs waiting for their chain, by entity. A later setMeshLod or
+ * removeMeshLod replaces or drops the entry, which cancels the wait. */
+const pendingAutoLods = new WeakMap<ECSWorld, Map<number, object>>();
+
+const getPendingAutoLods = (world: ECSWorld) => {
+  let pending = pendingAutoLods.get(world);
+  if (!pending) {
+    pending = new Map();
+    pendingAutoLods.set(world, pending);
+  }
+  return pending;
+};
+
+const addLodComponent = (entityId: number, def: LodDef, world: ECSWorld) => {
   world.addComponent(entityId, ComponentType.LOD, {
     def,
     level: -1,
@@ -276,13 +274,75 @@ export const setMeshLod = (entityId: number, def: LodDef, ecsWorld?: ECSWorld) =
 };
 
 /**
+ * Gives a mesh entity levels of detail (docs/plans/p348_ecs-lod-selection.md): from the next
+ * frame, lodSelectionSystem picks a level by the mesh's screen size and lodApplySystem swaps its
+ * geometry, material(s) and `castShadow`. Level 0 is the mesh's own unless it names others. Every
+ * level's assets are held (ref counted) until the LOD is removed or the entity deleted, and
+ * pre-warmed when the mesh was created with `preWarm`. Replaces a LOD the mesh already has (back
+ * to level 0 first). The definition is read, not copied: after changing its levels, set it again.
+ *
+ * `'AUTO'` (or `{ auto: true, ... }`) reads the levels from the geometry's LOD chain (p347): each
+ * is used while its simplification error stays within `maxPixelError` pixels at a viewport height
+ * of 1080. The mesh stays on level 0 until the chain is ready (it waits for one the geometry's
+ * import requested or one being generated), and warns when the geometry has none.
+ * @param entityId a mesh entity created with createMeshEntity
+ * @param def the levels, `screenSize` descending, or `AUTO`
+ * @param ecsWorld the entity's world (default: the default world)
+ * @returns resolves to whether the LOD was set: at once for levels, when the chain is ready for
+ *   `AUTO` (false when it has none, or the LOD was replaced, removed or the entity deleted first)
+ */
+export const setMeshLod = (
+  entityId: number,
+  def: MeshLodDef,
+  ecsWorld?: ECSWorld
+): Promise<boolean> => {
+  const world = ecsWorld || getECSWorld();
+  // addComponent overwrites without the remove hook: it would keep the old levels' refs and take
+  // the current (maybe coarser) level as level 0
+  removeMeshLod(entityId, world);
+  if (def !== 'AUTO' && !('auto' in def)) {
+    addLodComponent(entityId, def, world);
+    return Promise.resolve(true);
+  }
+
+  const mesh = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
+  if (!(mesh instanceof THREE.Mesh)) {
+    lwarn(`[LOD] Entity ${entityId} has no mesh: its LOD does nothing.`);
+    return Promise.resolve(false);
+  }
+  const geometry = mesh.geometry;
+  const request = {};
+  const pending = getPendingAutoLods(world);
+  pending.set(entityId, request);
+  const isCurrent = () => pending.get(entityId) === request;
+  return import('./Lod/LodAuto')
+    .then(({ resolveAutoLod }) =>
+      isCurrent() ? resolveAutoLod(geometry, def, mesh.userData.id || mesh.uuid) : null
+    )
+    .catch((err) => {
+      lerror(`[LOD] Mesh "${mesh.userData.id || mesh.uuid}": lod AUTO failed.`, err);
+      return null;
+    })
+    .then((resolved) => {
+      if (!isCurrent()) return false;
+      pending.delete(entityId);
+      // Deleted meanwhile, or its geometry changed: the chain isn't its level 0's any more
+      if (!resolved || !world.isAlive(entityId) || mesh.geometry !== geometry) return false;
+      addLodComponent(entityId, resolved, world);
+      return true;
+    });
+};
+
+/**
  * Removes a mesh entity's levels of detail: it goes back to level 0, shows again if the LOD hid
- * it, and the other levels' assets are released. A no-op without a LOD.
+ * it, and the other levels' assets are released. Cancels an `AUTO` LOD still waiting for its
+ * chain. A no-op without a LOD.
  * @param entityId a mesh entity
  * @param ecsWorld the entity's world (default: the default world)
  */
 export const removeMeshLod = (entityId: number, ecsWorld?: ECSWorld) => {
   const world = ecsWorld || getECSWorld();
+  pendingAutoLods.get(world)?.delete(entityId);
   if (world.hasComponent(entityId, ComponentType.LOD)) {
     world.removeComponent(entityId, ComponentType.LOD);
   }

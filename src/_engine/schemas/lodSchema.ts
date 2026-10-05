@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { LodDef } from '../core/Lod/LodTypes';
+import type { LodAutoDef, LodDef, MeshLodDef } from '../core/Lod/LodTypes';
 
 /** One level of a mesh's `lod` (LodLevelDef in core/Lod/LodTypes.ts, p348 §2.2). */
 export const LodLevelDefSchema = z
@@ -75,3 +75,33 @@ export const LodDefSchema = z
   .describe(
     'Levels of detail (p348): each frame the mesh shows the level its screen size reaches, swapping its geometry, material and castShadow.'
   ) satisfies z.ZodType<LodDef>;
+
+/** A mesh's `lod: { auto: true, ... }` (LodAutoDef in core/Lod/LodTypes.ts, p348 §5). */
+export const LodAutoDefSchema = z
+  .strictObject({
+    auto: z.literal(true),
+    maxPixelError: z
+      .number()
+      .gt(0)
+      .optional()
+      .describe(
+        'The largest simplification error, in pixels at a viewport height of 1080, a level may show. Smaller keeps detail longer. Default 1.'
+      ),
+    cullScreenSize: LodDefSchema.shape.cullScreenSize,
+    hysteresis: LodDefSchema.shape.hysteresis,
+    bias: LodDefSchema.shape.bias,
+  })
+  .describe(
+    "Levels of detail (p348) from the geometry's LOD chain (p347: `lodChain` in its *.importedAsset.json): each level is used while its simplification error stays within maxPixelError pixels. Without a chain the mesh stays on level 0 (warned)."
+  ) satisfies z.ZodType<LodAutoDef>;
+
+/** A mesh's `lod`: its levels, or `AUTO` for its geometry's LOD chain (MeshLodDef). */
+export const MeshLodDefSchema = z.union([
+  LodDefSchema,
+  LodAutoDefSchema,
+  z
+    .literal('AUTO')
+    .describe(
+      "Levels of detail (p348) from the geometry's LOD chain, with the defaults: `{ auto: true }`."
+    ),
+]) satisfies z.ZodType<MeshLodDef>;

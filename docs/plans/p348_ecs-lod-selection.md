@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: ECS, Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 1.3)
 Blocks: p351_impostor-billboard-lod.md (needs Phase 3's per-level instanced pools), p354_gpu-driven-culling.md
@@ -202,17 +202,18 @@ member, so it can't beat §4.2's one draw per level on draw count; the question 
 
 or `"lod": "AUTO"` (or `{ "auto": true, "maxPixelError": 1, "cullScreenSize": 0.004 }`), which
 reads the geometry's p347 chain. Each level's screen size comes from its error: a level is
-used while its world-space error `e × r` projects to at most `maxPixelError` pixels at a reference
-viewport height of 1080. This needs no per-asset tuning, and the global bias still scales it.
+used while its world-space error `error × extent` (p347's error is relative to the chain's
+`extent`, the base's largest bounding box side) projects to at most `maxPixelError` pixels at a
+reference viewport height of 1080. This needs no per-asset tuning, and the global bias still
+scales it.
 
 How a chain is made stays on the asset, not the mesh (p347 Phase 2): an `*.importedAsset.json`'s
 `lodChain` generates the chains of its geometries after the import, and code-made geometry calls
 `generateLodChain`. `meshSchema` gets no `lodChain`. Several meshes can share a geometry, and its
-one chain would have to pick one mesh's options. To decide here: what `lod: 'AUTO'` does on a
-geometry without a chain. It could generate one with the default options, which hides a missing
-`lodChain` and costs a simplify at the first mesh. Or it could warn and stay on level 0. It also
-has to cover a chain that's still pending (`isLodChainPending`) when the mesh is created: stay on
-level 0 until it resolves.
+one chain would have to pick one mesh's options. Decided: `lod: 'AUTO'` on a geometry without a
+chain warns and stays on level 0 (generating one with the default options would hide a missing
+`lodChain` and cost a simplify at the first mesh). A chain that's still requested or pending when
+the mesh is created keeps it on level 0 until it resolves.
 
 Code: `setMeshLod(entityId, def, world)` / `removeMeshLod(entityId, world)` in `MeshManager.ts`,
 and the same `lod` option on `createMeshEntity`'s props.
@@ -288,10 +289,45 @@ As built:
   view (disabled or frustum-culled) and the total, along with the last frame's stats and the
   controls. Nothing is persisted.
 
-### Phase 2 — JSON and `AUTO`
+### Phase 2 — JSON and `AUTO` — done
 
 1. `lod` in `meshSchema` (§5), compiled into `.schemas/`.
 2. `AUTO` from p347 chains.
+
+As built:
+
+- Schema (`schemas/lodSchema.ts`): `LodDefSchema` (levels strictly descending, checked with a
+  path to the offending level), `LodAutoDefSchema` and `MeshLodDefSchema` (either, or `'AUTO'`),
+  each `satisfies` its hand-written type in `Lod/LodTypes.ts`. The mesh props and the per-scene
+  overrides both take it (an override replaces the whole `lod`).
+- Types: `LodAutoDef` is `{ auto: true, maxPixelError? }` plus `cullScreenSize`, `hysteresis` and
+  `bias` (passed through); `MeshLodDef = LodDef | LodAutoDef | 'AUTO'` is what `setMeshLod` and
+  `createMeshEntity`'s `lod` take. The `LOD` component only ever holds a concrete `LodDef`: `AUTO`
+  is resolved before the component is added, so selection and apply didn't change.
+- Thresholds (`Lod/LodAuto.ts`, `lodDefFromChain`): chain level k is fine while
+  `s ≤ 2 × radius × maxPixelError / (error_k × extent × 1080)`, `radius` being the LOD radius
+  (`getConservativeGeometryRadius`, what the component caches). Level i is used down to where the
+  next kept level becomes fine; the last level's `screenSize` is 0. A level the next one is never
+  worse than (errors not increasing) is dropped. A chain without levels gives a one-level LOD when
+  `cullScreenSize` is set, else nothing (warned).
+- `setMeshLod` with `AUTO` loads `Lod/LodAuto.ts` on demand (like `LodChains`; a static import
+  would also close a cycle MeshManager → SpatialIndexSystem → SceneLoader → MeshManager) and
+  returns `Promise<boolean>`: whether the LOD was set (a concrete def resolves true at once).
+  Until then the mesh has no `LOD`. A later `setMeshLod` / `removeMeshLod` cancels the wait
+  (per-world `pendingAutoLods`), as does deleting the entity or swapping its geometry.
+- The race §5 didn't name: an import's `lodChain` generation only starts once `LodChains` has
+  loaded, after `importAssetAsync` resolved, so a mesh created right after the import (every JSON
+  mesh, SceneLoader) found neither a chain nor a pending one. `Lod/LodChainRequests.ts`
+  (import-free) tracks a request from the moment `requestLodChains` makes it, and `AUTO` awaits it
+  and then `getPendingLodChain` (new in `LodChains.ts`) before reading the chain.
+- Verified in the dev app (WebGPU, headless Chrome, through the app's modules): Suzanne imported
+  with `lodChain: { permissive: true }` and a mesh created synchronously after the import (the
+  request tracked, no chain yet) gets `AUTO` levels once the chain lands, with thresholds equal to
+  the formula (1 px at 1080 for both levels); a sweep around each threshold switches at
+  `t` and `t × 0.9`, not inside the hysteresis band, and culls below `cullScreenSize`. A geometry
+  without a chain warns and gets no LOD; `generateLodChain` pending at `setMeshLod` is awaited;
+  `removeMeshLod`, a replacing `setMeshLod` and deleting the entity all resolve the wait to false.
+- The debug tab is unchanged: it shows `AUTO` meshes like any other once their LOD is set.
 
 ### Phase 3 — Instanced pools
 

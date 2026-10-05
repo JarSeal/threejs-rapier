@@ -27,6 +27,18 @@ export type LodDef = {
   bias?: number;
 };
 
+/** Levels read from the geometry's LOD chain (p347), each used while its simplification error
+ * projects to at most `maxPixelError` pixels (p348 §5). */
+export type LodAutoDef = {
+  auto: true;
+  /** The largest error, in pixels at a viewport height of 1080, a level may show. Default 1. */
+  maxPixelError?: number;
+} & Omit<LodDef, 'levels'>;
+
+/** What a mesh's `lod` can be: its levels, or `AUTO` (= `{ auto: true }`) for its geometry's
+ * LOD chain. */
+export type MeshLodDef = LodDef | LodAutoDef | 'AUTO';
+
 /** A level with its assets resolved, what the apply step assigns to the mesh. */
 export type LodResolvedLevel = {
   geometry: THREE.BufferGeometry;
