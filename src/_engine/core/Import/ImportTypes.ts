@@ -4,6 +4,7 @@ import type { TexOpts } from '../Texture';
 import type { MeshProps } from '../MeshManager';
 import type { CoreEntityOpts } from '../../schemas/_helperSchemas';
 import type { GeneratedAssetUrls } from '../Assets/AssetUrl';
+import type { LodChainOptions } from '../Lod/LodSimplify';
 import type * as THREE from 'three/webgpu';
 
 /** Plain, structured-clone-safe vector (no THREE classes: a manifest must survive a worker hop). */
@@ -31,6 +32,11 @@ export type ImportAssetParams = {
   /** Registers the geometries as persistent (they survive a ref count of 0 and
    * releaseImportedAsset without `includePersistent`). */
   isPersistent?: boolean;
+  /** Generate a LOD chain (generateLodChain, p347) for every rendered geometry after the import:
+   * true for the default options, or the options. Not awaited by the import; collider-only nodes
+   * and skinned or morph-target geometry are skipped. A geometry that already has a chain keeps
+   * it. Default false. */
+  lodChain?: boolean | LodChainOptions;
   /** Throw instead of logging an error and resolving to null. */
   throwOnError?: boolean;
   /** Name/description for debug tooling (the Assets debugger tab). */

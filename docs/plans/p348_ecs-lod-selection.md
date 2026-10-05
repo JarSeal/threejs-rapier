@@ -206,6 +206,15 @@ reads the geometry's p347 chain. Each level's screen size comes from its error: 
 used while its world-space error `e × r` projects to at most `maxPixelError` pixels at a reference
 viewport height of 1080. This needs no per-asset tuning, and the global bias still scales it.
 
+How a chain is made stays on the asset, not the mesh (p347 Phase 2): an `*.importedAsset.json`'s
+`lodChain` generates the chains of its geometries after the import, and code-made geometry calls
+`generateLodChain`. `meshSchema` gets no `lodChain`. Several meshes can share a geometry, and its
+one chain would have to pick one mesh's options. To decide here: what `lod: 'AUTO'` does on a
+geometry without a chain. It could generate one with the default options, which hides a missing
+`lodChain` and costs a simplify at the first mesh. Or it could warn and stay on level 0. It also
+has to cover a chain that's still pending (`isLodChainPending`) when the mesh is created: stay on
+level 0 until it resolves.
+
 Code: `setMeshLod(entityId, def, world)` / `removeMeshLod(entityId, world)` in `MeshManager.ts`,
 and the same `lod` option on `createMeshEntity`'s props.
 

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { DebugDataSchema } from './_helperSchemas';
 import { TexOptsSchema } from './textureSchema';
+import { LodChainSchema } from './lodChainSchema';
 import {
   AssetFileNameSchema,
   GeneratedAssetFieldsSchema,
@@ -27,6 +28,8 @@ export const ImportedAssetOverridesSchema = z.object({
   /** Only import one node, by child index (or nested index path) of the glTF root. */
   meshIndex: z.union([z.number(), z.array(z.number())]).optional(),
   isPersistent: z.boolean().optional(),
+  /** Generate a LOD chain for each rendered geometry after the import (p347). */
+  lodChain: LodChainSchema.optional(),
   throwOnError: z.boolean().optional(),
   debugData: DebugDataSchema.optional(),
 });
