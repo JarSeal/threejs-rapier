@@ -47,6 +47,49 @@ const createSlotMaterial = (manifest: ImportedAssetManifest) => {
   return createMaterial({ id: `${manifest.id}_material`, type: 'STANDARD', params });
 };
 
+// p348 Phase 1 check: a sphere with three hand-made levels, by segment count, each in its own
+// colour (level 0 green, 1 yellow, 2 red), so a swap shows. Level 2 casts no shadow, and below
+// cullScreenSize the sphere hides. With the radius 0.5 and the camera's fov 50, level 0 holds to
+// ~3.6 m, level 1 to ~10.7 m, level 2 to ~107 m.
+const createLodTestMesh = () => {
+  const levelGeo = (id: string, widthSegments: number, heightSegments: number) =>
+    createGeometry({ id, type: 'SPHERE', params: { radius: 0.5, widthSegments, heightSegments } });
+  const levelMat = (id: string, color: number) =>
+    createMaterial({ id, type: 'STANDARD', params: { color } });
+
+  const lod1Geo = levelGeo('p348_sphere_lod1', 16, 8);
+  const lod2Geo = levelGeo('p348_sphere_lod2', 6, 4);
+  const lod1Mat = levelMat('p348_sphere_lod1_material', 0xe0c020);
+  const lod2Mat = levelMat('p348_sphere_lod2_material', 0xd03020);
+  createMeshEntity(
+    {
+      geo: levelGeo('p348_sphere_lod0', 64, 32),
+      mat: levelMat('p348_sphere_lod0_material', 0x30c040),
+      position: { x: 3.6, y: 0.5, z: 1.5 },
+      castShadow: true,
+      preWarm: true,
+      lod: {
+        levels: [
+          { screenSize: 0.3 },
+          {
+            screenSize: 0.1,
+            geo: lod1Geo.userData.id,
+            mat: lod1Mat.userData.id,
+          },
+          {
+            screenSize: 0.03,
+            geo: lod2Geo.userData.id,
+            mat: lod2Mat.userData.id,
+            castShadow: false,
+          },
+        ],
+        cullScreenSize: 0.01,
+      },
+    },
+    { appId: 'p348LodSphere' }
+  );
+};
+
 export const scene = async () => {
   createCameraEntity(
     {
@@ -72,6 +115,8 @@ export const scene = async () => {
     },
     { appId: 'p300Sun' }
   );
+
+  createLodTestMesh();
 
   const textures = await Promise.all(
     TEXTURES.map(({ id, fileName, texOpts }) => loadTextureAsync({ id, fileName, texOpts }))

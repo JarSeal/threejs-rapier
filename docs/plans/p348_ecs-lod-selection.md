@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: ECS, Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 1.3)
 Blocks: p351_impostor-billboard-lod.md (needs Phase 3's per-level instanced pools), p354_gpu-driven-culling.md
@@ -231,7 +231,7 @@ A "LOD" debug drawer tab (`core/Debug/_dbg__LOD.ts`):
 
 ## 7. Phases
 
-### Phase 1 — Core
+### Phase 1 — Core — done
 
 1. `LOD`, `TAG_LOD_CULLED` (fourth reason in `reconcileObject3DVisibility`), the order constant.
 2. Selection (§3) and plain-mesh apply (§4.1), with ref counting and pre-warm.
@@ -241,6 +241,52 @@ A "LOD" debug drawer tab (`core/Debug/_dbg__LOD.ts`):
 **Exit:** a debugScene test mesh with three hand-made levels (sphere segment counts) switches
 without flicker at the boundaries, also with the camera stopped right on a threshold, and FOV
 zoom keeps level 0.
+
+As built:
+
+- Exit test passed (WebGPU, headless Chrome, driven frame by frame through the app's modules).
+  The test mesh is `p348LodSphere` in `debugScene.scene.ts`: radius 0.5, 64×32 / 16×8 / 6×4
+  segments, green / yellow / red, level 2 without shadows, `cullScreenSize` 0.01.
+  - A sweep from 2 m to 150 m and back, 0.5% per frame, makes exactly the six expected
+    transitions, each within one step of its threshold distance at fov 50. The mesh always
+    shows the applied level's geometry, material and `castShadow`.
+  - Stopped exactly on each of the six thresholds, coming from either side, for 120 frames:
+    no swap and no visibility change. Jitter of ±3% every frame on each threshold: at most one
+    change.
+  - Zooming to fov 10 keeps level 0 at 8 m (level 1 at fov 50) and at 15 m (level 2 at fov 50).
+    `camera.zoom` 5 does the same.
+  - Bias, freeze and force level behave as specified, including a forced level past the cull
+    distance and a clamp to the last level. `removeMeshLod` goes back to level 0 and releases
+    the other levels' geometries (refcount 0, removed from the registry).
+- Code lives in `core/Lod/LodTypes.ts` (types only) and `core/Lod/LodSystem.ts` (hooks,
+  systems, bias, debug controls). `LodData` has a fifth field, `_levels`: `def.levels` resolved
+  against the registries when the component is added. Omitted `geo` / `mat` / `castShadow` come
+  from the previous level (level 0: the mesh's own), and a missing id warns and keeps the
+  previous level's.
+- `radius` is `getConservativeGeometryRadius` of level 0's geometry (`|center| + radius`,
+  `Spatial/SpatialIndexSystem.ts`), the same value the spatial radius provider uses.
+- Refs: the mesh holds one ref on what it shows (moved by `setMeshMaterial` and the new
+  `setMeshGeometry` in `MeshManager.ts`), and the component one on every level's assets, so
+  deletion releases them in any hook order. Removing the component restores level 0 and removes
+  `TAG_LOD_CULLED`.
+- Pre-warm: `createMeshEntity`'s compile was extracted to `preWarmMesh` (`MeshManager.ts`), and
+  `preWarm` is remembered on `mesh.userData.preWarm`, so a LOD added later pre-warms too. Each
+  distinct geometry/material/`castShadow` combination is compiled once through a stand-in mesh.
+- Both systems run at `APP_RENDER_SYNC_ORDER.LOD_SELECTION` (-1.5). Registration order puts
+  selection first. Selection hands the changed entities to apply through a per-world pending list.
+- `setLodBias` / `getLodBias` and `AppConfig.lod.bias` landed here, not in Phase 5. Phase 5 still
+  has `maxSelectionsPerFrame` and the overlay.
+- `setMeshLod` replaces an existing LOD (it removes the old one first, back to level 0). The
+  definition is read, not copied.
+- Debug controls are engine API, applied to every world: `setLodDebugOptions` /
+  `getLodDebugOptions` with `freeze`, `forceLevel` (wins over freeze, unhides LOD-culled
+  entities, clamps to an entity's last level) and `useActiveCamera` (§3.3's option, built here).
+  `getLodFrameStats(world)` gives selections, swaps (last frame and total) and the selection
+  time, which is measured only in the debug environment.
+- The tab (`core/Debug/_dbg__LOD.ts`, id `lodControls`, last in the default tab order, `lod`
+  icon) covers the default world. It shows on-screen entities per level, plus LOD culled, out of
+  view (disabled or frustum-culled) and the total, along with the last frame's stats and the
+  controls. Nothing is persisted.
 
 ### Phase 2 — JSON and `AUTO`
 

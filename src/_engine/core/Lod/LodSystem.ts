@@ -3,14 +3,24 @@ import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 import { ECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { reconcileObject3DVisibility } from '../ECS/ECSCoreSystems';
-import { getMainCamera } from '../CameraManager';
+import { getActiveCamera, getMainCamera } from '../CameraManager';
 import { getConfig, IS_DEBUG_ENV } from '../Config';
 import { decGeometryRef, getGeometryRegistry, incGeometryRef } from '../Geometry';
 import { decMaterialRef, getMaterialRegistry, incMaterialRef } from '../Material';
 import { preWarmMesh, setMeshGeometry, setMeshMaterial } from '../MeshManager';
 import { getConservativeGeometryRadius } from '../Spatial/SpatialIndexSystem';
 import { lwarn } from '../../utils/Logger';
+import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
 import type { LodData, LodResolvedLevel } from './LodTypes';
+
+// Debug
+type LodDebugModule = typeof import('../Debug/_dbg__LOD');
+let debugGUI: DebugModuleRef<LodDebugModule> | null = null;
+
+export const registerLodDebugGUI = async () => {
+  debugGUI = await loadDebugModuleAsync(() => import('../Debug/_dbg__LOD'));
+  useDebug(debugGUI)?._createLodDebugGUI();
+};
 
 // LOD selection and apply (docs/plans/p348_ecs-lod-selection.md). `LOD` is the opt-in definition
 // and the selected/applied level; TAG_LOD_CULLED is the runtime state "beyond the last level",
@@ -42,6 +52,54 @@ export const getLodBias = () => (globalBias ??= getConfig().lod?.bias ?? 1);
 export const setLodBias = (bias: number) => {
   globalBias = bias;
 };
+
+// --- DEBUG CONTROLS AND STATS ---
+
+/** Overrides of the selection, for inspecting levels (the LOD debug tab). Every world. */
+export type LodDebugOptions = {
+  /** Stops selecting: every entity keeps its level and LOD-culled state. */
+  freeze: boolean;
+  /** -1 = off. Otherwise every entity shows this level (or its last, when it has fewer) and none
+   * is LOD-culled. Wins over `freeze`. */
+  forceLevel: number;
+  /** Selects against the active camera (eg. the debug camera) instead of the main camera. */
+  useActiveCamera: boolean;
+};
+
+const debugOptions: LodDebugOptions = { freeze: false, forceLevel: -1, useActiveCamera: false };
+
+export const getLodDebugOptions = (): Readonly<LodDebugOptions> => debugOptions;
+
+/** Changes the selection's debug overrides ({@link LodDebugOptions}), from the next frame. */
+export const setLodDebugOptions = (opts: Partial<LodDebugOptions>) => {
+  Object.assign(debugOptions, opts);
+};
+
+/** What the LOD systems did in a world's last frame. */
+export type LodFrameStats = {
+  /** Entities whose level was (re)selected. */
+  selections: number;
+  /** Level swaps applied. */
+  applies: number;
+  /** Level swaps applied since the start. */
+  totalApplies: number;
+  /** lodSelectionSystem's duration. Measured in the debug environment only (else 0). */
+  selectionMs: number;
+};
+
+const frameStats = new WeakMap<ECSWorld, LodFrameStats>();
+
+const getFrameStats = (world: ECSWorld) => {
+  let stats = frameStats.get(world);
+  if (!stats) {
+    stats = { selections: 0, applies: 0, totalApplies: 0, selectionMs: 0 };
+    frameStats.set(world, stats);
+  }
+  return stats;
+};
+
+/** What the LOD systems did in the world's last frame. */
+export const getLodFrameStats = (world: ECSWorld): Readonly<LodFrameStats> => getFrameStats(world);
 
 // --- LEVELS AND REFS ---
 
@@ -209,37 +267,55 @@ const pendingApplies = new WeakMap<ECSWorld, number[]>();
 const _camPos = new THREE.Vector3();
 const _objPos = new THREE.Vector3();
 
+// The camera terms of the frame: screen size = worldRadius × k / distance (perspective) or
+// worldRadius × k (orthographic), k including the global bias
+let _k = 0;
+let _isOrtho = false;
+
+/** Computes the frame's camera terms. False for a camera that is neither perspective nor
+ * orthographic. */
+const setCameraTerms = (camera: THREE.Camera) => {
+  if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
+    const cam = camera as THREE.PerspectiveCamera;
+    _k = cam.zoom / Math.tan(THREE.MathUtils.DEG2RAD * cam.fov * 0.5);
+    _isOrtho = false;
+  } else if ((camera as THREE.OrthographicCamera).isOrthographicCamera) {
+    const cam = camera as THREE.OrthographicCamera;
+    _k = (2 * cam.zoom) / (cam.top - cam.bottom);
+    _isOrtho = true;
+  } else {
+    return false;
+  }
+  _k *= getLodBias();
+  camera.updateWorldMatrix(true, false);
+  _camPos.setFromMatrixPosition(camera.matrixWorld);
+  return true;
+};
+
 /**
  * Selects a level per `LOD` entity from its projected screen size (bounding-sphere diameter /
  * viewport height, × its `def.bias` × the global bias), with hysteresis, and adds or removes
  * TAG_LOD_CULLED. Uses the main camera, like frustum culling. Skips DISABLED and frustum-culled
  * entities, which keep their level: frustum culling runs first, so an entity re-entering the
- * view gets a fresh level in the same frame.
+ * view gets a fresh level in the same frame. {@link setLodDebugOptions} can freeze or force the
+ * levels, or select against the active camera.
  */
 export const lodSelectionSystem = (world: ECSWorld) => {
+  const stats = getFrameStats(world);
+  stats.selections = 0;
+  stats.selectionMs = 0;
+
   const storage = world.getStorage(ComponentType.LOD);
   if (storage.size === 0) return;
 
-  const camera = getMainCamera();
-  if (!camera) return;
-
-  // Camera terms, once per frame: screen size = worldRadius × k / distance (perspective) or
-  // worldRadius × k (orthographic)
-  let k: number;
-  let isOrtho = false;
-  if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
-    const cam = camera as THREE.PerspectiveCamera;
-    k = cam.zoom / Math.tan(THREE.MathUtils.DEG2RAD * cam.fov * 0.5);
-  } else if ((camera as THREE.OrthographicCamera).isOrthographicCamera) {
-    const cam = camera as THREE.OrthographicCamera;
-    k = (2 * cam.zoom) / (cam.top - cam.bottom);
-    isOrtho = true;
-  } else {
-    return;
+  const forceLevel = debugOptions.forceLevel;
+  const isForced = forceLevel >= 0;
+  if (debugOptions.freeze && !isForced) return;
+  if (!isForced) {
+    const camera = debugOptions.useActiveCamera ? getActiveCamera() : getMainCamera();
+    if (!camera || !setCameraTerms(camera)) return;
   }
-  k *= getLodBias();
-  camera.updateWorldMatrix(true, false);
-  _camPos.setFromMatrixPosition(camera.matrixWorld);
+  const start = IS_DEBUG_ENV ? performance.now() : 0;
 
   let pending = pendingApplies.get(world);
   if (!pending) {
@@ -248,11 +324,23 @@ export const lodSelectionSystem = (world: ECSWorld) => {
   }
   pending.length = 0;
 
+  let selections = 0;
   for (const [entityId, lod] of storage) {
     const levels = lod.def.levels;
     if (lod._levels.length === 0) continue;
     if (world.isDisabled(entityId)) continue;
     if (world.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED)) continue;
+    selections++;
+
+    if (isForced) {
+      if (world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED)) {
+        world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
+      }
+      lod.level = Math.min(forceLevel, levels.length - 1);
+      if (lod.level !== lod.applied) pending.push(entityId);
+      continue;
+    }
+
     const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
     if (!obj) continue;
 
@@ -272,11 +360,11 @@ export const lodSelectionSystem = (world: ECSWorld) => {
 
     const worldRadius = lod.radius * maxScale;
     let s: number;
-    if (isOrtho) {
-      s = worldRadius * k;
+    if (_isOrtho) {
+      s = worldRadius * _k;
     } else {
       const distance = _objPos.distanceTo(_camPos);
-      s = distance > 0 ? (worldRadius * k) / distance : Infinity;
+      s = distance > 0 ? (worldRadius * _k) / distance : Infinity;
     }
     s *= lod.def.bias ?? 1;
 
@@ -294,6 +382,9 @@ export const lodSelectionSystem = (world: ECSWorld) => {
     lod.level = selectLevel(levels, s, isCulled ? levels.length - 1 : lod.level, h);
     if (lod.level !== lod.applied) pending.push(entityId);
   }
+
+  stats.selections = selections;
+  if (IS_DEBUG_ENV) stats.selectionMs = performance.now() - start;
 };
 
 // --- APPLY ---
@@ -301,9 +392,12 @@ export const lodSelectionSystem = (world: ECSWorld) => {
 /** Applies the levels lodSelectionSystem changed this frame: a mesh's geometry, material(s) and
  * `castShadow`. */
 export const lodApplySystem = (world: ECSWorld) => {
+  const stats = getFrameStats(world);
+  stats.applies = 0;
   const pending = pendingApplies.get(world);
   if (!pending || pending.length === 0) return;
 
+  let applies = 0;
   for (let i = 0; i < pending.length; i++) {
     const entityId = pending[i];
     const lod = world.getComponent(entityId, ComponentType.LOD);
@@ -316,8 +410,11 @@ export const lodApplySystem = (world: ECSWorld) => {
       mesh.castShadow = level.castShadow;
     }
     lod.applied = lod.level;
+    applies++;
   }
   pending.length = 0;
+  stats.applies = applies;
+  stats.totalApplies += applies;
 };
 
 ECSWorld.registerPlugin((world) => {

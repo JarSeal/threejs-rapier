@@ -23,6 +23,7 @@ import infoIcon from './svg/info-circle-fill.svg?raw';
 import lightBulbIcon from './svg/lightbulb-fill.svg?raw';
 import lampIcon from './svg/lamp.svg?raw';
 import lockIcon from './svg/lock-fill.svg?raw';
+import lodIcon from './svg/lod.svg?raw';
 import memoryIcon from './svg/memory.svg?raw';
 import objectsCubesIcon from './svg/cubes-wireframe.svg?raw';
 import pauseIcon from './svg/pause-fill.svg?raw';
@@ -71,6 +72,7 @@ const icons = {
   lightBulb: lightBulbIcon,
   lamp: lampIcon,
   lock: lockIcon,
+  lod: lodIcon,
   memory: memoryIcon,
   objectsCubes: objectsCubesIcon,
   pause: pauseIcon,

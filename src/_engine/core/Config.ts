@@ -34,6 +34,7 @@ export const DEFAULT_DEBUG_DRAWER_TAB_ORDER = [
   'charactersControls',
   'ecsControls',
   'spatialGridControls',
+  'lodControls',
 ];
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
