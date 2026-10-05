@@ -21,11 +21,13 @@ import type { MaterialAsset } from '../../../../schemas/materialSchema';
 import { textureMapKeys } from '../../../../utils/constants';
 import { addDebugToast } from '../../../../debug/DebuggerGUI';
 import { createViewCamera, type ViewCamera } from '../_dbg__ViewCamera';
+import { createEditorDrawer, type EditorDrawer } from '../_dbg__EditorDrawer';
 import {
   createMaterialSelector,
   type MaterialSelector,
   type MaterialSelectorEntry,
 } from './_dbg__MaterialEditorSelector';
+import { createMaterialEditorTabs } from './_dbg__MaterialEditorTabs';
 import { lerror, lwarn } from '../../../../utils/Logger';
 import styles from './MaterialEditor.module.scss';
 
@@ -78,8 +80,14 @@ type Stage = {
   errorMaterial: THREE.Material;
 };
 
-/** The editor's DOM (created on the first enter): the HUD with the selector and the notice. */
-type EditorUI = { hud: HTMLElement; notice: HTMLElement; selector: MaterialSelector };
+/** The editor's DOM (created on the first enter): the HUD with the selector, the right drawer and
+ * the notice. */
+type EditorUI = {
+  hud: HTMLElement;
+  notice: HTMLElement;
+  selector: MaterialSelector;
+  drawer: EditorDrawer;
+};
 
 let stage: Stage | null = null;
 let ui: EditorUI | null = null;
@@ -93,6 +101,8 @@ let current: { materialId: string; copyId: string } | null = null;
  * discarded. */
 let loadToken = 0;
 let loadingMaterialId: string | null = null;
+/** The material the right drawer's tabs were built for (they are rebuilt per material). */
+let drawerMaterialId: string | null = null;
 /** Why a material failed to load, by material id (cleared by its next successful load). */
 const failures = new Map<string, string>();
 /** The stage's settings (constants here; p085 makes them editable per material). */
@@ -342,7 +352,31 @@ const setNotice = (text: string) => {
   if (ui) ui.notice.textContent = text;
 };
 
-const refreshSelector = () => ui?.selector.refresh();
+/** Re-reads the selected, loading and failed material into the selector and the right drawer. */
+const refreshUI = () => {
+  if (!ui) return;
+  ui.selector.refresh();
+  if (drawerMaterialId === selectedMaterialId) {
+    ui.drawer.refresh();
+    return;
+  }
+  drawerMaterialId = selectedMaterialId;
+  ui.drawer.rebuild();
+};
+
+/** What the editor is doing with the selected material, for the drawer's info (null when its
+ * copy is shown). */
+const getSelectedStatus = () => {
+  const id = selectedMaterialId;
+  if (!id) return null;
+  if (id === loadingMaterialId) return 'Loading…';
+  const failure = failures.get(id);
+  if (failure) return `Failed to load: ${failure}`;
+  const asset = getMaterialAssets()[id];
+  if (asset && getPreviewKind(asset.type) === 'NONE')
+    return `Preview not supported for ${asset.type}`;
+  return null;
+};
 
 const showLoadError = (materialId: string, message: string, err?: unknown) => {
   lerror(`Could not load material "${materialId}" in the material editor: ${message}`, err);
@@ -373,7 +407,7 @@ export const loadEditorMaterial = async (materialId: string | null) => {
   if (!materialId) {
     deleteCurrentCopy();
     showPreview('MESH', null);
-    refreshSelector();
+    refreshUI();
     return false;
   }
 
@@ -383,13 +417,13 @@ export const loadEditorMaterial = async (materialId: string | null) => {
     selectedMaterialId = null;
     deleteCurrentCopy();
     showPreview('MESH', null);
-    refreshSelector();
+    refreshUI();
     return false;
   }
   const unavailableReason = getUnavailableReason(asset);
   if (unavailableReason) {
     showLoadError(materialId, unavailableReason);
-    refreshSelector();
+    refreshUI();
     return false;
   }
 
@@ -399,13 +433,13 @@ export const loadEditorMaterial = async (materialId: string | null) => {
     showPreview('NONE', null);
     setNotice(`Preview not supported for ${asset.type}`);
     failures.delete(materialId);
-    refreshSelector();
+    refreshUI();
     return true;
   }
 
   // The previous copy stays on the stage until this one is ready
   loadingMaterialId = materialId;
-  refreshSelector();
+  refreshUI();
   await loadMissingTextures(asset);
   if (token !== loadToken) return false;
   loadingMaterialId = null;
@@ -427,7 +461,7 @@ export const loadEditorMaterial = async (materialId: string | null) => {
   } catch (err) {
     showLoadError(materialId, err instanceof Error ? err.message : String(err), err);
   }
-  refreshSelector();
+  refreshUI();
   return token === loadToken;
 };
 
@@ -451,8 +485,28 @@ const createUI = (): EditorUI => {
     getLoadingId: () => loadingMaterialId,
     getFailure: (id) => failures.get(id),
   });
+  drawerMaterialId = selectedMaterialId;
+  const drawer = createEditorDrawer({
+    id: MATERIAL_EDITOR_VIEW_ID,
+    parent: hud,
+    togglerText: 'Material',
+    headingLabel: 'MATERIAL',
+    getTitle: () => {
+      const asset = selectedMaterialId ? getMaterialAssets()[selectedMaterialId] : undefined;
+      return asset ? asset.debugData?.name || asset.id : 'No material selected';
+    },
+    getTabs: () =>
+      createMaterialEditorTabs({
+        getAsset: () => (selectedMaterialId && getMaterialAssets()[selectedMaterialId]) || null,
+        getTextureIds: getMaterialTextureIds,
+        isTextureLoaded: (id) => Boolean(getTexture(id)),
+        getStatus: getSelectedStatus,
+        getViewCamera: () => viewCam,
+        refresh: () => ui?.drawer.refresh(),
+      }),
+  });
   getHUDRootCMP().elem.append(hud);
-  return { hud, notice, selector };
+  return { hud, notice, selector, drawer };
 };
 
 const onEnter = () => {
@@ -462,6 +516,7 @@ const onEnter = () => {
   ui ??= createUI();
   // The HUD was hidden outside the view (display: none loses the scroll position)
   ui.selector.restoreScroll();
+  ui.drawer.setActive(true);
   isEntered = true;
   // Not awaited: the view shows the stage while the textures load
   void loadEditorMaterial(selectedMaterialId);
@@ -470,6 +525,8 @@ const onEnter = () => {
 const onExit = () => {
   isEntered = false;
   viewCam?.onExit();
+  // Hands debugDrawerOpen back (the scene drawer sets it again on the switch back)
+  ui?.drawer.setActive(false);
   // Discards a load in progress
   loadToken++;
   loadingMaterialId = null;
@@ -493,6 +550,7 @@ export const _registerMaterialEditorView = () => {
     onEnter,
     onExit,
     mainUpdate: () => viewCam?.mainUpdate(),
+    toggleDrawer: () => ui?.drawer.toggle(),
     update: (delta) => {
       if (!stageSettings.autoRotateSpeed || !stage) return;
       stage.previewRoot.rotation.y += delta * stageSettings.autoRotateSpeed * Math.PI * 2;

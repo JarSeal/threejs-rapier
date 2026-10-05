@@ -53,10 +53,25 @@ $cardSlotSize: 5.6rem;
   background-color: variables.$debugGuiBackground;
   color: variables.$debugTextColor;
   font-size: 1.2rem;
+  transition: right 0.2s ease-in-out;
+
+  // Its right edge follows the open right drawer (plan DD5), with the drawer's own breakpoints:
+  // the grid reflows to the rest of the width. Under the full-width drawer it stays full width.
+  :global(body.debugDrawerOpen) & {
+    right: variables.$drawerWidth;
+
+    @media screen and (max-width: variables.$breakpointSmall) {
+      right: variables.$drawerWidthSmall;
+    }
+    @media screen and (max-width: variables.$breakpointXSmall) {
+      right: 0;
+    }
+  }
 }
 
 .selectorHeader {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 1rem;
   padding: 0.6rem 1.2rem;
@@ -141,10 +156,11 @@ $cardSlotSize: 5.6rem;
   }
 }
 
-// Reflows to any width (the right drawer narrows it, plan DD5)
+// Reflows to any width (the right drawer narrows it, plan DD5); a column narrower than the
+// minimum takes the whole row
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
   gap: 0.8rem;
 }
 
@@ -271,4 +287,42 @@ $cardSlotSize: 5.6rem;
   color: variables.$debugTextColorDark;
   font-size: 1rem;
   letter-spacing: 0.03em;
+}
+
+// The right drawer's read-only info sections (_dbg__MaterialEditorTabs.ts)
+.infoSection {
+  margin-bottom: 1.2rem;
+  font-size: 1.2rem;
+}
+
+.infoHeading {
+  margin: 0 0 0.6rem;
+  font-size: 1.3rem;
+}
+
+.infoList {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.4rem 1.2rem;
+  margin: 0;
+
+  dt {
+    color: variables.$debugTextColorDark;
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+  }
+}
+
+.mono {
+  font-family: monospace;
+  font-size: 1.1rem;
+}
+
+.infoEmpty {
+  margin: 0;
+  color: variables.$debugTextColorDark;
 }

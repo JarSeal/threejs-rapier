@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Editor-Creator View, Materials
 Blocks: p085_material-editor-params-and-persistence.md
 Related: \_DONE_p083_editor-creator-view.md (epic), `createDebuggerTab` (p105, implemented: the right drawer reuses its declarative tabs), the layered sky box (p111, implemented: skybox environments in the editor can now build on it, still a non-goal here), the debug environment ball (`debug/EnvBall.ts`, p115, implemented: same "ball + environment" idea for the scene)
@@ -144,7 +144,7 @@ Each phase compiles, lints and leaves the app working.
 
 1. **View, stage and camera.** — done. Register the view with its title and the `material` icon (the view tools group appears, Runtime + Material editor), the stage (ball, lights, studio environment, background), the camera rig with the default pose, and `loadEditorMaterial` hard-wired to the first material. Check the `RoomEnvironment` PMREM on WebGPU and on WebGL2 (`forceWebGL`) and record the outcome in the Implementation notes.
 2. **Material selector.** — done. Bottom drawer, cards, filter, click to load, texture loading, the load token, errors and unavailable materials, non-mesh preview objects.
-3. **Right drawer.** `_dbg__EditorDrawer.ts`, the two tabs with their info content, the `debugDrawerOpen` shift, `h`, and the selector's responsive offsets.
+3. **Right drawer.** — done. `_dbg__EditorDrawer.ts`, the two tabs with their info content, the `debugDrawerOpen` shift, `h`, and the selector's responsive offsets.
 4. **Persistence.** Per-material camera pose, UI state, and restore on refresh.
 
 ## Non-goals
@@ -230,3 +230,24 @@ Each phase compiles, lints and leaves the app working.
   - Injected test materials (in the page's generated data only): `POINTS`, `LINEDASHED` and `SPRITE` previews, the `SHADOW` notice, a bad type (toast, magenta ball, failed card with the reason) and a TSL material without a graph (unavailable, click ignored).
   - A scene load while the editor is active keeps the copy; after the switch back to Runtime no `__matEditor__` material is registered, and the selector is hidden.
   - Not verified: WebGPU (headless WebGPU can't render on WSL2), and the production-gathered fallback (`yarn build:test`).
+
+### Phase 3
+
+- **Code drift since the plan.**
+  - DD6's `createEditorDrawer({ id, lsKey, … })` and DD8's single `AEK_debugMatEditorUI` record disagree about who persists the drawer. Built like the selector: the drawer is UI only and the editor will persist its state in Phase 4, so it has no `lsKey`.
+  - A CMP's `id` isn't the element's DOM id (only with `idAttr`), and a CMP `html` template keeps only its first root element.
+- **As built.**
+  - `createEditorDrawer({ id, parent, togglerText, headingLabel, getTitle, getTabs, initialState, onStateChange })` returns `{ cmp, toggle(open?), isOpen, setActive(active), rebuild, refresh, getState, dispose }`. It mounts its tabs through a `createTabHost` of its own and reuses `DebuggerGUI.module.scss` (drawer, toggler, title row, close button, tab menu buttons, tab container); `EditorDrawer.module.scss` only makes it a flex column, so the tab container takes the remaining height without the scene drawer's JS height.
+  - `setActive(true | false)` from the view's `onEnter` / `onExit`: only an active drawer sets `debugDrawerOpen` and runs its tab's refreshes. On exit it removes the class, and p083's `resumeScene` gives it back to the scene drawer. The scene drawer's own open state is untouched by a round trip.
+  - State: `{ isOpen, currentTabId, scrollPos: Record<tabId, number> }`. Each tab's scroll position is kept in memory and put back on a tab switch, a rebuild and an enter (`display: none` loses it). It isn't persisted yet (Phase 4).
+  - The editor rebuilds the drawer (`getTabs()` again, title, menu) only when the selected material changes, and otherwise refreshes it: `refreshUI()` replaces Phase 2's `refreshSelector()`.
+  - Tab menu buttons are icons, like the scene drawer's: Params `material`, Settings `gear`.
+  - Params: one info section (a CMP `html` function, so a refresh updates it): status (loading, the load failure, "Preview not supported"), id, name, type, source, description, TSL file, and textures (each marked "(not loaded)" when it isn't registered). Rows without a value are left out. "No material selected" without one.
+  - Settings: the camera's position, target and FOV, refreshed on the OrbitControls `change` event while the tab is mounted (its `onOpen`; orbits, gizmo moves and the reset all fire it), and "Reset camera to default" (`viewCam.resetPose()`).
+  - The selector's grid columns are `minmax(min(18rem, 100%), 1fr)` and its header wraps: at `$breakpointSmall` the drawer (30rem) leaves less than one 18rem column.
+- **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2 on WSL2, Playwright):
+  - With the scene drawer open, entering the editor clears `debugDrawerOpen` (editor drawer closed); the toggler, the close button and `h` open and close the editor drawer and set and clear the class; back in Runtime the open scene drawer has it again; with both closed it stays off.
+  - Selecting a material updates the title and the Params info. An orbit updates the pose readout, and the reset puts back `(0, 0.6, 4.8)`.
+  - Widths: 1400 px, selector right edge = drawer left edge (1000); 460 px, drawer 300 px and selector 160 px with every card visible; 360 px, full-width drawer over a full-width selector.
+  - No new console errors or warnings (only Rapier's init deprecation warning).
+  - Not verified: WebGPU (headless WebGPU can't render on WSL2).

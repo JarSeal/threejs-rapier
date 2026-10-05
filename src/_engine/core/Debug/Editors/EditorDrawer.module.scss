@@ -1,0 +1,23 @@
+// An editor view's right drawer (_dbg__EditorDrawer.ts). It reuses the scene debug drawer's
+// styles (DebuggerGUI.module.scss); this only lays its rows out as a column, so the tab container
+// takes the rest of the height (the scene drawer measures it in JS)
+.editorDrawer {
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tabsMenu {
+  flex: 0 0 auto;
+}
+
+.tabsContainer {
+  flex: 1 1 auto;
+  min-height: 0;
+}
