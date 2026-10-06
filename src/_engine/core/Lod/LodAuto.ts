@@ -31,7 +31,8 @@ const MIN_ERROR = 1e-9;
  * next one is never worse than (its error isn't below the next one's) is left out.
  * @param chain the geometry's chain
  * @param radius the LOD radius (the base's `|center| + radius`, as the LOD component caches it)
- * @param auto `maxPixelError`, and the `cullScreenSize`, `hysteresis` and `bias` passed through
+ * @param auto `maxPixelError`, and the `cullScreenSize`, `hysteresis`, `bias` and `fadeSeconds`
+ *   passed through
  * @returns the definition, level 0 being the mesh's own geometry
  */
 export const lodDefFromChain = (
@@ -62,6 +63,7 @@ export const lodDefFromChain = (
   if (auto.cullScreenSize !== undefined) def.cullScreenSize = auto.cullScreenSize;
   if (auto.hysteresis !== undefined) def.hysteresis = auto.hysteresis;
   if (auto.bias !== undefined) def.bias = auto.bias;
+  if (auto.fadeSeconds !== undefined) def.fadeSeconds = auto.fadeSeconds;
   return def;
 };
 

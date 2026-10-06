@@ -1087,13 +1087,18 @@
                   "description": "Multiplies the screen size: >1 keeps detail longer. Default 1. The global bias (AppConfig.lod.bias, setLodBias) applies on top.",
                   "type": "number",
                   "exclusiveMinimum": 0
+                },
+                "fadeSeconds": {
+                  "description": "How long a level change (or hiding and showing) cross-fades with a dither, in seconds; 0 switches at once and leaves the level materials undithered. Default AppConfig.lod.fadeSeconds (0.25, setLodFadeSeconds).",
+                  "type": "number",
+                  "minimum": 0
                 }
               },
               "required": [
                 "levels"
               ],
               "additionalProperties": false,
-              "description": "Levels of detail (p348): each frame the mesh shows the level its screen size reaches, swapping its geometry, material and castShadow."
+              "description": "Levels of detail (p348): each frame the mesh shows the level its screen size reaches, swapping its geometry, material and castShadow, cross-faded over fadeSeconds."
             },
             {
               "type": "object",
@@ -1122,6 +1127,11 @@
                   "description": "Multiplies the screen size: >1 keeps detail longer. Default 1. The global bias (AppConfig.lod.bias, setLodBias) applies on top.",
                   "type": "number",
                   "exclusiveMinimum": 0
+                },
+                "fadeSeconds": {
+                  "description": "How long a level change (or hiding and showing) cross-fades with a dither, in seconds; 0 switches at once and leaves the level materials undithered. Default AppConfig.lod.fadeSeconds (0.25, setLodFadeSeconds).",
+                  "type": "number",
+                  "minimum": 0
                 }
               },
               "required": [
@@ -2285,13 +2295,18 @@
                       "description": "Multiplies the screen size: >1 keeps detail longer. Default 1. The global bias (AppConfig.lod.bias, setLodBias) applies on top.",
                       "type": "number",
                       "exclusiveMinimum": 0
+                    },
+                    "fadeSeconds": {
+                      "description": "How long a level change (or hiding and showing) cross-fades with a dither, in seconds; 0 switches at once and leaves the level materials undithered. Default AppConfig.lod.fadeSeconds (0.25, setLodFadeSeconds).",
+                      "type": "number",
+                      "minimum": 0
                     }
                   },
                   "required": [
                     "levels"
                   ],
                   "additionalProperties": false,
-                  "description": "Levels of detail (p348): each frame the mesh shows the level its screen size reaches, swapping its geometry, material and castShadow."
+                  "description": "Levels of detail (p348): each frame the mesh shows the level its screen size reaches, swapping its geometry, material and castShadow, cross-faded over fadeSeconds."
                 },
                 {
                   "type": "object",
@@ -2320,6 +2335,11 @@
                       "description": "Multiplies the screen size: >1 keeps detail longer. Default 1. The global bias (AppConfig.lod.bias, setLodBias) applies on top.",
                       "type": "number",
                       "exclusiveMinimum": 0
+                    },
+                    "fadeSeconds": {
+                      "description": "How long a level change (or hiding and showing) cross-fades with a dither, in seconds; 0 switches at once and leaves the level materials undithered. Default AppConfig.lod.fadeSeconds (0.25, setLodFadeSeconds).",
+                      "type": "number",
+                      "minimum": 0
                     }
                   },
                   "required": [

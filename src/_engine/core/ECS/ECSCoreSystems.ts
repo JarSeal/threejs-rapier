@@ -18,6 +18,9 @@ import { CoreComponentType } from './ECSRegistry';
  * fires onRemoveComponent hooks before the component is actually deleted
  * (ECS.ts), so e.g. TAG_FRUSTUM_CULLED's own onRemoveComponent would
  * otherwise see `hasComponent(TAG_FRUSTUM_CULLED)` still return `true`.
+ *
+ * A LOD-culled mesh still fading out (TAG_LOD_TRANSITIONING, Lod/LodSystem.ts) stays visible until
+ * its fade ends.
  */
 export function reconcileObject3DVisibility(
   entityId: number,
@@ -27,6 +30,7 @@ export function reconcileObject3DVisibility(
     isFrustumCulled?: boolean;
     isObjectCulled?: boolean;
     isLodCulled?: boolean;
+    isLodTransitioning?: boolean;
   }
 ): void {
   const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
@@ -38,7 +42,11 @@ export function reconcileObject3DVisibility(
   const isObjectCulled =
     overrides?.isObjectCulled ?? world.hasComponent(entityId, ComponentType.TAG_OBJECT_CULLED);
   const isLodCulled =
-    overrides?.isLodCulled ?? world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED);
+    (overrides?.isLodCulled ?? world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED)) &&
+    !(
+      overrides?.isLodTransitioning ??
+      world.hasComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING)
+    );
 
   objComp.value.visible = !isDisabled && !isFrustumCulled && !isObjectCulled && !isLodCulled;
 }

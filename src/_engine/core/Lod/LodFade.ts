@@ -139,8 +139,10 @@ const ditherMaterials = new WeakSet<THREE.Material>();
  * The cost while nothing fades: one discard test per pixel, plus, for plain meshes, one float
  * uniform written per draw.
  * @param material one material, or a per-group array
+ * @returns whether a material changed (its shaders are rebuilt at its next draw or compile)
  */
 export const enableLodDither = (material: THREE.Material | THREE.Material[]) => {
+  let isChanged = false;
   for (const m of Array.isArray(material) ? material : [material]) {
     if (ditherMaterials.has(m)) continue;
     ditherMaterials.add(m);
@@ -149,7 +151,9 @@ export const enableLodDither = (material: THREE.Material | THREE.Material[]) => 
       ? bool(maskable.maskNode as THREE.Node<'bool'>).and(lodFadeMask)
       : lodFadeMask;
     m.needsUpdate = true;
+    isChanged = true;
   }
+  return isChanged;
 };
 
 /** Whether {@link enableLodDither} was called on `material`. */

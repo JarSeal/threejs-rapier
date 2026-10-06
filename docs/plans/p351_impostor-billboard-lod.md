@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phase 1 implemented, Phase 2 sections 1-3 implemented
 Category: Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 2.2)
 Related: p299_texture-arrays-and-atlases.md (Phase 4's exported atlases), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
@@ -214,6 +214,28 @@ Sections, each reviewed before the next:
    duration, the per-object fade on both, culling included; also for an `InstancedMesh` entity (a
    p308 static cell fades as a whole). `fadeSeconds` in `*.mesh.json` / scene mesh overrides
    (`schemas/lodSchema.ts`). Measure the per-object cost on a scene with many plain LOD meshes.
+   — done: plain meshes fade through the same hooks as targets (`applyLevelTo` / `setCulledTo` /
+   `drawFade` in `LodSystem.ts` pick the target or the mesh side). A level change adds a copy of
+   the mesh showing the previous level as a child of the mesh (it follows the mesh and hides with
+   it), never raycast, holding no refs; an InstancedMesh's copy shares its instance attributes. The
+   copy is disposed at the fade's end: three r186 holds every render object in a strong set until
+   its object fires `dispose`, so a copy only removed from the scene leaks its render objects.
+   Culling fades need no copy: the mesh itself fades out or in, and `reconcileObject3DVisibility`
+   keeps a LOD-culled mesh visible while it has `TAG_LOD_TRANSITIONING`. The fade's copies are
+   `LodData._fadeIn` / `_fadeOut`. The `LOD` add hook calls `enableLodDither` on the level materials
+   unless the LOD's `fadeSeconds` is 0 (it now returns whether it changed one; then a `preWarm` mesh
+   pre-warms its own level too). Skinned meshes don't fade (a plain copy wouldn't be skinned).
+   `fadeSeconds` is in `*.mesh.json` (and so in scene overrides) and passes through `AUTO`. Checked
+   in testDebugScene (the p348 sphere and instance cell) on WebGPU and WebGL2: level fades, fades to
+   and from culled, a change mid-fade, removing the LOD and deleting the entity mid-fade; no copy
+   left after any of them, and three's render-object count back to its baseline after repeated
+   fades. Cost (WebGPU, Apple GPU, frame CPU time, 1,024 plain LOD spheres all switching at once via
+   `forceLevel`): the change frame takes 40 ms with fades against 5 ms instant, about 35 µs per mesh
+   (3 µs of it in `lodApplySystem`, the rest is three creating the copy's render objects for its
+   first draw, main and shadow pass). During the fade, 5.6-6.3 ms against 3.5 ms steady (every mesh
+   drawn twice); `lodFadeSystem` 0.1 ms; the end frame (disposing 1,024 copies) 5.7-6.9 ms. An
+   InstancedMesh's copy costs 11-14 ms per fade (the instance cell), because three builds an
+   InstancedMesh's shaders per object (main and shadow pass).
 4. **Debug:** the LOD tab's fade time scale (slow motion, to judge the fades), the fade seconds
    override (0 = pop) and the count of entities fading; the LOD window shows an entity's fade.
 5. **Close the phase:** the exit below measured, As built, CLAUDE.md's LOD sections, versions and

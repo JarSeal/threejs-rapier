@@ -73,6 +73,12 @@ export type LodData = {
   _target?: LodTarget;
   /** The running cross-fade's progress, 0 → 1, while the entity has TAG_LOD_TRANSITIONING. */
   _fade?: number;
+  /** A plain mesh's running fade: the copy fading in (the mesh; none for a fade to culled). */
+  _fadeIn?: THREE.Mesh;
+  /** A plain mesh's running fade: the copy fading out, a temporary clone showing the previous
+   * level (a child of the mesh), or the mesh itself for a fade to culled. None for a fade in from
+   * culled. */
+  _fadeOut?: THREE.Mesh;
 };
 
 /**
