@@ -203,6 +203,7 @@ const endFade = (entityId: number, world: ECSWorld, lod: LodData) => {
   if (!world.hasComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING)) return;
   drawFade(entityId, world, lod, 1);
   lod._fade = undefined;
+  lod._fadeFrom = undefined;
   world.removeComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING);
 };
 
@@ -218,8 +219,10 @@ const prepareChange = (entityId: number, world: ECSWorld, lod: LodData) => {
   );
 };
 
-const startFade = (entityId: number, world: ECSWorld, lod: LodData) => {
+/** `from`: the level shown until now, -1 from LOD culled (LodData._fadeFrom). */
+const startFade = (entityId: number, world: ECSWorld, lod: LodData, from: number) => {
   lod._fade = 0;
+  lod._fadeFrom = from;
   world.addComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING, true);
 };
 
@@ -230,7 +233,7 @@ ECSWorld.registerComponentHooks(ComponentType.TAG_LOD_CULLED, {
     if (!lod) return;
     const fade = prepareChange(entityId, world, lod);
     setCulledTo(entityId, world, lod, true, fade);
-    if (fade) startFade(entityId, world, lod);
+    if (fade) startFade(entityId, world, lod, lod.applied);
   },
   onRemoveComponent: (entityId, world) => {
     reconcileObject3DVisibility(entityId, world, { isLodCulled: false });
@@ -244,7 +247,7 @@ ECSWorld.registerComponentHooks(ComponentType.TAG_LOD_CULLED, {
       lod.applied = lod.level;
     }
     setCulledTo(entityId, world, lod, false, fade);
-    if (fade) startFade(entityId, world, lod);
+    if (fade) startFade(entityId, world, lod, -1);
   },
 });
 
@@ -364,7 +367,8 @@ const selectionCursors = new WeakMap<ECSWorld, SelectionCursor>();
 
 // --- DEBUG CONTROLS AND STATS ---
 
-/** Overrides of the selection, for inspecting levels (the LOD debug tab). Every world. */
+/** Overrides of the selection and the fades, for inspecting levels (the LOD debug tab). Every
+ * world. */
 export type LodDebugOptions = {
   /** Stops selecting: every entity keeps its level and LOD-culled state. */
   freeze: boolean;
@@ -373,9 +377,17 @@ export type LodDebugOptions = {
   forceLevel: number;
   /** Selects against the active camera (eg. the debug camera) instead of the main camera. */
   useActiveCamera: boolean;
+  /** Multiplies the time cross-fades advance by: 1 = real time, below 1 slow motion (for judging
+   * the dither), 0 holds every running fade. */
+  fadeTimeScale: number;
 };
 
-const debugOptions: LodDebugOptions = { freeze: false, forceLevel: -1, useActiveCamera: false };
+const debugOptions: LodDebugOptions = {
+  freeze: false,
+  forceLevel: -1,
+  useActiveCamera: false,
+  fadeTimeScale: 1,
+};
 
 export const getLodDebugOptions = (): Readonly<LodDebugOptions> => debugOptions;
 
@@ -998,7 +1010,7 @@ export const lodApplySystem = (world: ECSWorld) => {
     if (lod._levels[lod.level]) {
       const fade = prepareChange(entityId, world, lod);
       applyLevelTo(entityId, world, lod, lod.level, fade);
-      if (fade) startFade(entityId, world, lod);
+      if (fade) startFade(entityId, world, lod, lod.applied);
     }
     lod.applied = lod.level;
     applies++;
@@ -1009,9 +1021,9 @@ export const lodApplySystem = (world: ECSWorld) => {
 };
 
 /**
- * Advances every running cross-fade (the TAG_LOD_TRANSITIONING entities) by the frame's `dt` over
- * its `fadeSeconds`, and ends the ones that are done. Runs right after lodApplySystem, so a fade
- * started this frame is drawn at its first step.
+ * Advances every running cross-fade (the TAG_LOD_TRANSITIONING entities) by the frame's `dt` (times
+ * the `fadeTimeScale` debug option) over its `fadeSeconds`, and ends the ones that are done. Runs
+ * right after lodApplySystem, so a fade started this frame is drawn at its first step.
  */
 export const lodFadeSystem = (world: ECSWorld, dt: number) => {
   const stats = getFrameStats(world);
@@ -1025,6 +1037,7 @@ export const lodFadeSystem = (world: ECSWorld, dt: number) => {
 
   const lods = world.getStorage(ComponentType.LOD);
   const globalSeconds = getLodFadeSeconds();
+  const step = dt * Math.max(debugOptions.fadeTimeScale, 0);
   // Removing the current entry while iterating a Map is safe
   for (const [entityId] of storage) {
     const lod = lods.get(entityId);
@@ -1033,7 +1046,7 @@ export const lodFadeSystem = (world: ECSWorld, dt: number) => {
       continue;
     }
     const seconds = lod.def.fadeSeconds ?? globalSeconds;
-    const progress = seconds > 0 ? (lod._fade ?? 0) + dt / seconds : 1;
+    const progress = seconds > 0 ? (lod._fade ?? 0) + step / seconds : 1;
     if (progress >= 1) {
       endFade(entityId, world, lod);
       continue;

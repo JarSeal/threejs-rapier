@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented, Phase 2 sections 1-3 implemented
+Status: in progress | Phase 1 implemented, Phase 2 sections 1-4 implemented
 Category: Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 2.2)
 Related: p299_texture-arrays-and-atlases.md (Phase 4's exported atlases), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
@@ -238,6 +238,19 @@ Sections, each reviewed before the next:
    InstancedMesh's shaders per object (main and shadow pass).
 4. **Debug:** the LOD tab's fade time scale (slow motion, to judge the fades), the fade seconds
    override (0 = pop) and the count of entities fading; the LOD window shows an entity's fade.
+   — done: the tab's Fades folder has "Fade seconds" (the global `setLodFadeSeconds`, with a reset
+   to the app's value, like the bias: a LOD's own `fadeSeconds` still wins, and a debug override
+   that forced fades on a LOD with `fadeSeconds: 0` would draw two whole copies, its materials
+   undithered) and "Time scale" (the `fadeTimeScale` debug option, which `lodFadeSystem` multiplies
+   `dt` by: 0 holds every fade, "Real time" resets it). "Last frame" shows `fading` and `fadeMs`,
+   and a fading mesh's row says so. The LOD window's State reads "fading level 0 → 1",
+   "fading out level 1 to LOD culled" or "fading in level 2 from LOD culled" with the progress,
+   its Fade row the duration and where it comes from (own / global, or why the entity never
+   fades), and its level table marks the outgoing level ▷. For that, `LodData._fadeFrom` keeps
+   the level shown before the fade (-1 from culled). Checked on WebGPU in largeWorld (pool
+   instances: level fades and fades to culled held at time scale 0, the reset buttons, 0 = pop)
+   and testDebugScene (the sphere and the instance cell: level fades and fades to and from
+   culled, no copy left after).
 5. **Close the phase:** the exit below measured, As built, CLAUDE.md's LOD sections, versions and
    CHANGELOG.
 

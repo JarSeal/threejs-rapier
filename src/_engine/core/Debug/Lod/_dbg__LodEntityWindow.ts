@@ -7,6 +7,7 @@ import {
   DEFAULT_LOD_HYSTERESIS,
   getLodBias,
   getLodDebugOptions,
+  getLodFadeSeconds,
   getLodSelectionCamera,
   getLodWorldSphere,
   type LodMeasure,
@@ -22,8 +23,9 @@ import {
 
 // The LOD window (docs/plans/_DONE_p348_ecs-lod-selection.md §6, per mesh): one `LOD` entity's live
 // screen size, what it shows and why, and each level's threshold as the distance it switches at
-// with the current camera (FOV and zoom), both biases and the hysteresis included. Default world
-// only. Entity ids don't outlive a scene, so the window closes on a scene change and isn't saved.
+// with the current camera (FOV and zoom), both biases and the hysteresis included, and its running
+// cross-fade (docs/plans/p351_impostor-billboard-lod.md Phase 2). Default world only. Entity ids
+// don't outlive a scene, so the window closes on a scene change and isn't saved.
 
 const LOD_WIN_KIND = 'lodEntityWindow';
 const REFRESH_MS = 250;
@@ -76,17 +78,48 @@ const formatDistance = (d: number) => {
 
 const formatScreenSize = (s: number) => (Number.isFinite(s) ? s.toFixed(4) : '∞');
 
+const isFading = (entityId: number, world: ECSWorld) =>
+  world.hasComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING);
+
+/** The running fade, eg. "fading level 0 → 1, 40%". */
+const getFadeStateText = (entityId: number, lod: LodData, world: ECSWorld) => {
+  const percent = `${Math.round((lod._fade ?? 0) * 100)}%`;
+  const from = lod._fadeFrom ?? -1;
+  if (world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED)) {
+    return `fading out level ${from} to LOD culled, ${percent}`;
+  }
+  if (from < 0) return `fading in level ${lod.applied} from LOD culled, ${percent}`;
+  return `fading level ${from} → ${lod.applied}, ${percent}`;
+};
+
 const getStateText = (entityId: number, lod: LodData, world: ECSWorld) => {
   const keeps = lod.applied >= 0 ? `, keeps level ${lod.applied}` : '';
   if (world.isDisabled(entityId)) return `out of view (disabled${keeps})`;
   if (world.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED)) {
     return `out of view (frustum culled${keeps})`;
   }
+  if (isFading(entityId, world)) return getFadeStateText(entityId, lod, world);
   if (world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED)) return 'LOD culled (hidden)';
   if (lod.applied < 0) return 'not selected yet (shows level 0)';
   return lod.level === lod.applied
     ? `level ${lod.applied}`
     : `level ${lod.applied} (level ${lod.level} selected)`;
+};
+
+/** How the entity fades: its duration and where it comes from, or why it never fades (the same
+ * rules as LodSystem.ts's canFade). */
+const getFadeText = (entityId: number, lod: LodData, world: ECSWorld) => {
+  const mesh = getLodMesh(entityId, world) as THREE.SkinnedMesh | undefined;
+  if (lod._target ? !lod._target.setFade : mesh?.isSkinnedMesh) {
+    return lod._target ? 'never (its target has no setFade)' : 'never (skinned mesh)';
+  }
+  const own = lod.def.fadeSeconds;
+  const seconds = own ?? getLodFadeSeconds();
+  const source = own !== undefined ? 'own' : 'global';
+  const timeScale = getLodDebugOptions().fadeTimeScale;
+  let scaled = '';
+  if (seconds > 0 && timeScale !== 1) scaled = timeScale > 0 ? `, time × ${timeScale}` : ', held';
+  return seconds > 0 ? `${seconds.toFixed(2)} s (${source}${scaled})` : `off, pops (${source} 0)`;
 };
 
 const getSelectionText = () => {
@@ -126,6 +159,7 @@ const getLodEntityText = (entityId: number, world: ECSWorld) => {
     row('Entity', `${entityId}  ${getLodEntityName(entityId, world)}`),
     row('Kind', getKindLabel(entityId, lod, world)),
     row('State', getStateText(entityId, lod, world)),
+    row('Fade', getFadeText(entityId, lod, world)),
     row('Selection', getSelectionText()),
     row('Camera', getCameraText()),
   ];
@@ -153,17 +187,18 @@ const getLodEntityText = (entityId: number, world: ECSWorld) => {
   const tableRow = (marker: string, label: string, s: string, tris: string, d: number) =>
     `${marker}${label.padEnd(7)}${s.padStart(8)}${tris.padStart(9)}${formatSwitch(d).padStart(10)}${formatSwitch(d / (1 - h)).padStart(10)}`;
 
-  const isHidden =
-    world.isDisabled(entityId) ||
-    world.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED) ||
-    world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED);
-  const shown = isHidden ? -1 : Math.max(lod.applied, 0);
+  const isOutOfView =
+    world.isDisabled(entityId) || world.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED);
+  const isLodCulled = world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED);
+  const shown = isOutOfView || isLodCulled ? -1 : Math.max(lod.applied, 0);
+  // During a fade the outgoing level is drawn too (a fade from culled has none)
+  const fadingOut = !isOutOfView && isFading(entityId, world) ? lod._fadeFrom ?? -1 : -1;
   const last = lod._levels.length - 1;
   lines.push(
     `  ${'Level'.padEnd(7)}${'screen'.padStart(8)}${'tris'.padStart(9)}${'in ≤'.padStart(10)}${'out >'.padStart(10)}`
   );
   for (let i = 0; i <= last; i++) {
-    const marker = i === shown ? '▶ ' : '  ';
+    const marker = i === shown ? '▶ ' : i === fadingOut ? '▷ ' : '  ';
     const tris = String(triangles(lod._levels[i].geometry));
     if (i === last) {
       lines.push(tableRow(marker, String(i), '—', tris, NaN));
@@ -174,7 +209,7 @@ const getLodEntityText = (entityId: number, world: ECSWorld) => {
   }
   const cull = lod.def.cullScreenSize ?? 0;
   if (cull > 0) {
-    const marker = world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED) ? '▶ ' : '  ';
+    const marker = isLodCulled ? '▶ ' : '  ';
     lines.push(tableRow(marker, 'Cull', cull.toFixed(3), '', switchDistance(cull)));
   }
   lines.push(
@@ -183,6 +218,7 @@ const getLodEntityText = (entityId: number, world: ECSWorld) => {
       ? 'Orthographic: the screen size doesn’t change with the distance.'
       : '"in ≤": switches to the row at or within this distance, "out >": leaves it for a coarser one (or hides) beyond it.'
   );
+  if (fadingOut >= 0) lines.push('▶ fading in, ▷ fading out.');
   return lines.join('\n');
 };
 
