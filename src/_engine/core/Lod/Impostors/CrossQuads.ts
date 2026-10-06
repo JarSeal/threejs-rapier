@@ -25,8 +25,11 @@ import {
   createFrameTarget,
   disposeBakeMaterials,
   getBakeRenderer,
+  getDominantMaterial,
+  getShadingProps,
   withBakeRendererState,
   type ImpostorBakePass,
+  type ImpostorShading,
 } from './ImpostorBake';
 
 export type CrossQuadsOptions = {
@@ -45,10 +48,8 @@ export type CrossQuadsOptions = {
   /** Bake a normal atlas, so the planes shade like the object. Default true; false lights each
    * plane flat. */
   normals?: boolean;
-  /** The shading model. `AUTO` (default): the one of the material drawing the most triangles
-   * (Phong, Lambert, unlit), else standard, with that material's shininess or roughness and
-   * metalness. Matching it keeps colours from jumping at the switch. */
-  shading?: 'AUTO' | 'PHONG' | 'LAMBERT' | 'STANDARD';
+  /** The shading model (see {@link ImpostorShading}). Default `AUTO`. */
+  shading?: ImpostorShading;
 };
 
 export type CrossQuads = {
@@ -71,73 +72,6 @@ const _up = new THREE.Vector3(0, 1, 0);
 const _dir = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _center = new THREE.Vector3();
-
-/** The material drawing the most triangles of `geometry`. */
-const getDominantMaterial = (
-  geometry: THREE.BufferGeometry,
-  material: THREE.Material | THREE.Material[]
-) => {
-  if (!Array.isArray(material)) return material;
-  if (geometry.groups.length === 0) return material[0];
-  const counts = new Map<number, number>();
-  for (const { count, materialIndex = 0 } of geometry.groups) {
-    counts.set(materialIndex, (counts.get(materialIndex) ?? 0) + count);
-  }
-  let best = 0;
-  let bestCount = -1;
-  for (const [index, count] of counts) {
-    if (count > bestCount && material[index]) [best, bestCount] = [index, count];
-  }
-  return material[best];
-};
-
-/** The impostor material's type and shading params, from `opts.shading` and the source. */
-const getShadingProps = (
-  source: THREE.Material,
-  shading: NonNullable<CrossQuadsOptions['shading']>
-): Pick<MatProps, 'type'> & { params: Record<string, unknown> } => {
-  const src = source as THREE.Material & {
-    isMeshPhongMaterial?: boolean;
-    isMeshLambertMaterial?: boolean;
-    isMeshBasicMaterial?: boolean;
-    shininess?: number;
-    specular?: THREE.Color;
-    roughness?: number;
-    metalness?: number;
-  };
-  const type =
-    shading !== 'AUTO'
-      ? shading
-      : src.isMeshPhongMaterial
-        ? 'PHONG'
-        : src.isMeshLambertMaterial
-          ? 'LAMBERT'
-          : src.isMeshBasicMaterial
-            ? 'BASIC'
-            : 'STANDARD';
-  switch (type) {
-    case 'PHONG':
-      return {
-        type: 'PHONGNODEMATERIAL',
-        params: {
-          ...(src.shininess !== undefined ? { shininess: src.shininess } : {}),
-          ...(src.specular ? { specular: src.specular.clone() } : {}),
-        },
-      };
-    case 'LAMBERT':
-      return { type: 'LAMBERTNODEMATERIAL', params: {} };
-    case 'BASIC':
-      return { type: 'BASICNODEMATERIAL', params: {} };
-    case 'STANDARD':
-      return {
-        type: 'STANDARDNODEMATERIAL',
-        params: {
-          ...(src.roughness !== undefined ? { roughness: src.roughness } : {}),
-          ...(src.metalness !== undefined ? { metalness: src.metalness } : {}),
-        },
-      };
-  }
-};
 
 /**
  * The view-space normal of a plane texel: the baked normal is in the plane's own frame (x along
@@ -252,7 +186,9 @@ export const generateCrossQuads = (
   const cellHeight = frameHeight + 2 * gutter;
   const atlasWidth = planes * cellWidth;
 
-  const passes: ImpostorBakePass[] = normals ? ['ALBEDO', 'NORMAL'] : ['ALBEDO'];
+  const passes: Exclude<ImpostorBakePass, 'NORMAL_DEPTH'>[] = normals
+    ? ['ALBEDO', 'NORMAL']
+    : ['ALBEDO'];
   const atlases = {
     ALBEDO: createAtlasTarget(atlasWidth, cellHeight, 'ALBEDO', `${id}.albedo`),
     NORMAL: normals ? createAtlasTarget(atlasWidth, cellHeight, 'NORMAL', `${id}.normal`) : null,

@@ -296,6 +296,81 @@ check it.
 Bake, material, three-frame blend with depth parallax, hemi option. The impostor material gets
 `enableLodDither` like any pool level material, so the switch to and from it cross-fades (Phase 2).
 
+What changed from §2.2 when the code was read:
+
+- The name is `generateOctahedralImpostor`, like `generateCrossQuads`: the same contract
+  (synchronous, registered assets owned by the loading scene, a later call with the same `id`
+  returns them).
+- three r186's instancing doesn't expose the instance matrix: `instancedMesh()` multiplies
+  `positionLocal` by it before the material's `positionNode` runs (`Instance.js`,
+  `NodeMaterial.setupPosition`). The billboard needs the instance's centre and rotation, so the
+  impostor material reads the instance matrix itself, resolved per object when its shader is built
+  (like the fade mask): a second binding of the same array.
+- The shadow pass reuses `positionNode` (or `castShadowPositionNode`), `depthNode` and `maskNode`
+  (`Renderer._getShadowNodes`), so in the shadow pass the billboard faces the light and shows the
+  frame seen from it: the impostor casts its own silhouette shadow. Open question 1 becomes
+  self-shadowing (the light-facing and the camera-facing quads are different planes through the
+  centre); section 4 decides. A `FrontSide` material's shadow side is `BackSide`, so the material
+  sets `shadowSide`.
+- The albedo can't be the material's `map`: the shadow pass samples `map` with the geometry's uv,
+  which the billboard doesn't use. Its alpha comes from `colorNode` (`_getShadowNodes` reads its
+  `.a`).
+- Normals are baked in the object's space, not a frame's view space (three frames with different
+  view spaces are blended), and depth goes in the normal atlas's alpha.
+- Atlas size: §2.2's 12 frames of 128 texels make 1,632² atlases (with 4-texel gutters), about 14 MB
+  each with mips, two per asset. Default 12 frames of 64: 864², about 4 MB each.
+- The exit's scene: largeWorld has two plain sphere rocks and a sky box without day-night. Section 5
+  adds a rock pool and lists the day-night sky box.
+
+Sections, each reviewed before the next:
+
+1. **Bake** (`core/Lod/Impostors/OctahedralImpostor.ts`, `Octahedral.ts`): the octahedral maps (full
+   and hemi) and frame bases, the `NORMAL_DEPTH` bake pass, dilation options, the atlases registered
+   with their layout, the cache by `id`. No material yet. Checked by drawing the atlases (full,
+   hemi, a rock) on WebGPU and WebGL2. — done: `generateOctahedralImpostor(geometry, material,
+   { id, frames = 12, hemi = false, frameSize = 64, gutter = 4 })` returns `{ id, layout, albedo,
+   normalDepth }`. Frames show the bounding sphere (2-texel margin), from directions on an
+   edge-inclusive `frames × frames` grid of the octahedral square (full: +y at the centre, the
+   equator on the diamond, -y at the corners; hemi: the horizon on the square's edge, below it
+   clamped onto it). A frame's camera axes are `getOctahedralFrameBasis(dir)`: up is +y on the
+   image plane, -z within 0.999 of a pole; the material must rebuild them the same way. Frame
+   (`i`, `j`) is the cell at texel (`i`, `j`) × the cell size from the image's top left on both
+   backends (WebGPU viewports are top-down, WebGL samples render targets flipped). The
+   `NORMAL_DEPTH` pass writes the object-space normal and, in alpha, the depth toward the frame's
+   camera, `IMPOSTOR_DEPTH_MIN` (2/255) at -radius to 1 at +radius (`encodeImpostorDepth`), so 0
+   stays "not covered"; it uses `NoBlending` (an opaque material's alpha is forced to 1) and the
+   source's alpha test as a `maskNode`. Its dilation takes the found texel's alpha too, so depth
+   doesn't fall toward the back at the silhouette. The layout (frames, hemi, sizes, the sphere's
+   centre and radius, the frame's half extent) is stored on the albedo atlas's
+   `userData.octahedralImpostor`. `getDominantMaterial` / `getShadingProps` moved from
+   `CrossQuads.ts` to `ImpostorBake.ts` for section 2. Found in Phase 1's code: the normal pass kept
+   the source's vertex colours, which three multiplies into `colorNode` (the normal); both normal
+   passes now leave them out (no current source uses them). Checked with a marker object (a box,
+   a red ball at +x, a blue ball at +z, a cone on top) and a toolkit asteroid, full and hemi: every
+   frame upright and on the side its direction says, the normals by face, decoded depths within one
+   8-bit step of the expected (1.012 / -0.028 / -0.193 against 1.025 / -0.025 / -0.175, one step
+   0.032 at that radius); WebGPU and WebGL2 agree on 98.7-99.9 % of the pixels (the rest are
+   silhouette edges). Cost (WebGPU, Apple GPU): a 12 × 12 bake takes 40-50 ms when the GPU is idle
+   and settles at 105-115 ms when bakes follow each other, the same for a box as for the 500-
+   triangle rock: it's per-frame overhead (7 render passes a frame), not geometry; 8 × 8 takes
+   26 ms. A rock's two default atlases are 864², 3.98 MB each with mips.
+2. **Material, nearest frame:** the quad geometry (with the object's bounds), the billboard
+   `positionNode` (perspective and orthographic cameras, the instance matrix read per object), the
+   frame picked from the view direction in the instance's space, the normal from object to view
+   space, the alpha cut through `colorNode`, the shading model as cross-quads pick it, `shadowSide`.
+   Checked on a test pool forced to the impostor level, WebGPU and WebGL2.
+3. **Three-frame blend and depth parallax:** the three nearest frames with barycentric weights, each
+   frame's UV from the view ray's intersection with its plane, offset by the sampled depth; hemi
+   views from below the horizon. Checked from every angle, overhead included, and at the frame
+   boundaries (no popping as the camera orbits).
+4. **Shadows** (open question 1): measure the impostor's own light-facing shadow, its self-shadowing
+   on its camera-facing quad, and the options (a depth offset from the depth channel through
+   `depthNode`, a cross-quad or lower mesh level through `castShadowPositionNode` / a shadow-only
+   level, `castShadow: false`); pick one. Per-level `receiveShadow` if it needs it.
+5. **largeWorld rocks:** a rock pool (toolkit asteroids: the mesh, a lower level, the impostor last),
+   the day-night sky box listed in the scene, the exit measured.
+6. **Close the phase:** As built, CLAUDE.md's Impostors section, versions and CHANGELOG.
+
 **Exit:** a rock impostor holds up from any angle (including overhead) at its switch distance, and
 it darkens at night with the rest of the scene.
 
