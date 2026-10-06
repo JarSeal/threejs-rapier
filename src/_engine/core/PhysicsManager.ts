@@ -167,6 +167,14 @@ export const settlePendingPhysicsEntities = async () => {
   await flushPhysics();
 };
 
+/** createPhysicsEntity's entity options: CoreEntityOpts plus the physics ones, which apply to a
+ * `target` entity too. */
+export type PhysicsEntityOpts = CoreEntityOpts & {
+  /** Code only: the entity's simulation tier follows its world's distance policy
+   * (PhysicsTierPolicy.ts's setPhysicsTierPolicy, p352). DYNAMIC bodies only. */
+  tierPolicy?: boolean;
+};
+
 /**
  * Creates a physics entity: an optional rigid body and its colliders, in the bucket its body
  * type and visual call for (BODY_STATIC / BODY_DYNAMIC_VISUAL / BODY_DYNAMIC_HEADLESS).
@@ -185,7 +193,7 @@ export const createPhysicsEntity = (
    * on it govern the BODY_DYNAMIC_VISUAL/HEADLESS bucket choice (see createPhysicsEntityNow).
    */
   target?: THREE.Object3D | number,
-  entityOpts?: CoreEntityOpts,
+  entityOpts?: PhysicsEntityOpts,
   ecsWorld?: ECSWorld
 ): Promise<number> => {
   const creation = createPhysicsEntityNow(
@@ -205,7 +213,7 @@ const createPhysicsEntityNow = async (
   colliderParams: ColliderParams | ColliderParams[],
   rigidBodyParams?: RigidBodyParams,
   target?: THREE.Object3D | number,
-  entityOpts?: CoreEntityOpts,
+  entityOpts?: PhysicsEntityOpts,
   ecsWorld?: ECSWorld
 ): Promise<number> => {
   const world =
@@ -333,6 +341,21 @@ const createPhysicsEntityNow = async (
       ? ComponentType.BODY_DYNAMIC_VISUAL
       : ComponentType.BODY_DYNAMIC_HEADLESS;
     world.addComponent(entityId, bucket, rb!);
+  }
+
+  // Data only: the policy's system comes with PhysicsTierPolicy.ts, so an app that never sets a
+  // policy pays nothing
+  if (entityOpts?.tierPolicy) {
+    if (rigidBodyParams?.rigidType === 'DYNAMIC') {
+      world.addComponent(entityId, ComponentType.PHYSICS_TIER_POLICY, {
+        refusedTier: null,
+        placed: false,
+      });
+    } else if (IS_DEBUG_ENV) {
+      lwarn(
+        `createPhysicsEntity: tierPolicy ignored for entity ${entityId}: only DYNAMIC bodies have physics tiers.`
+      );
+    }
   }
 
   return entityId;

@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "AMBIENT",
+    "color": "#dfe8ff",
+    "intensity": 0.5
+  },
+  "entityOpts": {
+    "appId": "physicsTiersAmbient",
+    "debugData": {
+      "name": "Physics tiers ambient fill",
+      "description": "Fill light, so the tier tints read in shadow too."
+    }
+  }
+}

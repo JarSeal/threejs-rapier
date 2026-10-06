@@ -3,7 +3,8 @@
 // same scene and N, so a fresh load and a revisit (or two worker targets) can be compared.
 //
 // Arm with `?physicsProbe=N` (armed from the first scene on) or from the Physics API debug tab.
-// Once armed, it re-runs on every scene enter until disarmed.
+// Once armed, it re-runs on every scene enter until disarmed. While armed, the physics tier
+// policy (PhysicsTierPolicy.ts) is frozen: it runs on frames and follows the camera.
 
 import { getECSWorld, getStableAppId } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
@@ -16,6 +17,7 @@ import {
 } from '../PhysicsAPI';
 import type { RigidBodyAPI } from '../Physics/PhysicsAPITypes';
 import type { PhysicsTier } from '../Physics/PhysicsTierTypes';
+import { setPhysicsTierPolicyFrozen } from '../PhysicsTierPolicy';
 import { getCurrentSceneId, registerOnAllSceneEnterings, registerOnAllSceneExits } from '../Scene';
 import { getCharacters } from '../Character';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
@@ -23,6 +25,7 @@ import { llog, lwarn } from '../../utils/Logger';
 
 const LS_KEY = 'AEK_debugPhysicsProbeRuns';
 const URL_PARAM = 'physicsProbe';
+const POLICY_FREEZE_SOURCE = 'DETERMINISM_PROBE';
 
 type ProbeBody = {
   /** appId, or `#k` = the k-th keyless body in creation (rigid body id) order */
@@ -285,12 +288,14 @@ const startRun = (steps: number) => {
  * on every scene enter. */
 export const armPhysicsDeterminismProbe = (steps: number) => {
   armedSteps = steps;
+  setPhysicsTierPolicyFrozen(true, POLICY_FREEZE_SOURCE, getECSWorld());
   startRun(steps);
 };
 
 /** Disarms the probe and releases the step freeze. */
 export const disarmPhysicsDeterminismProbe = () => {
   armedSteps = null;
+  setPhysicsTierPolicyFrozen(false, POLICY_FREEZE_SOURCE, getECSWorld());
   stopRun();
 };
 
@@ -299,7 +304,10 @@ export const getPhysicsDeterminismProbeSteps = () => armedSteps;
 export const _initPhysicsDeterminismProbe = () => {
   const param = new URLSearchParams(window.location.search).get(URL_PARAM);
   const steps = param ? parseInt(param, 10) : NaN;
-  if (Number.isFinite(steps) && steps > 0) armedSteps = steps;
+  if (Number.isFinite(steps) && steps > 0) {
+    armedSteps = steps;
+    setPhysicsTierPolicyFrozen(true, POLICY_FREEZE_SOURCE, getECSWorld());
+  }
 
   registerOnAllSceneEnterings('physicsDeterminismProbe', () => {
     if (armedSteps !== null) startRun(armedSteps);

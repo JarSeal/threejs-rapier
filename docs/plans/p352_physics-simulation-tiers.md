@@ -1,6 +1,7 @@
 Status: in progress | Phases 1-3 implemented
 Category: Physics
 Epic: p350_lod-system-research.md (Tier 1.2, §6)
+Blocked by: p343_deterministic-physics-tier-policy.md (Phase 4: the policy's `cadence` option)
 Blocks: p353_macro-streaming-grid.md (its physics phase)
 Related: p420_npc-simulation-tiers.md (characters and NPCs: their tiers, kinematic movers and crowds live there, not here), p102_physics-world-bounds.md (its `DISABLE` action is this plan's `DISABLED` tier), p500_restore-physics-snapshot.md (body snapshots share a format), _DONE_p063_triple-buffered-physics-transform-buffer.md (slot allocation), p101 scene-load determinism (implemented; CLAUDE.md Physics section)
 
@@ -363,7 +364,8 @@ As built (differs from §4.1-4.4, decided in review):
 
 ### Phase 4 — Distance policy and debug
 
-§5 and §6.
+§5 and §6. §5's policy gets a `cadence` option (deterministic `STEPS` or frame-driven `FRAMES`)
+from p343_deterministic-physics-tier-policy.md before this phase is marked done.
 
 ### Phase 5 — Cell driving (with p353)
 

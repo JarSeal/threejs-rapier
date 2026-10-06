@@ -576,6 +576,7 @@ export const createCollider = (params: ColliderParams, parentId?: number) => {
   const colliderAPI = new EngineColliderProxyAPI(id, params.parentId, params.userData);
   // ColliderDesc's default density is 1
   colliderAPI.massMode = { density: params.density ?? 1 };
+  colliderAPI.ownEnabled = params.enabled ?? true;
 
   if (hasCollisionFn) {
     collisionActiveColliderIds.add(id);
@@ -786,7 +787,9 @@ export const detachRigidBody = (id: number): RigidBodyPose | undefined => {
       frictionCombineRule: coll.frictionCombineRule(),
       restitutionCombineRule: coll.restitutionCombineRule(),
       isSensor: coll.isSensor(),
-      enabled: coll.isEnabled(),
+      // Not coll.isEnabled(): that's false for every collider of a disabled body (the DISABLED
+      // tier), and a collider re-created disabled stays so when its body is enabled again
+      enabled: collAPI.ownEnabled,
       collisionGroups: coll.collisionGroups(),
       solverGroups: coll.solverGroups(),
       activeEvents: coll.activeEvents(),
@@ -2151,6 +2154,9 @@ class EngineColliderProxyAPI implements ColliderAPI {
   /** How its mass was last given, which Rapier can't tell (density() of a collider given a
    * mass is derived): a detached collider (p352 REMOVED tier) comes back with it. */
   massMode: ColliderMassMode = { density: 1 };
+  /** Its own enabled flag, which Rapier can't tell apart from its body's (isEnabled() is false
+   * on a disabled body), for a detached collider to come back with (p352 REMOVED tier). */
+  ownEnabled = true;
   uData: Record<string, unknown> = {};
 
   isBeingDeleted: boolean = false;
@@ -2256,6 +2262,7 @@ class EngineColliderProxyAPI implements ColliderAPI {
   }
   setEnabled(enabled: boolean) {
     this.coll.setEnabled(enabled);
+    this.ownEnabled = enabled;
   }
 
   frictionSync() {
