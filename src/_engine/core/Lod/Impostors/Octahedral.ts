@@ -8,6 +8,7 @@
 // the four corners. Hemi: the horizon on the square's edge (a full map's upper half turned 45° and
 // scaled to fill it), anything below the horizon clamped onto it.
 import * as THREE from 'three/webgpu';
+import { abs, cross, float, max, select, vec2, vec3 } from 'three/tsl';
 
 /** Above this |y| a frame's up reference is -z instead of +y (the frame looks straight down or up). */
 export const FRAME_POLE_Y = 0.999;
@@ -97,4 +98,52 @@ export const getOctahedralFrameBasis = (
   else outUp.set(0, 1, 0);
   outRight.crossVectors(outUp, dir).normalize();
   outUp.crossVectors(dir, outRight);
+};
+
+// --- TSL: THE SAME MAPS ON THE GPU ---
+
+type FloatNode = THREE.Node<'float'>;
+type Vec2Node = THREE.Node<'vec2'>;
+type Vec3Node = THREE.Node<'vec3'>;
+
+const signNotZeroNode = (x: FloatNode) => select(x.greaterThanEqual(0), float(1), float(-1));
+
+/** {@link encodeOctahedral} as a TSL node: the (u, v) of a direction (any length but 0). */
+export const encodeOctahedralNode = (dir: Vec3Node, hemi: boolean): Vec2Node => {
+  if (hemi) {
+    const sum = max(abs(dir.x).add(max(dir.y, 0)).add(abs(dir.z)), 1e-6);
+    const p = dir.xz.div(sum);
+    return vec2(p.x.add(p.y), p.x.sub(p.y));
+  }
+  const sum = max(abs(dir.x).add(abs(dir.y)).add(abs(dir.z)), 1e-6);
+  const p = dir.xz.div(sum);
+  const folded = vec2(
+    abs(p.y).oneMinus().mul(signNotZeroNode(p.x)),
+    abs(p.x).oneMinus().mul(signNotZeroNode(p.y))
+  );
+  return select(dir.y.greaterThanEqual(0), p, folded);
+};
+
+/** {@link decodeOctahedral} as a TSL node: the unit direction at octahedral coordinates `uv`. */
+export const decodeOctahedralNode = (uv: Vec2Node, hemi: boolean): Vec3Node => {
+  if (hemi) {
+    const x = uv.x.add(uv.y).mul(0.5);
+    const z = uv.x.sub(uv.y).mul(0.5);
+    return vec3(x, max(abs(x).add(abs(z)).oneMinus(), 0), z).normalize();
+  }
+  const y = abs(uv.x).add(abs(uv.y)).oneMinus();
+  const folded = vec3(
+    abs(uv.y).oneMinus().mul(signNotZeroNode(uv.x)),
+    y,
+    abs(uv.x).oneMinus().mul(signNotZeroNode(uv.y))
+  );
+  return select(y.greaterThanEqual(0), vec3(uv.x, y, uv.y), folded).normalize();
+};
+
+/** {@link getOctahedralFrameBasis} as TSL nodes: the image axes of the frame seen from the unit
+ * direction `dir`. */
+export const getOctahedralFrameBasisNode = (dir: Vec3Node) => {
+  const upRef = select(abs(dir.y).greaterThan(FRAME_POLE_Y), vec3(0, 0, -1), vec3(0, 1, 0));
+  const right = cross(upRef, dir).normalize();
+  return { right, up: cross(dir, right) };
 };

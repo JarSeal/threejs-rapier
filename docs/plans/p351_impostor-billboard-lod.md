@@ -358,7 +358,36 @@ Sections, each reviewed before the next:
    `positionNode` (perspective and orthographic cameras, the instance matrix read per object), the
    frame picked from the view direction in the instance's space, the normal from object to view
    space, the alpha cut through `colorNode`, the shading model as cross-quads pick it, `shadowSide`.
-   Checked on a test pool forced to the impostor level, WebGPU and WebGL2.
+   Checked on a test pool forced to the impostor level, WebGPU and WebGL2. — done:
+   `generateOctahedralImpostor` also returns (and registers) `geometry` (`id`) and `material`
+   (`${id}.mat`), with the options `alphaTest` (0.5) and `shading` (`AUTO`); the nodes are in
+   `OctahedralImpostorMaterial.ts` (`createOctahedralImpostorNodes`, `createOctahedralImpostorQuad`)
+   and the TSL maps next to the CPU ones in `Octahedral.ts` (`encodeOctahedralNode`,
+   `decodeOctahedralNode`, `getOctahedralFrameBasisNode`). The second instance-matrix binding is
+   always an instanced attribute over a second GPU buffer on the same array (three's own is
+   private), its version synced from the matrices' before each draw (an `OBJECT` `updateBefore`):
+   64 B × capacity more GPU memory per impostor mesh. On a plain mesh it's the identity, so the
+   material works there too. The quad's corners are ±`extent` in its xy plane, turned by the view
+   direction's frame basis (in the instance's space, so it shows the object upright as rotated);
+   its bounds are the bounding sphere, so culling and LOD screen sizes measure the object. A
+   corner's frame coordinate is its projection onto the nearest frame's image plane, clamped to the
+   frame in the fragment stage (that also takes care of the roll between the view's and the frame's
+   basis near the poles). Orthographic cameras are detected at runtime (`projection[3][3]`), so one
+   shader serves both kinds, and a directional light's shadow camera gets its forward. The normal
+   goes through the inverse transpose of model × instance, then the view matrix, as three column
+   varyings. Double-sided instead of a `shadowSide`: the quad always faces whoever draws it, so
+   that costs nothing, and the shadow pass (side null → double) and mirrored instance matrices
+   draw it too. `map` stays unset (the shadow pass would sample it with the quad's uv); a lit
+   material has `normalDepth` as its `normalMap` for the tooling, like cross-quads. Checked with a
+   flat-shaded asteroid coloured by side, beside its impostor from the same camera (orbit at 0° and
+   35°, 60°, 80°, straight down and up, -45°, hemi, a plain mesh, an orthographic camera), and with
+   a 5 × 5 instanced LOD pool in the running app forced to each level, an instance moved and one
+   despawned while on the impostor level: every view upright and on the same side as the mesh,
+   matching shading, the moved and swap-removed instances read their own matrices; WebGPU and
+   WebGL2 agree, no errors. Left for later sections, as seen: the frame snaps when the nearest one
+   changes (3), the hemi map from below shows the horizon frames (3), the quad's flat depth through
+   the centre (it cuts into neighbours differently from the mesh; 3 / 4), and dark streaks of
+   self-shadowing on lit sides from the light-facing shadow quad (4).
 3. **Three-frame blend and depth parallax:** the three nearest frames with barycentric weights, each
    frame's UV from the view ray's intersection with its plane, offset by the sampled depth; hemi
    views from below the horizon. Checked from every angle, overhead included, and at the frame

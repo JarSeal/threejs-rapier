@@ -8,6 +8,14 @@
 // own view space), and depth (along each frame's view direction) is the normal atlas's alpha.
 import * as THREE from 'three/webgpu';
 import { retagAssetOwner } from '../../Assets/AssetOwners';
+import { deleteGeometry, doesGeoExist, getGeometry, saveBufferGeometry } from '../../Geometry';
+import {
+  createMaterial,
+  deleteMaterial,
+  doesMatExist,
+  getMaterial,
+  type MatProps,
+} from '../../Material';
 import { deleteTexture, doesTextureExist, getTexture, saveTexture } from '../../Texture';
 import {
   clearBakeTarget,
@@ -17,16 +25,23 @@ import {
   createFrameTarget,
   disposeBakeMaterials,
   getBakeRenderer,
+  getDominantMaterial,
+  getShadingProps,
   IMPOSTOR_DEPTH_MIN,
   withBakeRendererState,
   type ImpostorBakePass,
+  type ImpostorShading,
 } from './ImpostorBake';
 import { getOctahedralFrameBasis, getOctahedralFrameDirection } from './Octahedral';
+import {
+  createOctahedralImpostorNodes,
+  createOctahedralImpostorQuad,
+} from './OctahedralImpostorMaterial';
 
 export type OctahedralImpostorOptions = {
-  /** The id the generated assets are registered under: the atlases `${id}.albedo` and
-   * `${id}.normalDepth`. Default `${geometry's id}#octahedral`: pass one when the same geometry is
-   * baked with other materials. */
+  /** The id the generated assets are registered under: the geometry `id`, the material
+   * `${id}.mat`, the atlases `${id}.albedo` and `${id}.normalDepth`. Default
+   * `${geometry's id}#octahedral`: pass one when the same geometry is baked with other materials. */
   id?: string;
   /** Frames along each side of the grid (the atlas holds `frames²`), 2-32. Default 12. */
   frames?: number;
@@ -37,6 +52,10 @@ export type OctahedralImpostorOptions = {
   frameSize?: number;
   /** Texels between a frame and its cell's edge, which keep mipmaps from mixing frames. Default 4. */
   gutter?: number;
+  /** Default 0.5. */
+  alphaTest?: number;
+  /** The shading model (see {@link ImpostorShading}). Default `AUTO`. */
+  shading?: ImpostorShading;
 };
 
 /** Where an impostor's frames are and what they show: what its material needs besides the atlases.
@@ -60,6 +79,14 @@ export type OctahedralImpostorLayout = {
 export type OctahedralImpostor = {
   id: string;
   layout: OctahedralImpostorLayout;
+  /** Registered: one quad around the bounding sphere's centre (its bounds are the sphere), turned
+   * to face the camera by `material`. */
+  geometry: THREE.BufferGeometry;
+  /** Registered: alpha-tested and double-sided, drawing the atlases through its `positionNode`,
+   * `colorNode` and (lit) `normalNode` (`OctahedralImpostorMaterial.ts`); a lit one also has
+   * `normalDepth` as its `normalMap`, so the asset tooling sees it. Use it on an InstancedMesh
+   * (eg. a LOD pool's level) or a plain mesh. */
+  material: THREE.Material;
   /** Registered sRGB atlas: albedo and coverage alpha. */
   albedo: THREE.Texture;
   /** Registered linear atlas: the object-space normal (`n × 0.5 + 0.5`) and, in alpha, the depth
@@ -78,18 +105,23 @@ const _basis = new THREE.Matrix4();
 
 /** The registered result of an earlier bake under `id`, when all of it is still registered. */
 const getRegistered = (id: string): OctahedralImpostor | null => {
+  if (!doesGeoExist(id) || !doesMatExist(`${id}.mat`)) return null;
   if (!doesTextureExist(`${id}.albedo`) || !doesTextureExist(`${id}.normalDepth`)) return null;
+  const geometry = getGeometry(id) as THREE.BufferGeometry;
+  const material = getMaterial(`${id}.mat`) as THREE.Material;
   const albedo = getTexture(`${id}.albedo`) as THREE.Texture;
   const normalDepth = getTexture(`${id}.normalDepth`) as THREE.Texture;
   const layout = albedo.userData[LAYOUT_KEY] as OctahedralImpostorLayout | undefined;
   if (!layout) return null;
   // To the loading scene, as any cache hit is
-  for (const asset of [albedo, normalDepth]) retagAssetOwner(asset);
-  return { id, layout, albedo, normalDepth };
+  for (const asset of [geometry, material, albedo, normalDepth]) retagAssetOwner(asset);
+  return { id, layout, geometry, material, albedo, normalDepth };
 };
 
 /** Unregisters what's left of a bake under `id` that isn't complete (eg. a released atlas). */
 const deleteLeftovers = (id: string) => {
+  if (doesMatExist(`${id}.mat`)) deleteMaterial(`${id}.mat`);
+  if (doesGeoExist(id)) deleteGeometry(id);
   for (const texId of [`${id}.albedo`, `${id}.normalDepth`]) {
     if (doesTextureExist(texId)) deleteTexture(texId);
   }
@@ -97,10 +129,12 @@ const deleteLeftovers = (id: string) => {
 
 /**
  * Bakes `geometry` drawn with `material` (a per-group array works as on a mesh) into an octahedral
- * impostor's atlases: `frames × frames` orthographic views of its bounding sphere, from the
- * directions of a full or hemi octahedral map, each into its own atlas cell. The atlases are
- * registered (owned by the loading scene, released with it), and a later call with the same `id`
- * returns them as they are, without baking (or reading `opts`), while they're registered.
+ * impostor: atlases of `frames × frames` orthographic views of its bounding sphere, from the
+ * directions of a full or hemi octahedral map, each into its own atlas cell, and a camera-facing
+ * quad with a material that shows the frame nearest to the view direction, lit at runtime with
+ * the baked normals. Its geometry, material and atlases are registered (owned by the loading
+ * scene, released with it), and a later call with the same `id` returns them as they are, without
+ * baking (or reading `opts`), while they're registered.
  *
  * Bakes synchronously with the renderer (after `InitEngine`), restoring its target and clear
  * state. Frames are in the object's local space, so they're used with its instance transforms.
@@ -110,7 +144,14 @@ export const generateOctahedralImpostor = (
   material: THREE.Material | THREE.Material[],
   opts: OctahedralImpostorOptions = {}
 ): OctahedralImpostor => {
-  const { frames = 12, hemi = false, frameSize = 64, gutter = 4 } = opts;
+  const {
+    frames = 12,
+    hemi = false,
+    frameSize = 64,
+    gutter = 4,
+    alphaTest = 0.5,
+    shading = 'AUTO',
+  } = opts;
   const id =
     opts.id ?? `${(geometry.userData.id as string | undefined) ?? geometry.uuid}#octahedral`;
   const registered = getRegistered(id);
@@ -221,5 +262,25 @@ export const generateOctahedralImpostor = (
   const albedo = saveTexture(atlases.ALBEDO.texture, `${id}.albedo`);
   albedo.userData[LAYOUT_KEY] = layout;
   const normalDepth = saveTexture(atlases.NORMAL_DEPTH.texture, `${id}.normalDepth`);
-  return { id, layout, albedo, normalDepth };
+
+  const quad = createOctahedralImpostorQuad(layout);
+  quad.name = id;
+  saveBufferGeometry(quad, { id });
+  const { type, params } = getShadingProps(getDominantMaterial(geometry, material), shading);
+  const impostorMaterial = createMaterial({
+    id: `${id}.mat`,
+    type,
+    params: { ...params, alphaTest, side: THREE.DoubleSide },
+  } as MatProps) as THREE.NodeMaterial & { normalMap: THREE.Texture | null };
+  impostorMaterial.name = id;
+  const nodes = createOctahedralImpostorNodes(layout, albedo, normalDepth);
+  impostorMaterial.positionNode = nodes.positionNode;
+  impostorMaterial.colorNode = nodes.colorNode;
+  // An unlit impostor has no use for normals
+  if (type !== 'BASICNODEMATERIAL') {
+    impostorMaterial.normalNode = nodes.normalNode;
+    impostorMaterial.normalMap = normalDepth;
+  }
+
+  return { id, layout, geometry: quad, material: impostorMaterial, albedo, normalDepth };
 };
