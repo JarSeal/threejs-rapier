@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 2.2)
 Related: p299_texture-arrays-and-atlases.md (Phase 4's exported atlases), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
@@ -39,7 +39,9 @@ Prototype cross-quads first (p350 §8): they may be enough for vegetation at a f
 
 ### 2.1 Cross-quads
 
-`generateCrossQuads(geometry, material, opts) → { geometry, material }` (toolkit):
+`generateCrossQuads(geometry, material, opts) → { geometry, material, albedo, normal }` (engine,
+`core/Lod/Impostors/CrossQuads.ts`: Phase 4's asset type, Phase 2's fade and p353 / p376 / p420
+consume impostors from core, and core never imports the toolkit):
 
 - Bake the object's silhouette from 2 or 3 horizontal directions (default 3, 60° apart) into one
   atlas, with an orthographic camera fitted to the bounding box. Channels: albedo + alpha, normal
@@ -100,13 +102,51 @@ then encodes it as KTX2, and nothing is baked on the client.
 
 ## 3. Phases
 
-### Phase 1 — Cross-quads
+### Phase 1 — Cross-quads — done
 
 `generateCrossQuads`, bake at load, as the last level of a p348 LOD pool. largeWorld's trees get a
 cross-quad level.
 
 **Exit:** largeWorld's far trees draw as cross-quads; the triangle count drops (p345); at the
 switch distance the switch is visible but not jarring.
+
+As built:
+
+- In core, not the toolkit (§2.1): `core/Lod/Impostors/CrossQuads.ts` and the shared
+  `ImpostorBake.ts` (bake materials per pass, frame and atlas targets, the dilating copy). Phase 3
+  builds on `ImpostorBake.ts`.
+- No budget: p353 isn't implemented, so the bake is synchronous during the scene load
+  (`getBakeRenderer` throws before `InitEngine`). The largeWorld tree bakes in about 12 ms
+  (WebGPU, Apple GPU, measured on a second bake of the same tree). `generateCrossQuads` is
+  synchronous; making it budgeted later is an API change (it would return a promise).
+- Two atlases per impostor, frames side by side with a 4-texel gutter: albedo (RGBA8 sRGB) and
+  normal (RGBA8 linear, the bake camera's view-space normal), mipmapped. The frame is fitted to the
+  object's radius around its vertical axis and its height, with a 2-texel margin. The tree's atlases
+  are 252×136, 182,738 B each with mips, counted by owner in the profiler's GPU memory tab.
+- Transparent texels are dilated (the nearest opaque colour within 16 texels), so the alpha cut and
+  far mips get no dark fringes.
+- The normal is rebuilt from the plane's screen-space derivative frame and `normalViewGeometry`, not
+  a `normalMap`: three r186 doesn't rotate `tangentLocal` per instance, and its double-sided normal
+  maps negate the whole frame on back faces (a plane seen from behind would look lit from below).
+  Only the out component flips on the back face. `normalMap` still holds the atlas so the asset
+  tooling sees it.
+- Plane UVs run top-down: a render target texture's v = 0 is the top of the image on both backends.
+  Verified upright on WebGPU and the WebGL2 fallback.
+- The material copies the shading model of the source material drawing the most triangles (Phong,
+  Lambert, unlit, else standard) with its shininess / specular or roughness / metalness. An unlit
+  source bakes no normals.
+- Shadows: `map` + `alphaTest` is enough, three r186's shadow pass copies `alphaTest` and takes
+  alpha from `map`. The planes cast cut-out shadows (Phase 3's open question 1 still stands for
+  octahedral impostors).
+- Exit, measured from the overview camera (WebGPU): 297-455 of the 1,500 trees are cross-quads
+  (it varies with the frame the count is read in). Drawing the same instances with level 1's mesh
+  instead: 138,580 → 135,016 triangles in the main pass (12 per tree, 18 → 6) and 18 → 17 draw
+  calls (level 1 has two material groups). The tree is already very low-poly, so the saving is small
+  here; heavier assets gain far more. At the switch distance, level 1 and the cross-quads are hard to
+  tell apart; the cross-quads read slightly darker on the lit side.
+- largeWorld: level 1 now ends at screen size 0.032 (about 180 m), cross-quads below it.
+- Not done: no alpha coverage correction per mip. Not needed for the solid tree cone; a thin
+  asset (leaf cards) may thin out at distance, which Phase 2 or p308 should check.
 
 ### Phase 2 — Dithered cross-fade
 
@@ -128,8 +168,9 @@ with a generated cell table), so `*.impostor.json` holds only frame count, bound
 
 ## 4. Versioning
 
-Toolkit minor (generators and bake helpers). Engine minor for `lodDither` / fade support in LOD
-pools and, in Phase 4, the new asset type (also a `readme.md` entry: a new asset JSON type).
+Engine minor per phase: the generators and bake helpers live in core (`core/Lod/Impostors/`, see
+§2.1), plus `lodDither` / fade support in LOD pools and, in Phase 4, the new asset type (also a
+`readme.md` entry: a new asset JSON type). App patches for largeWorld's adoption.
 
 ## 5. Open questions
 

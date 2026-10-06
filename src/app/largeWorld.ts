@@ -19,6 +19,7 @@ import { generateTerrain } from '../toolkit/geometry/generateTerrain';
 import { generateBushGeometry, generateTreeGeometry } from '../toolkit/geometry/generateFoliage';
 import { scatterOnSurface } from '../toolkit/geometry/scatterOnSurface';
 import { createInstancedLodPool } from '../_engine/core/Instancing/InstancedMeshPool';
+import { generateCrossQuads } from '../_engine/core/Lod/Impostors/CrossQuads';
 import { registerSpatialDomain } from '../_engine/core/Spatial/SpatialIndexSystem';
 
 /**
@@ -106,15 +107,25 @@ export const scene = async () => {
     update: 'STATIC',
     sceneId: 'largeWorld',
   });
+  // The farthest level: three alpha-cut planes with the tree baked on them
+  // (docs/plans/p351_impostor-billboard-lod.md §2.1), lit at runtime like the mesh
+  const treeCross = generateCrossQuads(treeGeometry, [treeTrunkMat, treeFoliageMat], {
+    id: 'largeWorldTreeCross',
+  });
   // One InstancedMesh per level, each instance in the one its LOD selects
   // (docs/plans/_DONE_p348_ecs-lod-selection.md §4.2). The thresholds are screen sizes (bounding-sphere
   // diameter / viewport height): from the overview camera a tree at scale 1 crosses 0.04 at about
-  // 145 m.
+  // 145 m and 0.032 at about 180 m.
   const treePool = createInstancedLodPool({
     world: ecsWorld,
     levels: [
       { geometry: treeGeometry, material: [treeTrunkMat, treeFoliageMat], screenSize: 0.04 },
-      { geometry: treeLod1Geometry, material: [treeTrunkMat, treeFoliageMat], screenSize: 0 },
+      {
+        geometry: treeLod1Geometry,
+        material: [treeTrunkMat, treeFoliageMat],
+        screenSize: 0.032,
+      },
+      { geometry: treeCross.geometry, material: treeCross.material, screenSize: 0 },
     ],
     maxInstances: treePlacements.length,
     receiveShadow: true,

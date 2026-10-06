@@ -4,6 +4,24 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-06 — impostor-billboard-lod
+
+### Engine 4.11.0 (Afternoon)
+
+**Added**
+
+- Cross-quad impostors (`core/Lod/Impostors/CrossQuads.ts`): `generateCrossQuads(geometry, material, opts?)` bakes an object into two or three intersecting alpha-cut planes through its vertical axis, a far LOD level for vegetation. It returns a registered `{ geometry, material, albedo, normal }`, which goes straight into `createInstancedLodPool`'s last level.
+  - The bake renders the object (a per-group material array works) from each plane's direction with an orthographic camera fitted to its bounds, into one albedo atlas (sRGB) and one normal atlas, with mipmaps. Transparent texels take the nearest opaque colour, so filtering and mips leave no dark fringes.
+  - Nothing is lit in the bake: the impostor material shades with the scene's lights, shadows and environment at runtime, with each texel's baked normal. It uses the shading model of the source material drawing the most triangles (Phong, Lambert, unlit, else standard). The planes are double-sided, cast alpha-cut shadows, and a plane seen from behind is lit correctly.
+  - Options: `id` (default `${geometry id}#crossQuads`), `planes` (2 or 3, default 3), `frameSize` (default 128), `gutter`, `alphaTest`, `normals` and `shading`. Its assets are owned by the loading scene and released with it; a later call with the same `id` returns them while they're registered.
+  - The bake helpers octahedral impostors will share (bake materials, frame and atlas targets, the dilating copy) are in `core/Lod/Impostors/ImpostorBake.ts`.
+
+### App 1.6.1 (Preschooler)
+
+**Changed**
+
+- largeWorld's trees get a third LOD level, cross-quads, below a screen size of 0.032 (about 180 m from the overview camera); level 1 now ends there.
+
 ## 2026-10-06 — physics-simulation-tiers
 
 ### Engine 4.10.0 (Afternoon)
