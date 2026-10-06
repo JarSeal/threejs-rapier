@@ -1,6 +1,6 @@
 Status: implemented (Phases 1-4)
 Category: Editor-Creator View
-Blocks: \_DONE_p084_material-editor-stage-and-selector.md, p085_material-editor-params-and-persistence.md
+Blocks: \_DONE_p084_material-editor-stage-and-selector.md, \_DONE_p085_material-editor-params-and-persistence.md
 Related (all implemented; their plan files have been removed, see `.claude/CLAUDE.md` and the code): p080 viewports (`core/Viewports.ts`; the axes gizmo must follow the editor camera), p060/p062 debugger undo (`core/Debug/_dbg__UndoRedo.ts`; undo buckets per view), p105 `createDebuggerTab` (the editor drawers reuse its declarative tabs), p110-p115 layered sky box (later editors: skybox), p130 on-screen tools disabler (`DebugToolsState.onScreenTools`; the view tools group joins its disabled set)
 
 # Editor-Creator View — Epic and View Switching Core
@@ -13,11 +13,11 @@ This file is the epic. It also holds the first implementation plan: the **view s
 
 ## Sub-plans
 
-| Plan                                               | Scope                                                                                                                                                                                                                                                     | Blocked by | Engine bump |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------- |
-| `_DONE_p083_editor-creator-view.md` (this file)    | View registry, scene suspension in the main loop, view tools group with the Runtime view's button and icon, HUD rules per view, undo buckets per view, gizmo camera rig, a reusable editor camera with its pose per view, active view restored on refresh | —          | minor       |
-| `_DONE_p084_material-editor-stage-and-selector.md` | Material editor view: stage (ball, lights, environment), editor camera with per-material memory, bottom material selector with filter, right drawer shell                                                                                                 | —          | minor       |
-| `p085_material-editor-params-and-persistence.md`   | Basic editable params (Params tab), editor settings (Settings tab), per-material LS + clear, undo/redo, full state restored on refresh                                                                                                                    | p084       | minor       |
+| Plan                                                   | Scope                                                                                                                                                                                                                                                     | Blocked by | Engine bump |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------- |
+| `_DONE_p083_editor-creator-view.md` (this file)        | View registry, scene suspension in the main loop, view tools group with the Runtime view's button and icon, HUD rules per view, undo buckets per view, gizmo camera rig, a reusable editor camera with its pose per view, active view restored on refresh | —          | minor       |
+| `_DONE_p084_material-editor-stage-and-selector.md`     | Material editor view: stage (ball, lights, environment), editor camera with per-material memory, bottom material selector with filter, right drawer shell                                                                                                 | —          | minor       |
+| `_DONE_p085_material-editor-params-and-persistence.md` | Basic editable params (Params tab), editor settings (Settings tab), per-material LS + clear, undo/redo, full state restored on refresh                                                                                                                    | p084       | minor       |
 
 All three can land on one branch (one engine minor bump at merge) or on separate branches (a minor bump each).
 

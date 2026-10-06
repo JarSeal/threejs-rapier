@@ -1,6 +1,6 @@
 /**
- * The material editor's selector (docs/plans/p084_material-editor-stage-and-selector.md DD5): the
- * bottom drawer with every project material as a card, a filter by id and name, and a collapse
+ * The material editor's selector (docs/plans/_DONE_p084_material-editor-stage-and-selector.md
+ * DD5): the bottom drawer with every project material as a card, a filter by id and name, and a collapse
  * button. It is only UI: the editor hands it the entries and its callbacks, and calls `refresh`
  * when the selected, loading or failed material changes.
  */

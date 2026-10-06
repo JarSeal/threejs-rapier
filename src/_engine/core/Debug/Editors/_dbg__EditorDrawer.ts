@@ -1,5 +1,5 @@
 /**
- * An editor view's right drawer (docs/plans/p084_material-editor-stage-and-selector.md DD6),
+ * An editor view's right drawer (docs/plans/_DONE_p084_material-editor-stage-and-selector.md DD6),
  * written for every editor: it looks like the scene debug drawer (same widths, toggler, heading
  * row with a title and a close button, tab menu, scrolling tab container) and mounts ordinary
  * debugger tab definitions ({@link AnyDebuggerTabDef}) through a tab host of its own, so panes,

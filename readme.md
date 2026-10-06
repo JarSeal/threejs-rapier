@@ -60,7 +60,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 - A tabbed **debug drawer** (`h`) built on Tweakpane, with tabs for stats, main loop, renderer, physics, ECS, assets, PostFX (with a GPU profiler), skybox, spatial index, LOD, ray casting and characters. Its state is saved to localStorage.
 - A **profiler window**, opened from the on-screen stats panels, the stats tab, the top on-screen tools or `F8`. Its tabs: an overview of frame, GPU, physics and memory figures; an objects breakdown (in view and total, with bars and short history); GPU memory (memory by category and owner, draw calls, a budget and leak-hunting snapshots); and settings. It measures only while it is open, and it can be enabled in production test mode.
 - A **debug fly camera** (`F1`), an axes gizmo (`F10`), an environment ball (`F9`) and a debug scene loader.
-- **Editor views**, switched from the top on-screen tools: an editor takes over the whole canvas with its own scene, orbit camera and drawers, while the game scene is suspended and resumes exactly where it was. The first is the **material editor**: every project material on a preview ball in a studio stage, picked from a filterable list, with each material's camera pose and the editor's layout kept over reloads.
+- **Editor views**, switched from the top on-screen tools: an editor takes over the whole canvas with its own scene, orbit camera and drawers, while the game scene is suspended and resumes exactly where it was. The first is the **material editor**: every project material on a preview ball in a studio stage, picked from a filterable list. Its params and TSL inputs are edited live with undo/redo, and each material's edits, stage settings and camera pose, and the editor's layout, are kept over reloads.
 - **Undo/redo** for changes made in the debugger.
 - **Physics visualizers**: collider wireframes colored by body state, ray helpers, and query statistics.
 - **Edit windows per entity** (lights, cameras, ECS worlds, PostFX passes, physics entities, assets, characters), several open at a time, kept over reloads and scene changes. Double-clicking a window's header (or the Debug tools tab's "Center and fit all windows") brings windows back to the top of the screen, fitted to it.
@@ -355,7 +355,7 @@ The example scenes in [`src/app/`](src/app/) cover more: a physics and joints te
 
 Planned work is specified in [`docs/plans/`](docs/plans/), where a lower number means a higher priority. Highlights:
 
-- Editable params with undo/redo in the material editor, then saving its results to the material JSON
+- Saving the material editor's edits to the material JSON, and editing textures and more material properties there
 - Physics objects in the scene JSON schema, physics world bounds, multibody joints and physics snapshot restore
 - Component query caching
 - A client device capability sniffer, impostor (billboard) LODs and GPU-driven culling

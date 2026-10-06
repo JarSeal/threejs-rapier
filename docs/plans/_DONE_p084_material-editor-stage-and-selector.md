@@ -1,6 +1,6 @@
 Status: implemented (Phases 1-4)
 Category: Editor-Creator View, Materials
-Blocks: p085_material-editor-params-and-persistence.md
+Blocks: \_DONE_p085_material-editor-params-and-persistence.md
 Related: \_DONE_p083_editor-creator-view.md (epic), `createDebuggerTab` (p105, implemented: the right drawer reuses its declarative tabs), the layered sky box (p111, implemented: skybox environments in the editor can now build on it, still a non-goal here), the debug environment ball (`debug/EnvBall.ts`, p115, implemented: same "ball + environment" idea for the scene)
 
 # Material Editor — Stage, Camera and Material Selector

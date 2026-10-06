@@ -1,6 +1,6 @@
 /**
  * The material editor's settings per material
- * (docs/plans/p085_material-editor-params-and-persistence.md DD3): the stage (background,
+ * (docs/plans/_DONE_p085_material-editor-params-and-persistence.md DD3): the stage (background,
  * environment, light intensities) and the preview (auto-rotation), their defaults, checking a
  * saved value, and the Settings tab's pane items.
  *
@@ -137,6 +137,14 @@ export const normalizeMaterialEditorSetting = (key: string, value: unknown) => {
       return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
   }
 };
+
+/**
+ * A setting's label, as its binding shows it (eg. in an undo label).
+ * @param key ({@link MaterialEditorSettingKey})
+ * @returns (string) the key when it has no definition
+ */
+export const getMaterialEditorSettingLabel = (key: MaterialEditorSettingKey) =>
+  SETTINGS.find((def) => def.key === key)?.label ?? key;
 
 /**
  * The Settings tab's Stage and Preview folders. Every binding binds to `target` (fill it with the

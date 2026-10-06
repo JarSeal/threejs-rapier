@@ -1,6 +1,6 @@
 /**
- * The material editor's editable params (docs/plans/p085_material-editor-params-and-persistence.md
- * DD2): the param catalogue (key, folder, kind, range, whether a change rebuilds the render
+ * The material editor's editable params
+ * (docs/plans/_DONE_p085_material-editor-params-and-persistence.md DD2): the param catalogue (key, folder, kind, range, whether a change rebuilds the render
  * pipeline), reading and setting a param on the editor copy, the TSL inputs (read and set through
  * their uniforms), and the Params tab's pane items.
  *
@@ -537,6 +537,24 @@ const readUniformValue = ({ kind, uniform }: { kind: NodeInputKind; uniform: Inp
 };
 
 /**
+ * Reads one editable TSL input of the copy (from its uniform).
+ * @param mat (THREE.Material) the editor copy
+ * @param assetNodes ({@link MaterialNodeInputs} | undefined) the asset's `nodes`
+ * @param socket (string) eg. `colorNode`
+ * @param input (string) eg. `gridScale`
+ * @returns (unknown) the JSON value, or undefined when it isn't an editable input of the copy
+ */
+export const getNodeInputValue = (
+  mat: THREE.Material,
+  assetNodes: MaterialNodeInputs | undefined,
+  socket: string,
+  input: string
+) => {
+  const editable = getEditableNodeInput(mat, assetNodes, socket, input);
+  return editable ? readUniformValue(editable) : undefined;
+};
+
+/**
  * Reads the copy's editable TSL inputs (from their uniforms).
  * @param mat (THREE.Material) the editor copy
  * @param assetNodes ({@link MaterialNodeInputs} | undefined) the asset's `nodes`
@@ -580,6 +598,27 @@ export const setNodeInputValue = (
   else if (typeof current === 'object' && current !== null) Object.assign(current, next);
   else editable.uniform.value = next;
   return next;
+};
+
+/**
+ * Checks a TSL input value against the kind of the asset's own value (an override written without
+ * the copy, eg. an undo of another material).
+ * @param assetNodes ({@link MaterialNodeInputs} | undefined) the asset's `nodes`
+ * @param socket (string)
+ * @param input (string)
+ * @param value (unknown)
+ * @returns (unknown) the JSON value, or undefined when the asset has no editable input there or
+ * the value has the wrong kind
+ */
+export const normalizeAssetNodeInputValue = (
+  assetNodes: MaterialNodeInputs | undefined,
+  socket: string,
+  input: string,
+  value: unknown
+) => {
+  const inputs = assetNodes?.[socket];
+  if (!inputs || !(input in inputs)) return undefined;
+  return normalizeNodeInputValue(getNodeInputKind(input, inputs[input]), value);
 };
 
 /**

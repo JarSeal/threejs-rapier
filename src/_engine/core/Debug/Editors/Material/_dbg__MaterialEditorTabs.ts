@@ -1,13 +1,15 @@
 /**
- * The material editor's right drawer tabs (docs/plans/p084_material-editor-stage-and-selector.md
- * DD6, docs/plans/p085_material-editor-params-and-persistence.md): **Params** (the selected
+ * The material editor's right drawer tabs
+ * (docs/plans/_DONE_p084_material-editor-stage-and-selector.md DD6,
+ * docs/plans/_DONE_p085_material-editor-params-and-persistence.md): **Params** (the selected
  * material's info, its editable params and TSL inputs, the rest of its params read-only, and a
  * "Reset params" heading button) and **Settings** (the material's stage and preview settings, the
  * camera's fov, pose and reset, and "Clear editor data of all materials").
  *
  * Both tabs have the material's record as their `lsKey`, for the heading's clear button (this
  * material only), and no `persistKeys`: the editor module owns the record, and every binding has
- * an explicit `target` whose `onChange` applies and saves the value.
+ * an explicit `target` whose `onChange` applies and saves the value (and records it for undo,
+ * in the editor module).
  */
 import type * as THREE from 'three/webgpu';
 import { CMP } from '../../../../utils/CMP';
@@ -71,6 +73,8 @@ export type MaterialEditorTabsCtx = {
   getSettings: () => MaterialEditorSettings | null;
   /** Sets a setting of the selected material on the stage, saved like `setParam`. */
   setSetting: (key: MaterialEditorSettingKey, value: unknown, persist: boolean) => void;
+  /** Sets the camera's fov (part of its pose), saved like `setParam`. */
+  setFov: (fov: number, persist: boolean) => void;
   /** Removes every material's record (after the confirm). */
   clearAllRecords: () => void;
   /** Refreshes the drawer's mounted tab. */
@@ -224,7 +228,7 @@ const getCameraPaneItems = (
         max: 120,
         step: 1,
         onChange: (value, e) => {
-          ctx.getViewCamera()?.setFov(value as number, e.last);
+          ctx.setFov(value as number, e.last);
           if (e.last) ctx.refresh();
         },
       },

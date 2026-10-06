@@ -1,7 +1,8 @@
 /**
- * The material editor (docs/plans/p084_material-editor-stage-and-selector.md), the first editor
- * view: a preview object on a stage of its own (lights, a studio environment, a grey background),
- * seen through the editor's orbit camera, showing an editor copy of a project material
+ * The material editor (docs/plans/_DONE_p084_material-editor-stage-and-selector.md,
+ * docs/plans/_DONE_p085_material-editor-params-and-persistence.md), the first editor view: a
+ * preview object on a stage of its own (lights, a studio environment, a grey background), seen
+ * through the editor's orbit camera, showing an editor copy of a project material
  * (`*.material.json`), picked in the selector (the bottom drawer).
  *
  * The copy is a separate registered material (`__matEditor__<id>`), so the scene's own instance
@@ -20,7 +21,11 @@ import { tslMaterialFileObjects } from '../../../../generatedAppFns';
 import type { MaterialAsset } from '../../../../schemas/materialSchema';
 import { textureMapKeys } from '../../../../utils/constants';
 import { addDebugToast } from '../../../../debug/DebuggerGUI';
-import { createViewCamera, type ViewCamera } from '../_dbg__ViewCamera';
+import {
+  _recordOrCoalesceUndoRedoAction,
+  _registerUndoRedoActionHandler,
+} from '../../_dbg__UndoRedo';
+import { createViewCamera, type ViewCamera, type ViewCameraPose } from '../_dbg__ViewCamera';
 import {
   createEditorDrawer,
   type EditorDrawer,
@@ -39,12 +44,15 @@ import {
   patchMaterialRecord,
   readMaterialEditorUIState,
   readMaterialOverrides,
+  readMaterialRecord,
   readMaterialSettings,
   setMaterialOverride,
   setMaterialSetting,
   writeMaterialEditorUIState,
+  type MaterialOverrideSection,
 } from './_dbg__MaterialEditorStore';
 import {
+  getMaterialEditorSettingLabel,
   normalizeMaterialEditorSetting,
   type MaterialEditorSettingKey,
   type MaterialEditorSettings,
@@ -52,9 +60,12 @@ import {
 import {
   getAssetNodeInputs,
   getMaterialParamDef,
+  getMaterialParamValue,
   getNodeInputBaseValue,
+  getNodeInputValue,
   isSameNodeInputValue,
   mergeNodeOverrides,
+  normalizeAssetNodeInputValue,
   normalizeMaterialParamValue,
   readMaterialParams,
   setMaterialParamValue,
@@ -70,6 +81,13 @@ export const MATERIAL_EDITOR_VIEW_ID = 'materialEditor';
 export const MATERIAL_EDITOR_COPY_PREFIX = '__matEditor__';
 
 const ERROR_COLOR = 0xff00ff;
+
+/** The camera pose of a material without a saved one (and of the view's own pose). */
+const DEFAULT_CAMERA_POSE: ViewCameraPose = {
+  position: { x: 0, y: 0.6, z: 4.8 },
+  target: { x: 0, y: 0, z: 0 },
+  fov: 45,
+};
 
 /** How a material type is previewed: on the ball, as points or lines on a sphere, as a sprite, or
  * not at all (a notice in its place). */
@@ -266,7 +284,7 @@ const applyStageSettings = () => {
 const getViewCamera = () => {
   viewCam ??= createViewCamera({
     viewId: MATERIAL_EDITOR_VIEW_ID,
-    defaultPose: { position: { x: 0, y: 0.6, z: 4.8 }, target: { x: 0, y: 0, z: 0 }, fov: 45 },
+    defaultPose: DEFAULT_CAMERA_POSE,
     near: 0.01,
     far: 100,
     // A material's pose in its record, the view's own (no material) in 'AEK_debugViewCams'
@@ -398,11 +416,21 @@ const getCopyProps = (
 };
 
 /** Sets the record's param overrides on a new copy: a key the catalogue doesn't know, the copy
- * doesn't have, or with a value of the wrong kind is ignored (it stays in the record). */
-const applyParamOverrides = (copy: THREE.Material, params: Record<string, unknown>) => {
+ * doesn't have, or with a value of the wrong kind is ignored (it stays in the record). An override
+ * equal to the asset's own value (`baseParams`) is removed, so the param follows the JSON again:
+ * only a copy tells, and an undo or redo writes a material that isn't on the stage without one. */
+const applyParamOverrides = (
+  materialId: string,
+  copy: THREE.Material,
+  params: Record<string, unknown>,
+  baseParams: Record<string, unknown>
+) => {
   for (const [key, value] of Object.entries(params)) {
     const def = getMaterialParamDef(key);
-    if (def) setMaterialParamValue(copy, def, value);
+    if (!def || !setMaterialParamValue(copy, def, value)) continue;
+    if (normalizeMaterialParamValue(def, value) === baseParams[key]) {
+      setMaterialOverride(materialId, 'params', key, undefined);
+    }
   }
 };
 
@@ -443,6 +471,195 @@ const setCopyNodeInput = (socket: string, input: string, value: unknown, persist
     isDeviation ? next : undefined
   );
 };
+
+// Undo and redo (p085 DD4): one action type for every value a binding sets, kept in the editor
+// view's bucket ('perScene' recorded in an editor view)
+
+const UNDO_SET_VALUE = 'materialEditor.setValue';
+
+/** Where a value goes: the record's overrides, its settings, or its camera pose (`fov`, the only
+ * part of the pose a binding sets). */
+type MaterialEditorValueSection = MaterialOverrideSection | 'settings' | 'camera';
+
+type SetValuePayload = {
+  materialId: string;
+  section: MaterialEditorValueSection;
+  /** A param key, `<socket>.<input>`, a setting key or `fov`. */
+  path: string;
+  /** The JSON values shown before and after the change (never "removed"). */
+  prev: unknown;
+  next: unknown;
+};
+
+/** Records a binding's change (the ticks of one drag coalesce into one entry), unless nothing
+ * changed (eg. a value of the wrong kind, or the copy doesn't have the param). */
+const recordValueChange = (
+  materialId: string,
+  section: MaterialEditorValueSection,
+  path: string,
+  label: string,
+  prev: unknown,
+  next: unknown
+) => {
+  if (prev === undefined || next === undefined || isSameNodeInputValue(prev, next)) return;
+  const asset = getMaterialAssets()[materialId];
+  _recordOrCoalesceUndoRedoAction<SetValuePayload>(
+    UNDO_SET_VALUE,
+    `Material ${asset?.debugData?.name || materialId}: ${label}`,
+    { materialId, section, path, prev, next },
+    `${materialId}.${section}.${path}`
+  );
+};
+
+/** The Params tab's param bindings: {@link setCopyParam}, recorded for undo. */
+const editCopyParam = (def: MaterialParamDef, value: unknown, persist: boolean) => {
+  const copy = getSelectedCopy();
+  if (!copy || !current) return;
+  const prev = getMaterialParamValue(copy, def);
+  setCopyParam(def, value, persist);
+  const next = getMaterialParamValue(copy, def);
+  recordValueChange(current.materialId, 'params', def.key, def.label, prev, next);
+};
+
+/** The Params tab's TSL input bindings: {@link setCopyNodeInput}, recorded for undo. */
+const editCopyNodeInput = (socket: string, input: string, value: unknown, persist: boolean) => {
+  const copy = getSelectedCopy();
+  const asset = current && getMaterialAssets()[current.materialId];
+  if (!copy || !current || !asset) return;
+  const assetNodes = getAssetNodeInputs(asset);
+  const path = `${socket}.${input}`;
+  const prev = getNodeInputValue(copy, assetNodes, socket, input);
+  setCopyNodeInput(socket, input, value, persist);
+  const next = getNodeInputValue(copy, assetNodes, socket, input);
+  recordValueChange(current.materialId, 'nodes', path, path, prev, next);
+};
+
+/** The Settings tab's setting bindings: {@link setStageSetting}, recorded for undo. */
+const editStageSetting = (key: MaterialEditorSettingKey, value: unknown, persist: boolean) => {
+  if (!selectedMaterialId || !getSelectedSettings()) return;
+  const prev = stageSettings[key];
+  setStageSetting(key, value, persist);
+  const label = getMaterialEditorSettingLabel(key);
+  recordValueChange(selectedMaterialId, 'settings', key, label, prev, stageSettings[key]);
+};
+
+/** The Camera folder's FOV binding: sets the fov, saved with the pose of the material the camera
+ * shows (its pose key, the previous material while the selected one loads), recorded for undo. */
+const editCameraFov = (fov: number, persist: boolean) => {
+  if (!viewCam) return;
+  const prev = viewCam.camera.fov;
+  viewCam.setFov(fov, persist);
+  const materialId = viewCam.getPoseKey();
+  // The view's own pose (no material) has no record to undo into
+  if (materialId) recordValueChange(materialId, 'camera', 'fov', 'FOV', prev, viewCam.camera.fov);
+};
+
+/** A `<socket>.<input>` path's parts. */
+const splitNodePath = (path: string) => {
+  const dotIndex = path.indexOf('.');
+  return dotIndex > 0 ? { socket: path.slice(0, dotIndex), input: path.slice(dotIndex + 1) } : null;
+};
+
+/** Sets an undone or redone value on the stage and saves it, like a binding's last change.
+ * Returns false when that part of the material isn't on the stage (another material is selected,
+ * or its copy or settings aren't there yet). */
+const applyLiveValue = ({ materialId, section, path }: SetValuePayload, value: unknown) => {
+  if (materialId !== selectedMaterialId) return false;
+  switch (section) {
+    case 'params': {
+      const def = getMaterialParamDef(path);
+      if (!def || !getSelectedCopy()) return false;
+      setCopyParam(def, value, true);
+      return true;
+    }
+    case 'nodes': {
+      const node = splitNodePath(path);
+      if (!node || !getSelectedCopy()) return false;
+      setCopyNodeInput(node.socket, node.input, value, true);
+      return true;
+    }
+    case 'settings':
+      if (!getSelectedSettings()) return false;
+      setStageSetting(path as MaterialEditorSettingKey, value, true);
+      return true;
+    case 'camera':
+      if (viewCam?.getPoseKey() !== materialId || typeof value !== 'number') return false;
+      viewCam.setFov(value, true);
+      return true;
+  }
+};
+
+/** Writes an undone or redone value into the material's record only (it isn't on the stage): its
+ * load makes the copy, the settings and the pose from the record. A TSL input and a setting are
+ * deviation-only here too; a param is checked against the copy on the load
+ * ({@link applyParamOverrides}). */
+const writeRecordValue = ({ materialId, section, path }: SetValuePayload, value: unknown) => {
+  switch (section) {
+    case 'params': {
+      const def = getMaterialParamDef(path);
+      const next = def ? normalizeMaterialParamValue(def, value) : undefined;
+      if (next !== undefined) setMaterialOverride(materialId, 'params', path, next);
+      return;
+    }
+    case 'nodes': {
+      const node = splitNodePath(path);
+      const asset = getMaterialAssets()[materialId];
+      if (!node || !asset) return;
+      const assetNodes = getAssetNodeInputs(asset);
+      const next = normalizeAssetNodeInputValue(assetNodes, node.socket, node.input, value);
+      if (next === undefined) return;
+      const base = getNodeInputBaseValue(assetNodes, node.socket, node.input);
+      const isDeviation = !isSameNodeInputValue(next, base);
+      setMaterialOverride(materialId, 'nodes', path, isDeviation ? next : undefined);
+      return;
+    }
+    case 'settings': {
+      const next = normalizeMaterialEditorSetting(path, value);
+      if (next !== undefined)
+        setMaterialSetting(materialId, path as MaterialEditorSettingKey, next);
+      return;
+    }
+    case 'camera': {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return;
+      const saved = readMaterialRecord(materialId).camera;
+      patchMaterialRecord(materialId, {
+        camera: { ...(saved ?? DEFAULT_CAMERA_POSE), fov: value },
+      });
+    }
+  }
+};
+
+/**
+ * The undo / redo handler: sets the value on the stage when its material is there, else writes it
+ * into the material's record and, when another material is selected, selects this one (like
+ * jumping to the edit; its load shows the value). Writing the record first, not after the load,
+ * keeps the value when the load is overtaken or fails.
+ */
+const applyRecordedValue = (payload: SetValuePayload, value: unknown) => {
+  const { materialId } = payload;
+  if (!getMaterialAssets()[materialId]) {
+    lwarn(
+      `Could not apply "${payload.path}" of material "${materialId}" (undo / redo): the material no longer exists.`
+    );
+    return;
+  }
+  if (applyLiveValue(payload, value)) {
+    ui?.drawer.refresh();
+    return;
+  }
+  writeRecordValue(payload, value);
+  if (materialId !== selectedMaterialId) void loadEditorMaterial(materialId);
+  else ui?.drawer.refresh();
+};
+
+_registerUndoRedoActionHandler<SetValuePayload>(
+  UNDO_SET_VALUE,
+  {
+    undo: (payload) => applyRecordedValue(payload, payload.prev),
+    redo: (payload) => applyRecordedValue(payload, payload.next),
+  },
+  'perScene'
+);
 
 /** The Params tab's "Reset params": removes the material's overrides (its settings and camera
  * stay) and makes the copy again from the asset. */
@@ -676,7 +893,7 @@ export const loadEditorMaterial = async (materialId: string | null) => {
       isPersistent: true,
     });
     const baseParams = readMaterialParams(copy);
-    applyParamOverrides(copy, overrides.params);
+    applyParamOverrides(materialId, copy, overrides.params, baseParams);
     current = { materialId, copyId, copy, baseParams };
     showPreview(kind, copy);
     failures.delete(materialId);
@@ -736,12 +953,13 @@ const createUI = (): EditorUI => {
         getStatus: getSelectedStatus,
         getViewCamera: () => viewCam,
         getCopy: getSelectedCopy,
-        setParam: setCopyParam,
-        setNodeInput: setCopyNodeInput,
+        setParam: editCopyParam,
+        setNodeInput: editCopyNodeInput,
         resetParams: resetMaterialParams,
         onRecordCleared: onMaterialRecordCleared,
         getSettings: getSelectedSettings,
-        setSetting: setStageSetting,
+        setSetting: editStageSetting,
+        setFov: editCameraFov,
         clearAllRecords: clearAllMaterialEditorData,
         refresh: () => ui?.drawer.refresh(),
       }),
