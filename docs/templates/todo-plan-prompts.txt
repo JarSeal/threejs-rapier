@@ -115,7 +115,7 @@ We should create a list of the browser's keyboard shortcuts default behaviors ar
 }
 Try to map as many of them as you can. If I remember correctly, for example disabling ALT-F4 (on Windows) is not possible and probably some others (maybe), but for apps that build a desktop app (with Electron for example) we could possibly use this CONFIG information to make even those work (not sure).
 
-Also, we should route the default key bindings through the CONFIG.ts file. That would mean that each different default key binding list could be opted-out or overwritten in the CONFIG.ts:
+Also, we should route the default key bindings through the CONFIG.ts file (this can be a following plan). That would mean that each different default key binding list could be opted-out or overwritten in the CONFIG.ts:
 {
   runtimeView: {
     ...DEFAULT_RUNTIME_DEBUG_KEY_BINDINGS,
@@ -138,8 +138,17 @@ We should also refactor the shortcut displaying dialog. We should remove the "U"
 - App (current scene) (The same tab that is currently there)
 We probably should include the grouping information with the bindings meaning that we should be able to produce each tab's list and grouping with only the key binding array. I don't know how this could be possible but for example add a group binding type (that has all the group information: title, description, orderNr, what else?) with an id and then each actual key binding could get a groupId and they would be listed in that group. This would work the same way for the app key bindings.
 
-In addition to this plan we should create a plan for gathering all of the input bindings from the app/game in the build process (or when starting yarn dev). We should go through the code and gather all app input bindings to create a full list of the app's key bindings. We could then create a help/instructions view on the app side with this data (and possibly add the possibility to overwrite these inputs in a game/app). The bindings should have an option to opt-out of being gathered in the build/dev start process.
+In addition to this plan we should create a plan for gathering all of the input bindings from the app/game in the build process (or when starting yarn dev). We should go through the code and gather all app input bindings and what scene they belong to to create a full list of the app's key bindings. We could then create a help/instructions view on the app side with this data (and possibly add the possibility to overwrite these inputs in a game/app). The bindings should have an option to opt-out of being gathered in the build/dev start process.
 
 If for some reason this plan or some of its features can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+************************************
+
+DRAFT_BEER*******************
+Add dynamic tier size changing during run time for physics simulation tier sizes.
+- Two small engine changes would make runtime changes safe. Each is a fairly small addition:
+-- An in-place updatePhysicsTierPolicyRings. It would recompute withinSq / leaveSq on the running policy and keep the pending measurements. Decisions already read the radii when they're made, not when the positions are measured, so the measurements stay valid.
+-- An optional per-step transition budget in physicsTierSystem. Applying requests in entity id order would keep it deterministic.
+- Longer term, add count caps to the rings (maxMembers per tier, like Mass LOD). That gives you per-area behaviour without authoring zones. Per-area overrides proper belong with p352's Phase 5, cell driving with p353.
 
 ************************************
