@@ -5,6 +5,7 @@ import { closeDraggableWindow } from '../UI/DraggableWindow';
 import { lsGetItem, lsSubscribe } from '../../utils/LocalAndSessionStorage';
 
 const CONFIRM_CLEAR_SCOPE_DIALOG_ID = 'clearLSScopeConfirmDialog';
+const CONFIRM_CLEAR_DIALOG_ID = 'clearLSConfirmDialog';
 
 /**
  * Whether a flat (non-scene-scoped) LocalStorage key currently has any data stored.
@@ -58,6 +59,49 @@ export const createClearListLSButton = (opts: ClearLSButtonOpts): TCMP =>
     icon: 'databaseX',
     title: 'Clear local storage data for all items in this list',
   });
+
+/** A confirm dialog for a clear without a scope to pick (eg. the data of every item of an
+ * editor): the confirm button and Cancel (also Escape). */
+export const confirmClearLS = (opts: {
+  /** The question, eg. "Clear the editor data of all materials?" */
+  message: string;
+  /** The confirm button's text. */
+  confirmText: string;
+  onConfirm: () => void;
+  /** A second paragraph, eg. what clearing does or leaves as it is */
+  note?: string;
+}) => {
+  openDialog({
+    id: CONFIRM_CLEAR_DIALOG_ID,
+    closeIfOpen: true,
+    closeOnEscape: true,
+    title: 'Clear local storage data',
+    isDebugWindow: true,
+    size: { w: 360, h: 200 },
+    content: () => {
+      const wrapper = CMP({
+        html: () => `<div><p>${opts.message}</p>${opts.note ? `<p>${opts.note}</p>` : ''}</div>`,
+      });
+      const buttonRow = wrapper.add({ class: 'debuggerClearLSDialogButtonRow' });
+      buttonRow.add({
+        tag: 'button',
+        text: opts.confirmText,
+        class: ['debuggerClearLSDialogButton', 'dangerColor'],
+        onClick: () => {
+          closeDraggableWindow(CONFIRM_CLEAR_DIALOG_ID);
+          opts.onConfirm();
+        },
+      });
+      buttonRow.add({
+        tag: 'button',
+        text: 'Cancel',
+        class: 'debuggerClearLSDialogButton',
+        onClick: () => closeDraggableWindow(CONFIRM_CLEAR_DIALOG_ID),
+      });
+      return wrapper;
+    },
+  });
+};
 
 export const confirmClearScope = (opts: {
   onClearAllScenes: () => void;

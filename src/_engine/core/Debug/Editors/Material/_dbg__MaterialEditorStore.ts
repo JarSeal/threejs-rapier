@@ -4,9 +4,9 @@
  * - the editor's UI state, `AEK_debugMatEditorUI`: the selected material, the selector's and the
  *   right drawer's state;
  * - one record per material, `AEK_debugMatEditorMat_<id>` (p085 DD1): its overrides (the edited
- *   params and TSL inputs) and its camera pose here. The editor module owns the record: every
- *   write is a read, merge, write of the fields it changes, so the fields another part wrote are
- *   kept;
+ *   params and TSL inputs), its editor settings and its camera pose here. The editor module owns
+ *   the record: every write is a read, merge, write of the fields it changes, so the fields
+ *   another part wrote are kept;
  * - the folder open states of the right drawer's tabs, `AEK_debugMatEditorTabsUI`, shared by
  *   every material (a material's clear doesn't reset them).
  */
@@ -23,6 +23,12 @@ import {
 } from '../_dbg__ViewCamera';
 import type { EditorDrawerState } from '../_dbg__EditorDrawer';
 import type { MaterialSelectorState } from './_dbg__MaterialEditorSelector';
+import {
+  DEFAULT_MATERIAL_EDITOR_SETTINGS,
+  normalizeMaterialEditorSetting,
+  type MaterialEditorSettingKey,
+  type MaterialEditorSettings,
+} from './_dbg__MaterialEditorSettings';
 
 export const MATERIAL_EDITOR_UI_LS_KEY = 'AEK_debugMatEditorUI';
 export const MATERIAL_EDITOR_RECORD_LS_KEY_PREFIX = 'AEK_debugMatEditorMat_';
@@ -53,6 +59,9 @@ export type MaterialOverrideSection = 'params' | 'nodes';
 /** The structure of a material's 'AEK_debugMatEditorMat_<id>' record in LocalStorage. */
 export type MaterialEditorRecord = {
   overrides?: MaterialEditorOverrides;
+  /** The editor settings of this material, deviation-only (a value that differs from
+   * `DEFAULT_MATERIAL_EDITOR_SETTINGS`). */
+  settings?: Partial<MaterialEditorSettings>;
   /** The camera pose of this material (the view camera's pose key is the material id). */
   camera?: ViewCameraPose;
 };
@@ -166,6 +175,44 @@ export const setMaterialOverride = (
 };
 
 /**
+ * A material's settings: its record's valid ones over the defaults (a value of the wrong kind, a
+ * hand-edited or older one, is left out, so its default applies).
+ * @param materialId (string | null) a `*.material.json` id, null for the defaults
+ * @returns ({@link MaterialEditorSettings}) a new object
+ */
+export const readMaterialSettings = (materialId: string | null): MaterialEditorSettings => {
+  const settings = { ...DEFAULT_MATERIAL_EDITOR_SETTINGS };
+  const saved = materialId ? (readMaterialRecord(materialId).settings as unknown) : undefined;
+  if (!isPlainObject(saved)) return settings;
+  for (const [key, value] of Object.entries(saved)) {
+    const valid = normalizeMaterialEditorSetting(key, value);
+    if (valid !== undefined) (settings as Record<string, unknown>)[key] = valid;
+  }
+  return settings;
+};
+
+/**
+ * Saves one setting of a material (read, merge, write), deviation-only: a value equal to the
+ * default is removed, and so is an emptied `settings` (and an emptied record).
+ * @param materialId (string) a `*.material.json` id
+ * @param key ({@link MaterialEditorSettingKey})
+ * @param value (unknown) a valid setting value
+ */
+export const setMaterialSetting = (
+  materialId: string,
+  key: MaterialEditorSettingKey,
+  value: unknown
+) => {
+  const saved = readMaterialRecord(materialId).settings as unknown;
+  const settings: Record<string, unknown> = isPlainObject(saved) ? { ...saved } : {};
+  if (value === DEFAULT_MATERIAL_EDITOR_SETTINGS[key]) delete settings[key];
+  else settings[key] = value;
+  patchMaterialRecord(materialId, {
+    settings: Object.keys(settings).length ? settings : undefined,
+  });
+};
+
+/**
  * The ids of the materials that have a record.
  * @returns (string[])
  */
@@ -173,6 +220,13 @@ export const getMaterialRecordIds = () =>
   lsGetKeysWithPrefix(MATERIAL_EDITOR_RECORD_LS_KEY_PREFIX).map((key) =>
     key.slice(MATERIAL_EDITOR_RECORD_LS_KEY_PREFIX.length)
   );
+
+/**
+ * Removes the record of every material (the editor's UI state and the tabs' folder states stay).
+ */
+export const clearAllMaterialRecords = () => {
+  for (const id of getMaterialRecordIds()) lsRemoveItem(getMaterialRecordKey(id));
+};
 
 /**
  * The editor camera's store: a material's pose in its record (`camera`), the view's own pose

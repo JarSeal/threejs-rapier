@@ -34,13 +34,21 @@ import {
 } from './_dbg__MaterialEditorSelector';
 import { createMaterialEditorTabs } from './_dbg__MaterialEditorTabs';
 import {
+  clearAllMaterialRecords,
   createMaterialCameraStore,
   patchMaterialRecord,
   readMaterialEditorUIState,
   readMaterialOverrides,
+  readMaterialSettings,
   setMaterialOverride,
+  setMaterialSetting,
   writeMaterialEditorUIState,
 } from './_dbg__MaterialEditorStore';
+import {
+  normalizeMaterialEditorSetting,
+  type MaterialEditorSettingKey,
+  type MaterialEditorSettings,
+} from './_dbg__MaterialEditorSettings';
 import {
   getAssetNodeInputs,
   getMaterialParamDef,
@@ -61,7 +69,6 @@ export const MATERIAL_EDITOR_VIEW_ID = 'materialEditor';
  * skip them). */
 export const MATERIAL_EDITOR_COPY_PREFIX = '__matEditor__';
 
-const BACKGROUND_COLOR = 0x5a5a5a;
 const ERROR_COLOR = 0xff00ff;
 
 /** How a material type is previewed: on the ball, as points or lines on a sphere, as a sprite, or
@@ -96,6 +103,14 @@ type PreviewObject = THREE.Mesh | THREE.Points | THREE.LineSegments | THREE.Spri
  * environment. */
 type Stage = {
   scene: THREE.Scene;
+  lights: {
+    hemi: THREE.HemisphereLight;
+    key: THREE.DirectionalLight;
+    fill: THREE.DirectionalLight;
+  };
+  /** The studio environment, baked on the first enter (the scene's `environment` while the
+   * setting is 'STUDIO'). */
+  environmentTexture: THREE.Texture | null;
   /** Holds the preview objects (the auto-rotation turns it). */
   previewRoot: THREE.Group;
   objects: Record<Exclude<PreviewKind, 'NONE'>, PreviewObject>;
@@ -143,22 +158,24 @@ const failures = new Map<string, string>();
  * by their onStateChange; the UI is created with it on the first enter). */
 let selectorState: Partial<MaterialSelectorState> = {};
 let drawerState: Partial<EditorDrawerState> = {};
-/** The stage's settings (constants here; p085 makes them editable per material). */
-const stageSettings = {
-  /** Turns per second of the preview object (in `update`, so the view's pause stops it). */
-  autoRotateSpeed: 0,
-};
+/** The stage's settings: a material's (its saved ones over the defaults), the defaults without
+ * one. They change with the swap to a material's copy, not with its selection (the previous
+ * material stays on the stage while the textures load). */
+let stageSettings: MaterialEditorSettings = readMaterialSettings(null);
+/** The material {@link stageSettings} belong to. */
+let stageSettingsMaterialId: string | null = null;
 
 const createStage = (): Stage => {
   const scene = new THREE.Scene();
   scene.name = 'materialEditorStage';
-  scene.background = new THREE.Color(BACKGROUND_COLOR);
+  // The colour and the intensities are the settings' (applyStageSettings)
+  scene.background = new THREE.Color();
 
   // Fixed to the stage, not to the camera: orbiting shows the lit and the shadowed side
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x606060, 0.7);
-  const key = new THREE.DirectionalLight(0xffffff, 2);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x606060);
+  const key = new THREE.DirectionalLight(0xffffff);
   key.position.set(-3, 4, 4);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.6);
+  const fill = new THREE.DirectionalLight(0xffffff);
   fill.position.set(4, 1, 1);
   scene.add(hemi, key, fill);
 
@@ -197,7 +214,15 @@ const createStage = (): Stage => {
   const errorMaterial = new THREE.MeshBasicNodeMaterial({ color: ERROR_COLOR });
   errorMaterial.name = 'materialEditorError';
 
-  return { scene, previewRoot, objects, defaultMaterials, errorMaterial };
+  return {
+    scene,
+    lights: { hemi, key, fill },
+    environmentTexture: null,
+    previewRoot,
+    objects,
+    defaultMaterials,
+    errorMaterial,
+  };
 };
 
 /** Shows one preview object with `material` (its own material when null), or none ('NONE'). */
@@ -213,16 +238,29 @@ const showPreview = (kind: PreviewKind, material: THREE.Material | null) => {
 
 /** The studio environment (a PMREM of three's RoomEnvironment). Needs the renderer, so it is
  * baked on the first enter, and kept while the view is registered. */
-const ensureEnvironment = (scene: THREE.Scene) => {
-  if (scene.environment) return;
+const ensureEnvironment = (s: Stage) => {
+  if (s.environmentTexture) return;
   const renderer = getRenderer();
   if (!renderer) return;
   const generator = new THREE.PMREMGenerator(renderer);
   const room = new RoomEnvironment();
-  scene.environment = generator.fromScene(room, 0.04).texture;
+  s.environmentTexture = generator.fromScene(room, 0.04).texture;
   room.dispose();
   // Its working set would otherwise stay on the GPU (see SkyEnvironment.ts' getPMREMTexture)
   if (renderer.hasInitialized()) generator.dispose();
+};
+
+/** Puts {@link stageSettings} on the stage (the auto-rotation reads them in `update`). */
+const applyStageSettings = () => {
+  if (!stage) return;
+  const { scene, lights } = stage;
+  (scene.background as THREE.Color).set(stageSettings.backgroundColor);
+  // The environment is part of the render objects' cache key: switching it rebuilds them
+  scene.environment = stageSettings.environment === 'STUDIO' ? stage.environmentTexture : null;
+  scene.environmentIntensity = stageSettings.environmentIntensity;
+  lights.key.intensity = stageSettings.keyLightIntensity;
+  lights.fill.intensity = stageSettings.fillLightIntensity;
+  lights.hemi.intensity = stageSettings.hemiLightIntensity;
 };
 
 const getViewCamera = () => {
@@ -241,6 +279,33 @@ const getViewCamera = () => {
  * The same key keeps the camera where it is (its pose is saved on every move). */
 const applyCameraPoseKey = (materialId: string | null) => {
   if (viewCam && viewCam.getPoseKey() !== materialId) viewCam.setPoseKey(materialId);
+};
+
+/** Applies a material's camera pose and its settings (the defaults for null), with the swap to
+ * its copy. */
+const applyMaterialStage = (materialId: string | null) => {
+  applyCameraPoseKey(materialId);
+  stageSettings = readMaterialSettings(materialId);
+  stageSettingsMaterialId = materialId;
+  applyStageSettings();
+};
+
+/** The selected material's settings, once they are on the stage (null before, or without a
+ * selected material). */
+const getSelectedSettings = () =>
+  selectedMaterialId && stageSettingsMaterialId === selectedMaterialId ? stageSettings : null;
+
+/**
+ * Sets a setting of the selected material on the stage (a binding's change), and with `persist`
+ * (the last change of a drag) saves it to the material's record (deviation-only).
+ */
+const setStageSetting = (key: MaterialEditorSettingKey, value: unknown, persist: boolean) => {
+  if (!selectedMaterialId || !getSelectedSettings()) return;
+  const next = normalizeMaterialEditorSetting(key, value);
+  if (next === undefined) return;
+  (stageSettings as Record<string, unknown>)[key] = next;
+  applyStageSettings();
+  if (persist) setMaterialSetting(selectedMaterialId, key, next);
 };
 
 const persistUIState = () =>
@@ -387,12 +452,20 @@ const resetMaterialParams = (materialId: string) => {
 };
 
 /** After a tab's clear button removed the material's record: the copy is made again from the
- * asset alone, and the camera goes to the default pose. */
+ * asset alone, and the camera and the settings go to their defaults. */
 const onMaterialRecordCleared = (materialId: string) => {
   if (materialId !== selectedMaterialId || !isEntered) return;
   // The same key again: it applies the (now missing) saved pose, so the default one
   viewCam?.setPoseKey(materialId);
   void loadEditorMaterial(materialId);
+};
+
+/** The Settings tab's "Clear editor data of all materials" (after its confirm): removes every
+ * material's record, and resets the selected one like its own clear does. */
+const clearAllMaterialEditorData = () => {
+  clearAllMaterialRecords();
+  if (selectedMaterialId) onMaterialRecordCleared(selectedMaterialId);
+  else ui?.drawer.refresh();
 };
 
 /**
@@ -547,7 +620,7 @@ export const loadEditorMaterial = async (materialId: string | null) => {
   if (!materialId) {
     deleteCurrentCopy();
     showPreview('MESH', null);
-    applyCameraPoseKey(null);
+    applyMaterialStage(null);
     refreshUI();
     return false;
   }
@@ -558,14 +631,14 @@ export const loadEditorMaterial = async (materialId: string | null) => {
     setSelectedMaterialId(null);
     deleteCurrentCopy();
     showPreview('MESH', null);
-    applyCameraPoseKey(null);
+    applyMaterialStage(null);
     refreshUI();
     return false;
   }
   const unavailableReason = getUnavailableReason(asset);
   if (unavailableReason) {
     showLoadError(materialId, unavailableReason);
-    applyCameraPoseKey(materialId);
+    applyMaterialStage(materialId);
     refreshUI();
     return false;
   }
@@ -574,7 +647,7 @@ export const loadEditorMaterial = async (materialId: string | null) => {
   if (kind === 'NONE') {
     deleteCurrentCopy();
     showPreview('NONE', null);
-    applyCameraPoseKey(materialId);
+    applyMaterialStage(materialId);
     setNotice(`Preview not supported for ${asset.type}`);
     failures.delete(materialId);
     refreshUI();
@@ -592,7 +665,7 @@ export const loadEditorMaterial = async (materialId: string | null) => {
   // Right before creating, in the same task: createMaterial returns a registered id as it is
   deleteCurrentCopy();
   // With the swap (the previous material kept its pose while this one's textures loaded)
-  applyCameraPoseKey(materialId);
+  applyMaterialStage(materialId);
   try {
     const overrides = readMaterialOverrides(materialId);
     const copy = createMaterial({
@@ -667,6 +740,9 @@ const createUI = (): EditorUI => {
         setNodeInput: setCopyNodeInput,
         resetParams: resetMaterialParams,
         onRecordCleared: onMaterialRecordCleared,
+        getSettings: getSelectedSettings,
+        setSetting: setStageSetting,
+        clearAllRecords: clearAllMaterialEditorData,
         refresh: () => ui?.drawer.refresh(),
       }),
   });
@@ -676,10 +752,10 @@ const createUI = (): EditorUI => {
 
 const onEnter = () => {
   const s = (stage ??= createStage());
-  ensureEnvironment(s.scene);
+  ensureEnvironment(s);
   getViewCamera().onEnter();
   // Right away, not after the textures: nothing else is on the stage yet (the load keeps it)
-  applyCameraPoseKey(selectedMaterialId);
+  applyMaterialStage(selectedMaterialId);
   ui ??= createUI();
   // Before the selector's scroll: an open drawer's debugDrawerOpen narrows the selector, and a
   // scroll restored at full width (fewer rows) would be clamped and saved that way
@@ -730,8 +806,9 @@ export const _registerMaterialEditorView = () => {
     mainUpdate: () => viewCam?.mainUpdate(),
     toggleDrawer: () => ui?.drawer.toggle(),
     update: (delta) => {
-      if (!stageSettings.autoRotateSpeed || !stage) return;
-      stage.previewRoot.rotation.y += delta * stageSettings.autoRotateSpeed * Math.PI * 2;
+      if (!stageSettings.autoRotate || !stage) return;
+      stage.previewRoot.rotation.y +=
+        delta * THREE.MathUtils.degToRad(stageSettings.autoRotateSpeed);
     },
   });
 };

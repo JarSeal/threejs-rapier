@@ -58,6 +58,8 @@ export type ViewCamera = {
   getPoseKey: () => string | null;
   /** The camera's current pose (a new object). */
   getPose: () => ViewCameraPose;
+  /** Sets the field of view (part of the pose), and with `save` (default true) saves the pose. */
+  setFov: (fov: number, save?: boolean) => void;
   /** Applies the default pose and clears the current key's saved one. */
   resetPose: () => void;
   /** For the view's `onEnter`: enables the controls' input and fits the aspect. */
@@ -252,6 +254,14 @@ export const createViewCamera = (opts: ViewCameraOpts): ViewCamera => {
     },
     getPoseKey: () => poseKey,
     getPose,
+    setFov: (fov, save = true) => {
+      if (!Number.isFinite(fov)) return;
+      if (camera.fov !== fov) {
+        camera.fov = fov;
+        camera.updateProjectionMatrix();
+      }
+      if (save) savePose();
+    },
     resetPose: () => {
       store.clear(poseKey);
       applyDefaultPose();

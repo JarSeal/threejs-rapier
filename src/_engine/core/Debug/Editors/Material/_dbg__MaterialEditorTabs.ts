@@ -2,7 +2,8 @@
  * The material editor's right drawer tabs (docs/plans/p084_material-editor-stage-and-selector.md
  * DD6, docs/plans/p085_material-editor-params-and-persistence.md): **Params** (the selected
  * material's info, its editable params and TSL inputs, the rest of its params read-only, and a
- * "Reset params" heading button) and **Settings** (the camera with its reset).
+ * "Reset params" heading button) and **Settings** (the material's stage and preview settings, the
+ * camera's fov, pose and reset, and "Clear editor data of all materials").
  *
  * Both tabs have the material's record as their `lsKey`, for the heading's clear button (this
  * material only), and no `persistKeys`: the editor module owns the record, and every binding has
@@ -10,15 +11,25 @@
  */
 import type * as THREE from 'three/webgpu';
 import { CMP } from '../../../../utils/CMP';
-import type { AnyDebuggerTabDef, DebuggerTabSection } from '../../../../debug/DebuggerGUI';
+import type {
+  AnyDebuggerTabDef,
+  DebuggerPaneItem,
+  DebuggerTabSection,
+} from '../../../../debug/DebuggerGUI';
 import type { MaterialAsset } from '../../../../schemas/materialSchema';
 import type { ViewCamera, ViewCameraPose } from '../_dbg__ViewCamera';
-import { createClearLSButton } from '../../_dbg__ClearLSButtons';
+import { confirmClearLS, createClearLSButton } from '../../_dbg__ClearLSButtons';
 import {
+  getMaterialRecordIds,
   getMaterialRecordKey,
   MATERIAL_EDITOR_TABS_UI_LS_KEY,
   readMaterialRecord,
 } from './_dbg__MaterialEditorStore';
+import {
+  getSettingsPaneItems,
+  type MaterialEditorSettingKey,
+  type MaterialEditorSettings,
+} from './_dbg__MaterialEditorSettings';
 import {
   getAssetNodeInputs,
   getAssetStaticDefines,
@@ -55,6 +66,13 @@ export type MaterialEditorTabsCtx = {
   resetParams: (materialId: string) => void;
   /** After a heading's clear button removed the material's record. */
   onRecordCleared: (materialId: string) => void;
+  /** The selected material's settings, once they are on the stage (null before, or without a
+   * selected material). */
+  getSettings: () => MaterialEditorSettings | null;
+  /** Sets a setting of the selected material on the stage, saved like `setParam`. */
+  setSetting: (key: MaterialEditorSettingKey, value: unknown, persist: boolean) => void;
+  /** Removes every material's record (after the confirm). */
+  clearAllRecords: () => void;
   /** Refreshes the drawer's mounted tab. */
   refresh: () => void;
 };
@@ -109,20 +127,6 @@ const getMaterialInfoHtml = (ctx: MaterialEditorTabsCtx) => {
 
 const formatXYZ = (xyz: ViewCameraPose['position']) =>
   [xyz.x, xyz.y, xyz.z].map((n) => n.toFixed(2)).join(', ');
-
-const getCameraInfoHtml = (ctx: MaterialEditorTabsCtx) => {
-  const viewCam = ctx.getViewCamera();
-  if (!viewCam) return '<div></div>';
-  const pose = viewCam.getPose();
-  return infoSectionHtml(
-    'Camera',
-    infoListHtml([
-      ['Position', formatXYZ(pose.position), { mono: true }],
-      ['Target', formatXYZ(pose.target), { mono: true }],
-      ['FOV', `${pose.fov}°`, { mono: true }],
-    ])
-  );
-};
 
 /** The heading's clear button and the folder states: the material's record (none without a
  * material: a disabled clear button, like every tab's without data). */
@@ -201,35 +205,123 @@ const getParamsTab = (ctx: MaterialEditorTabsCtx, recordProps: RecordProps): Any
   };
 };
 
+/** The Settings tab's Camera folder: the fov (part of the pose, saved with it), the pose
+ * read-only and the reset. */
+const getCameraPaneItems = (
+  ctx: MaterialEditorTabsCtx,
+  target: { fov: number; position: string; target: string }
+): DebuggerPaneItem[] => [
+  {
+    type: 'folder',
+    id: 'settings/Camera',
+    title: 'Camera',
+    content: [
+      {
+        key: 'fov',
+        target,
+        label: 'FOV',
+        min: 10,
+        max: 120,
+        step: 1,
+        onChange: (value, e) => {
+          ctx.getViewCamera()?.setFov(value as number, e.last);
+          if (e.last) ctx.refresh();
+        },
+      },
+      { key: 'position', target, label: 'Position', readonly: true },
+      { key: 'target', target, label: 'Target', readonly: true },
+      {
+        type: 'button',
+        title: 'Reset camera to default',
+        onClick: () => {
+          ctx.getViewCamera()?.resetPose();
+          ctx.refresh();
+        },
+      },
+    ],
+  },
+];
+
 const getSettingsTab = (
   ctx: MaterialEditorTabsCtx,
   recordProps: RecordProps
-): AnyDebuggerTabDef => ({
-  id: MATERIAL_EDITOR_SETTINGS_TAB_ID,
-  title: 'Settings',
-  icon: 'gear',
-  ...recordProps,
-  // The pose readout follows the camera (OrbitControls' input, the gizmo, a reset)
-  onOpen: () => {
-    const controls = ctx.getViewCamera()?.controls;
-    if (!controls) return;
-    controls.addEventListener('change', ctx.refresh);
-    return () => controls.removeEventListener('change', ctx.refresh);
-  },
-  content: () => [
-    CMP({ html: () => getCameraInfoHtml(ctx) }),
-    {
-      pane: true,
-      content: [
+): AnyDebuggerTabDef => {
+  const asset = ctx.getAsset();
+  // What the bindings bind to, read before every build and refresh (a clear or the camera's
+  // controls change what they show)
+  const settingsTarget: Record<string, unknown> = {};
+  const cameraTarget = { fov: 0, position: '', target: '' };
+  return {
+    id: MATERIAL_EDITOR_SETTINGS_TAB_ID,
+    title: 'Settings',
+    icon: 'gear',
+    ...recordProps,
+    onRefresh: () => {
+      const settings = ctx.getSettings();
+      if (settings) Object.assign(settingsTarget, settings);
+      const viewCam = ctx.getViewCamera();
+      if (!viewCam) return;
+      const pose = viewCam.getPose();
+      cameraTarget.fov = pose.fov;
+      cameraTarget.position = formatXYZ(pose.position);
+      cameraTarget.target = formatXYZ(pose.target);
+    },
+    // The pose follows the camera (OrbitControls' input, the gizmo, a reset), and the clear-all
+    // button the record its move end writes
+    onOpen: () => {
+      const controls = ctx.getViewCamera()?.controls;
+      if (!controls) return;
+      controls.addEventListener('change', ctx.refresh);
+      controls.addEventListener('end', ctx.refresh);
+      return () => {
+        controls.removeEventListener('change', ctx.refresh);
+        controls.removeEventListener('end', ctx.refresh);
+      };
+    },
+    content: () => {
+      const sections: DebuggerTabSection<Record<string, unknown>>[] = [];
+      const hasSettings = Boolean(ctx.getSettings());
+      if (!asset) {
+        sections.push(
+          CMP({
+            html: () =>
+              infoSectionHtml(
+                'Settings',
+                `<p class="${styles.infoEmpty}">No material selected: the stage has the default settings.</p>`
+              ),
+          })
+        );
+      }
+      const content: DebuggerPaneItem[] = [
+        ...(hasSettings
+          ? getSettingsPaneItems(settingsTarget, (key, value, last) => {
+              ctx.setSetting(key, value, last);
+              // The clear-all button's disabled state follows the record
+              if (last) ctx.refresh();
+            })
+          : []),
+      ];
+      if (ctx.getViewCamera()) content.push(...getCameraPaneItems(ctx, cameraTarget));
+      content.push(
+        { type: 'separator' },
         {
           type: 'button',
-          title: 'Reset camera to default',
-          onClick: () => ctx.getViewCamera()?.resetPose(),
-        },
-      ],
+          title: 'Clear editor data of all materials',
+          disabled: () => !getMaterialRecordIds().length,
+          onClick: () =>
+            confirmClearLS({
+              message: 'Clear the material editor data of all materials?',
+              note: 'Their edited params, TSL inputs, settings and camera poses are removed. The editor UI state and the folder states stay.',
+              confirmText: 'Clear all materials',
+              onConfirm: ctx.clearAllRecords,
+            }),
+        }
+      );
+      sections.push({ pane: true, content });
+      return sections;
     },
-  ],
-});
+  };
+};
 
 /**
  * The right drawer's tabs, built again for every material and every copy of it (the bindings are

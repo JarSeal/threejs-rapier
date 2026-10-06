@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Editor-Creator View, Materials
 Related: \_DONE_p083_editor-creator-view.md (epic; undo buckets per view), \_DONE_p084_material-editor-stage-and-selector.md (implemented: editor view, editor copy, right drawer, per-material record), the debugger undo engine (`core/Debug/_dbg__UndoRedo.ts`, p060-p062, implemented: undo recording pattern), `createDebuggerTab` (p105, implemented: pane bindings, clear-LS buttons)
 
@@ -108,7 +108,14 @@ Each phase compiles, lints and leaves the app working.
      - Folder ids: `params/TSL inputs`, `params/TSL inputs/<socket>`, `…/staticDefines`, `params/Other`.
      - "Reset params" is a heading button (`arrowCounterClockwise`), made with `createClearLSButton`, whose `icon` now takes any `SvgIconKey` (`_dbg__ClearLSButtons.ts`). It is disabled while the record has no `overrides` (it watches the record key).
      - Not exercised in the app: no app material is POINTS, LINEDASHED or PHYSICAL, and none has an asset param without a binding, so the Points / lines and Physical bindings and "Other asset params" were checked only by type-check.
-3. **Settings tab.** Stage, preview and camera settings per material, "Clear editor data of all materials".
+3. **Settings tab.** — done Stage, preview and camera settings per material, "Clear editor data of all materials".
+   - As built:
+     - The settings catalogue, defaults and value check are a new module, `_dbg__MaterialEditorSettings.ts` (`MaterialEditorSettings`, `DEFAULT_MATERIAL_EDITOR_SETTINGS`, `normalizeMaterialEditorSetting`, `getSettingsPaneItems`). The store adds `readMaterialSettings(id | null)` (the record's valid values over the defaults), `setMaterialSetting` (deviation-only: a value equal to its default is removed) and `clearAllMaterialRecords`.
+     - **`fov` is not a setting**: it was already part of the camera pose in the record's `camera` (p084), so it stays there, and storing it twice could let the two disagree. The Camera folder's FOV binding calls the new `ViewCamera.setFov(fov, save)`, and "Reset camera to default" resets it with the pose. The pose is read-only rows (Position, Target) in the same folder, replacing p084's HTML readout.
+     - `autoRotate` (default off) + `autoRotateSpeed` in deg/s (default 30) replace p084's `stageSettings.autoRotateSpeed` in turns per second. The stage keeps its lights and its baked studio PMREM (`Stage.lights`, `Stage.environmentTexture`), so 'NONE' sets `scene.environment = null` and 'STUDIO' puts the texture back without a re-bake.
+     - A material's settings are applied together with its camera pose (`applyMaterialStage`), i.e. with the swap to its copy, not on its selection: the previous material stays on the stage while the textures load. `stageSettingsMaterialId` records which material the stage settings belong to; until it matches the selection, the tab shows no Stage / Preview folders and edits are ignored. Without a selected material the stage has the defaults and the tab says so.
+     - "Clear editor data of all materials" opens a new plain confirm dialog, `confirmClearLS` (`_dbg__ClearLSButtons.ts`; `confirmClearScope` only offers all scenes / this scene). It removes every record, then resets the selected material like its own clear. The button is disabled while no record exists; the tab refreshes after a setting's last change and on the camera controls' `end`, so its disabled state follows the record.
+     - Folder ids: `settings/Stage`, `settings/Preview`, `settings/Camera`.
 4. **Undo/redo.** Action type, handlers (including the switch to another material), coalescing.
 
 ## Non-goals
