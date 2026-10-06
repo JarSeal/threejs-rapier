@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented, Phase 2 sections 1-4 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 2.2)
 Related: p299_texture-arrays-and-atlases.md (Phase 4's exported atlases), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
@@ -153,7 +153,7 @@ As built:
 - Not done: no alpha coverage correction per mip. Not needed for the solid tree cone; a thin
   asset (leaf cards) may thin out at distance, which Phase 2 or p308 should check.
 
-### Phase 2 — Dithered cross-fade
+### Phase 2 — Dithered cross-fade — done
 
 `lodFade`, `lodDither`, `TAG_LOD_TRANSITIONING`, `lodFadeSystem`, for pools and plain meshes,
 level changes and culling alike. No LOD change pops unless it's asked to: `fadeSeconds` (default
@@ -252,12 +252,41 @@ Sections, each reviewed before the next:
    and testDebugScene (the sphere and the instance cell: level fades and fades to and from
    culled, no copy left after).
 5. **Close the phase:** the exit below measured, As built, CLAUDE.md's LOD sections, versions and
-   CHANGELOG.
+   CHANGELOG. — done: the versions stay as Phase 1 set them (engine 4.11.0, app 1.6.1: one bump
+   per branch, CLAUDE.md's rule, over §4's "minor per phase"), and the branch's CHANGELOG entry
+   gets Phase 2.
 
 **Exit:** in largeWorld nothing pops: the trees cross-fade between their levels and the cross-quads,
 the bushes fade out at their cull distance, with `fadeSeconds: 0` everything switches instantly as
 before; draw calls stay one per non-empty level mesh; shadows don't darken during a fade;
 `lodFadeSystem`'s cost per frame and the plain-mesh fade's per-object cost are measured.
+
+As built:
+
+- Exit, measured in largeWorld (WebGPU, Apple GPU, 1200×800, `?isDebug=true`) by a frame recorder
+  after the render: every `LOD` entity whose shown state (its applied level, or LOD culled) changed
+  since the last frame must have TAG_LOD_TRANSITIONING.
+  - Nothing pops: a camera dolly from the overview camera to 20 % of its distance and back (8 s
+    each, 2,522 and 2,177 changes) and five bias steps (10,847 changes, up to 3,251 entities fading
+    at once) all faded, with no pop. With `fadeSeconds` 0, all 4,134 changes of two bias steps
+    switched in their frame and nothing faded.
+  - The exit found one pop: a bush LOD culled at its first selection (`applied` -1) appeared
+    whole the first time it was shown, as the "first apply never fades" rule took it for the load.
+    Showing an entity from LOD culled now fades even when it's its first apply
+    (`prepareChange`'s `isShowing`, `LodSystem.ts`): nothing of it was drawn before. 620 pops on
+    the dolly in before the fix, 0 after.
+  - Draw calls: 94 with every tree and bush held half way through a fade, 94 before it (same
+    non-empty level meshes); 91 after, when one level mesh had emptied (one draw per pass). A
+    fade adds no draw.
+  - Shadows: with 1,703 entities held at 0.5, the mean luma of the frame's rows at 40-70 % of its height
+    (dense trees and their shadows) is 55.71, between before (55.62) and after (55.92). Drawing both
+    copies whole instead (the dither off) drops it to 55.14: the metric sees doubled shadows, and
+    the complementary split has none.
+  - `lodFadeSystem`: 0.02-0.03 ms per frame on average during the dollies (up to 127 fading,
+    0.14 ms at most), 0.3 ms on average for the bias steps (up to 3,251 fading, 0.57 ms at most).
+  - The plain-mesh fade's per-object cost is section 3's: about 35 µs per mesh in the frame a fade
+    starts (three building the copy's render objects), the mesh drawn twice during the fade.
+- Everything else is in the sections' notes above.
 
 Out of Phase 2: alpha coverage per mip (Phase 1's note) needs a thin asset; p308's leaf cards
 check it.

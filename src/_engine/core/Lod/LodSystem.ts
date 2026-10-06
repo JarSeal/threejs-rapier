@@ -43,7 +43,8 @@ export const registerLodDebugGUI = async () => {
 // Cross-fades (docs/plans/p351_impostor-billboard-lod.md §2.4): a level change, or hiding and
 // showing, dissolves over `fadeSeconds` (LodFade.ts). The entity gets TAG_LOD_TRANSITIONING and
 // `_fade` (its progress) and lodFadeSystem drives it; a change while a fade runs finishes that fade
-// first. The first apply after the LOD is added never fades (the load), nor does removing the LOD.
+// first. The first apply after the LOD is added never fades (the load), nor does removing the LOD;
+// an entity LOD culled at its first selection fades in when it's first shown.
 // Targets fade when they have `setFade`; plain meshes always can (see PLAIN MESH FADES), except
 // skinned ones.
 
@@ -208,12 +209,13 @@ const endFade = (entityId: number, world: ECSWorld, lod: LodData) => {
 };
 
 /** Before a change of what the entity shows: finishes a running fade, and says whether the change
- * fades (not the first apply, not while the LOD is removed, not for an entity that can't). */
-const prepareChange = (entityId: number, world: ECSWorld, lod: LodData) => {
+ * fades (not the first apply, unless it shows an entity LOD culled since its first selection; not
+ * while the LOD is removed; not for an entity that can't). */
+const prepareChange = (entityId: number, world: ECSWorld, lod: LodData, isShowing = false) => {
   endFade(entityId, world, lod);
   return (
     !areFadesSuppressed &&
-    lod.applied >= 0 &&
+    (lod.applied >= 0 || isShowing) &&
     getFadeSeconds(lod) > 0 &&
     canFade(entityId, world, lod)
   );
@@ -239,7 +241,8 @@ ECSWorld.registerComponentHooks(ComponentType.TAG_LOD_CULLED, {
     reconcileObject3DVisibility(entityId, world, { isLodCulled: false });
     const lod = world.getComponent(entityId, ComponentType.LOD);
     if (!lod) return;
-    const fade = prepareChange(entityId, world, lod);
+    // Shown for the first time too when it was culled at its first selection (nothing of it drawn)
+    const fade = prepareChange(entityId, world, lod, true);
     if (fade && lod.level >= 0 && lod.level !== lod.applied) {
       // Not drawn yet, so the swap shows nothing: it fades in in the selected level, not in the
       // one it was hidden in (which would then fade into the selected one)
