@@ -36,8 +36,18 @@ import { createMaterialEditorTabs } from './_dbg__MaterialEditorTabs';
 import {
   createMaterialCameraStore,
   readMaterialEditorUIState,
+  readMaterialOverrides,
+  setMaterialOverride,
   writeMaterialEditorUIState,
 } from './_dbg__MaterialEditorStore';
+import {
+  getMaterialParamDef,
+  mergeNodeOverrides,
+  normalizeMaterialParamValue,
+  readMaterialParams,
+  setMaterialParamValue,
+  type MaterialParamDef,
+} from './_dbg__MaterialEditorParams';
 import { lerror, lwarn } from '../../../../utils/Logger';
 import styles from './MaterialEditor.module.scss';
 
@@ -106,13 +116,22 @@ let isEntered = false;
 /** The project material picked in the selector (also while it loads or after it failed). */
 let selectedMaterialId: string | null = null;
 /** The editor copy on the preview object, and the project material it was made from. */
-let current: { materialId: string; copyId: string } | null = null;
+let current: {
+  materialId: string;
+  copyId: string;
+  copy: THREE.Material;
+  /** The copy's catalogue params as the asset alone gives them (before the overrides): an edit
+   * back to one of these removes its override, so the param follows the JSON again. */
+  baseParams: Record<string, unknown>;
+} | null = null;
 /** The newest load: a load that finishes after a newer one started (or after the exit) is
  * discarded. */
 let loadToken = 0;
 let loadingMaterialId: string | null = null;
-/** The material the right drawer's tabs were built for (they are rebuilt per material). */
+/** The material and its copy the right drawer's tabs were built for (they are rebuilt per
+ * material, and per copy: their bindings are made from it). */
 let drawerMaterialId: string | null = null;
+let drawerCopy: THREE.Material | null = null;
 /** Why a material failed to load, by material id (cleared by its next successful load). */
 const failures = new Map<string, string>();
 /** The selector's and the right drawer's UI state, as saved (read at registration, kept in sync
@@ -293,6 +312,57 @@ const getMaterialProps = (asset: MaterialAsset): MatProps => {
   return props as MatProps;
 };
 
+/** The copy's creation props: the asset's, with the editor's TSL input overrides merged over its
+ * `nodes` (before creation: an input's uniform kind comes from its value, and a graph may read a
+ * value at build time). The param overrides are set on the created copy instead
+ * ({@link applyParamOverrides}), where only the params the copy has are taken. */
+const getCopyProps = (
+  asset: MaterialAsset,
+  nodeOverrides: Record<string, Record<string, unknown>>
+) => {
+  const props = getMaterialProps(asset) as MatProps & {
+    nodes?: Record<string, Record<string, unknown>>;
+  };
+  if (props.nodes) props.nodes = mergeNodeOverrides(props.nodes, nodeOverrides);
+  return props as MatProps;
+};
+
+/** Sets the record's param overrides on a new copy: a key the catalogue doesn't know, the copy
+ * doesn't have, or with a value of the wrong kind is ignored (it stays in the record). */
+const applyParamOverrides = (copy: THREE.Material, params: Record<string, unknown>) => {
+  for (const [key, value] of Object.entries(params)) {
+    const def = getMaterialParamDef(key);
+    if (def) setMaterialParamValue(copy, def, value);
+  }
+};
+
+/** The copy of the selected material, when it is on the stage. */
+const getSelectedCopy = () =>
+  current && current.materialId === selectedMaterialId ? current.copy : null;
+
+/**
+ * Sets a param on the selected material's copy (a binding's change), and with `persist` (the
+ * last change of a drag) saves it to the material's record: as an override, or without one when
+ * the value is the asset's own again.
+ */
+const setCopyParam = (def: MaterialParamDef, value: unknown, persist: boolean) => {
+  const copy = getSelectedCopy();
+  if (!copy || !current || !setMaterialParamValue(copy, def, value)) return;
+  if (!persist) return;
+  const next = normalizeMaterialParamValue(def, value);
+  const isDeviation = next !== current.baseParams[def.key];
+  setMaterialOverride(current.materialId, 'params', def.key, isDeviation ? next : undefined);
+};
+
+/** After a tab's clear button removed the material's record: the copy is made again from the
+ * asset alone, and the camera goes to the default pose. */
+const onMaterialRecordCleared = (materialId: string) => {
+  if (materialId !== selectedMaterialId || !isEntered) return;
+  // The same key again: it applies the (now missing) saved pose, so the default one
+  viewCam?.setPoseKey(materialId);
+  void loadEditorMaterial(materialId);
+};
+
 /**
  * The texture ids a material asset uses: its `params` texture slots and its TSL node string
  * inputs (a string not starting with `#` is a texture id, as in createMaterial).
@@ -391,11 +461,13 @@ const setNotice = (text: string) => {
 const refreshUI = () => {
   if (!ui) return;
   ui.selector.refresh();
-  if (drawerMaterialId === selectedMaterialId) {
+  const copy = getSelectedCopy();
+  if (drawerMaterialId === selectedMaterialId && drawerCopy === copy) {
     ui.drawer.refresh();
     return;
   }
   drawerMaterialId = selectedMaterialId;
+  drawerCopy = copy;
   ui.drawer.rebuild();
 };
 
@@ -490,14 +562,17 @@ export const loadEditorMaterial = async (materialId: string | null) => {
   // With the swap (the previous material kept its pose while this one's textures loaded)
   applyCameraPoseKey(materialId);
   try {
+    const overrides = readMaterialOverrides(materialId);
     const copy = createMaterial({
-      ...getMaterialProps(asset),
+      ...getCopyProps(asset, overrides.nodes),
       id: copyId,
       tslMaterialId: materialId,
       // A scene loaded while the view is active (app code, HMR) must not release it
       isPersistent: true,
     });
-    current = { materialId, copyId };
+    const baseParams = readMaterialParams(copy);
+    applyParamOverrides(copy, overrides.params);
+    current = { materialId, copyId, copy, baseParams };
     showPreview(kind, copy);
     failures.delete(materialId);
   } catch (err) {
@@ -533,6 +608,7 @@ const createUI = (): EditorUI => {
     },
   });
   drawerMaterialId = selectedMaterialId;
+  drawerCopy = getSelectedCopy();
   const drawer = createEditorDrawer({
     id: MATERIAL_EDITOR_VIEW_ID,
     parent: hud,
@@ -554,6 +630,9 @@ const createUI = (): EditorUI => {
         isTextureLoaded: (id) => Boolean(getTexture(id)),
         getStatus: getSelectedStatus,
         getViewCamera: () => viewCam,
+        getCopy: getSelectedCopy,
+        setParam: setCopyParam,
+        onRecordCleared: onMaterialRecordCleared,
         refresh: () => ui?.drawer.refresh(),
       }),
   });

@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Editor-Creator View, Materials
 Related: \_DONE_p083_editor-creator-view.md (epic; undo buckets per view), \_DONE_p084_material-editor-stage-and-selector.md (implemented: editor view, editor copy, right drawer, per-material record), the debugger undo engine (`core/Debug/_dbg__UndoRedo.ts`, p060-p062, implemented: undo recording pattern), `createDebuggerTab` (p105, implemented: pane bindings, clear-LS buttons)
 
@@ -90,7 +90,15 @@ Deeper params (textures, every three.js material type and property, TSL input ra
 
 Each phase compiles, lints and leaves the app working.
 
-1. **Record and overrides.** `MaterialEditorRecord`, read/patch, merge before creation, clear with rebuild. Params tab with the Base, Surface, Transparency and Rendering folders.
+1. **Record and overrides.** — done `MaterialEditorRecord`, read/patch, merge before creation, clear with rebuild. Params tab with the Base, Surface, Transparency and Rendering folders.
+   - As built:
+     - The record type and its read / patch were already in `_dbg__MaterialEditorStore.ts` (p084: `readMaterialRecord`, `patchMaterialRecord`), not in `_dbg__MaterialEditor.ts`. It adds `readMaterialOverrides` (shape-checked) and `setMaterialOverride(materialId, section, path, value)` (`path`: a param key or `<socket>.<input>`, `undefined` removes it, emptied objects and records are removed), and `MATERIAL_EDITOR_TABS_UI_LS_KEY`.
+     - p084 had no merge hook: the copy is built by `getCopyProps`. Only the **node** overrides are merged before creation (`mergeNodeOverrides` in `_dbg__MaterialEditorParams.ts`: an input the asset has, of an editable kind, with a value of the same kind; textures, `staticDefines` and `{ r, g, b }` objects never). The **param** overrides are set on the created copy through the bindings' own setter (`applyParamOverrides` → `setMaterialParamValue`): only the created copy tells whether it has the key with the expected kind, and three warns about unknown constructor params. The copy is never rendered in between, so it is the same.
+     - Deviation-only goes one step further: `current.baseParams` holds the copy's catalogue params as the asset alone gives them (read before the overrides), and a param set back to its base value drops its override, so it follows the JSON again.
+     - A binding applies every change and saves only a drag's last one (`e.last`).
+     - The drawer is rebuilt when the copy changes (`drawerCopy`), not only the material: the bindings are made from the copy (the clear, Phase 2's reset).
+     - The clear button's `onClearLS` (both tabs) calls `viewCam.setPoseKey(id)` (the record's pose is gone, so the default one) and `loadEditorMaterial(id)` (a new copy from the asset).
+     - A param the copy doesn't have is ignored but stays in the record (`roughness` on a Phong material).
 2. **TSL inputs and the remaining params.** TSL input bindings, Points/lines and Physical folders, read-only "Other asset params", "Reset params".
 3. **Settings tab.** Stage, preview and camera settings per material, "Clear editor data of all materials".
 4. **Undo/redo.** Action type, handlers (including the switch to another material), coalescing.
