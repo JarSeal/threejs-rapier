@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Editor-Creator View, Materials
 Related: \_DONE_p083_editor-creator-view.md (epic; undo buckets per view), \_DONE_p084_material-editor-stage-and-selector.md (implemented: editor view, editor copy, right drawer, per-material record), the debugger undo engine (`core/Debug/_dbg__UndoRedo.ts`, p060-p062, implemented: undo recording pattern), `createDebuggerTab` (p105, implemented: pane bindings, clear-LS buttons)
 
@@ -99,7 +99,15 @@ Each phase compiles, lints and leaves the app working.
      - The drawer is rebuilt when the copy changes (`drawerCopy`), not only the material: the bindings are made from the copy (the clear, Phase 2's reset).
      - The clear button's `onClearLS` (both tabs) calls `viewCam.setPoseKey(id)` (the record's pose is gone, so the default one) and `loadEditorMaterial(id)` (a new copy from the asset).
      - A param the copy doesn't have is ignored but stays in the record (`roughness` on a Phong material).
-2. **TSL inputs and the remaining params.** TSL input bindings, Points/lines and Physical folders, read-only "Other asset params", "Reset params".
+2. **TSL inputs and the remaining params.** — done TSL input bindings, Points/lines and Physical folders, read-only "Other asset params", "Reset params".
+   - As built:
+     - The Physical params are in the **Surface** folder (DD2), like the Phong ones in Base; there is no separate Physical folder. Their three.js setters bump the material's version when a value crosses 0, so they need no `needsUpdate`.
+     - The catalogue has an `appliesTo` check: `size` / `sizeAttenuation` only on points materials (a sprite also has `sizeAttenuation`), `dashSize` / `gapSize` / `scale` (label "Dash scale") only on dashed lines. `sizeAttenuation` sets `needsUpdate` (a build-time branch).
+     - A TSL input is editable when the asset's value has an editable kind and the copy has a uniform of that kind (`getEditableNodeInput`). The kind comes from the asset, not the uniform: a `{ r, g, b }` input also becomes a colour uniform, but its overrides are never merged (Phase 1). Everything else in a socket is a read-only row in asset order: texture ids, inputs without a uniform (a socket createMaterial skipped), `{ r, g, b }`. `staticDefines` (a socket's and the material-wide ones) are a read-only "staticDefines (read-only)" sub-folder.
+     - TSL input values are JSON values: colours `#rrggbb` (through `Color`, as the params are), vectors `{ x, y(, z, w) }`, also from an asset array. An input set back to the asset's value drops its override (`getNodeInputBaseValue`, `isSameNodeInputValue`), like the params.
+     - Folder ids: `params/TSL inputs`, `params/TSL inputs/<socket>`, `…/staticDefines`, `params/Other`.
+     - "Reset params" is a heading button (`arrowCounterClockwise`), made with `createClearLSButton`, whose `icon` now takes any `SvgIconKey` (`_dbg__ClearLSButtons.ts`). It is disabled while the record has no `overrides` (it watches the record key).
+     - Not exercised in the app: no app material is POINTS, LINEDASHED or PHYSICAL, and none has an asset param without a binding, so the Points / lines and Physical bindings and "Other asset params" were checked only by type-check.
 3. **Settings tab.** Stage, preview and camera settings per material, "Clear editor data of all materials".
 4. **Undo/redo.** Action type, handlers (including the switch to another material), coalescing.
 

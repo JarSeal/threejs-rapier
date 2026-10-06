@@ -1,5 +1,5 @@
 import { CMP, TCMP } from '../../utils/CMP';
-import { getSvgIcon } from '../UI/icons/SvgIcon';
+import { getSvgIcon, type SvgIconKey } from '../UI/icons/SvgIcon';
 import { openDialog } from '../UI/DialogWindow';
 import { closeDraggableWindow } from '../UI/DraggableWindow';
 import { lsGetItem, lsSubscribe } from '../../utils/LocalAndSessionStorage';
@@ -23,9 +23,9 @@ type ClearLSButtonOpts = {
 };
 
 /** A clear-LS icon button, disabled while `hasData` is false. The tab and list variants below
- * preset the icon and the title. */
+ * preset the icon and the title; another icon fits a button that clears a part of a key. */
 export const createClearLSButton = (
-  opts: ClearLSButtonOpts & { icon: 'eraser' | 'databaseX'; title: string }
+  opts: ClearLSButtonOpts & { icon: SvgIconKey; title: string }
 ): TCMP => {
   let lastHasData = opts.hasData();
   const btn: TCMP = CMP({

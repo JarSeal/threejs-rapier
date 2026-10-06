@@ -1,7 +1,8 @@
 /**
  * The material editor's right drawer tabs (docs/plans/p084_material-editor-stage-and-selector.md
  * DD6, docs/plans/p085_material-editor-params-and-persistence.md): **Params** (the selected
- * material's info and its editable params) and **Settings** (the camera with its reset).
+ * material's info, its editable params and TSL inputs, the rest of its params read-only, and a
+ * "Reset params" heading button) and **Settings** (the camera with its reset).
  *
  * Both tabs have the material's record as their `lsKey`, for the heading's clear button (this
  * material only), and no `persistKeys`: the editor module owns the record, and every binding has
@@ -12,10 +13,20 @@ import { CMP } from '../../../../utils/CMP';
 import type { AnyDebuggerTabDef, DebuggerTabSection } from '../../../../debug/DebuggerGUI';
 import type { MaterialAsset } from '../../../../schemas/materialSchema';
 import type { ViewCamera, ViewCameraPose } from '../_dbg__ViewCamera';
-import { getMaterialRecordKey, MATERIAL_EDITOR_TABS_UI_LS_KEY } from './_dbg__MaterialEditorStore';
+import { createClearLSButton } from '../../_dbg__ClearLSButtons';
 import {
+  getMaterialRecordKey,
+  MATERIAL_EDITOR_TABS_UI_LS_KEY,
+  readMaterialRecord,
+} from './_dbg__MaterialEditorStore';
+import {
+  getAssetNodeInputs,
+  getAssetStaticDefines,
   getMaterialParamPaneItems,
+  getNodeInputPaneItems,
+  getOtherAssetParamPaneItems,
   readMaterialParams,
+  readNodeInputs,
   type MaterialParamDef,
 } from './_dbg__MaterialEditorParams';
 import styles from './MaterialEditor.module.scss';
@@ -38,6 +49,10 @@ export type MaterialEditorTabsCtx = {
   getCopy: () => THREE.Material | null;
   /** Sets a param on the copy, and saves it to the record when `persist` (a drag's last change). */
   setParam: (def: MaterialParamDef, value: unknown, persist: boolean) => void;
+  /** Sets a TSL input on the copy, saved like `setParam`. */
+  setNodeInput: (socket: string, input: string, value: unknown, persist: boolean) => void;
+  /** Removes the material's overrides from its record and makes its copy again. */
+  resetParams: (materialId: string) => void;
   /** After a heading's clear button removed the material's record. */
   onRecordCleared: (materialId: string) => void;
   /** Refreshes the drawer's mounted tab. */
@@ -125,28 +140,60 @@ const getRecordProps = (
   },
 });
 
+/** "Reset params": removes the material's overrides only (its settings and camera stay), disabled
+ * while it has none. */
+const createResetParamsButton = (ctx: MaterialEditorTabsCtx, materialId: string | undefined) =>
+  createClearLSButton({
+    icon: 'arrowCounterClockwise',
+    title: 'Reset params (removes the edited params and TSL inputs of this material)',
+    hasData: () => Boolean(materialId && readMaterialRecord(materialId).overrides),
+    watchKey: materialId ? getMaterialRecordKey(materialId) : undefined,
+    onClear: () => {
+      if (materialId) ctx.resetParams(materialId);
+    },
+  });
+
 const getParamsTab = (ctx: MaterialEditorTabsCtx, recordProps: RecordProps): AnyDebuggerTabDef => {
-  // What the param bindings bind to, read from the copy before every build and refresh (an undo
-  // or a reset changes the copy, not this)
+  const asset = ctx.getAsset();
+  const assetNodes = asset ? getAssetNodeInputs(asset) : undefined;
+  // What the bindings bind to, read from the copy before every build and refresh (an undo or a
+  // reset changes the copy, not these): the params, and the TSL inputs per socket
   const paramTarget: Record<string, unknown> = {};
+  const nodeTargets: Record<string, Record<string, unknown>> = {};
+  const getNodeTarget = (socket: string) => (nodeTargets[socket] ??= {});
   return {
     id: MATERIAL_EDITOR_PARAMS_TAB_ID,
     title: 'Params',
     icon: 'material',
     ...recordProps,
+    headerButtons: () => [createResetParamsButton(ctx, asset?.id)],
     onRefresh: () => {
       const copy = ctx.getCopy();
-      if (copy) Object.assign(paramTarget, readMaterialParams(copy));
+      if (!copy) return;
+      Object.assign(paramTarget, readMaterialParams(copy));
+      for (const [socket, inputs] of Object.entries(readNodeInputs(copy, assetNodes))) {
+        Object.assign(getNodeTarget(socket), inputs);
+      }
     },
     content: () => {
       const sections: DebuggerTabSection<Record<string, unknown>>[] = [
         CMP({ html: () => getMaterialInfoHtml(ctx) }),
       ];
       const copy = ctx.getCopy();
-      if (copy) {
+      if (copy && asset) {
         sections.push({
           pane: true,
-          content: getMaterialParamPaneItems(copy, paramTarget, ctx.setParam),
+          content: [
+            ...getMaterialParamPaneItems(copy, paramTarget, ctx.setParam),
+            ...getNodeInputPaneItems(
+              copy,
+              assetNodes,
+              getAssetStaticDefines(asset),
+              getNodeTarget,
+              ctx.setNodeInput
+            ),
+            ...getOtherAssetParamPaneItems(copy, asset.params),
+          ],
         });
       }
       return sections;

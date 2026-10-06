@@ -35,17 +35,22 @@ import {
 import { createMaterialEditorTabs } from './_dbg__MaterialEditorTabs';
 import {
   createMaterialCameraStore,
+  patchMaterialRecord,
   readMaterialEditorUIState,
   readMaterialOverrides,
   setMaterialOverride,
   writeMaterialEditorUIState,
 } from './_dbg__MaterialEditorStore';
 import {
+  getAssetNodeInputs,
   getMaterialParamDef,
+  getNodeInputBaseValue,
+  isSameNodeInputValue,
   mergeNodeOverrides,
   normalizeMaterialParamValue,
   readMaterialParams,
   setMaterialParamValue,
+  setNodeInputValue,
   type MaterialParamDef,
 } from './_dbg__MaterialEditorParams';
 import { lerror, lwarn } from '../../../../utils/Logger';
@@ -354,6 +359,33 @@ const setCopyParam = (def: MaterialParamDef, value: unknown, persist: boolean) =
   setMaterialOverride(current.materialId, 'params', def.key, isDeviation ? next : undefined);
 };
 
+/**
+ * Sets a TSL input on the selected material's copy (a binding's change), and with `persist` saves
+ * it to the material's record, like {@link setCopyParam}.
+ */
+const setCopyNodeInput = (socket: string, input: string, value: unknown, persist: boolean) => {
+  const copy = getSelectedCopy();
+  const asset = current && getMaterialAssets()[current.materialId];
+  if (!copy || !current || !asset) return;
+  const assetNodes = getAssetNodeInputs(asset);
+  const next = setNodeInputValue(copy, assetNodes, socket, input, value);
+  if (next === undefined || !persist) return;
+  const isDeviation = !isSameNodeInputValue(next, getNodeInputBaseValue(assetNodes, socket, input));
+  setMaterialOverride(
+    current.materialId,
+    'nodes',
+    `${socket}.${input}`,
+    isDeviation ? next : undefined
+  );
+};
+
+/** The Params tab's "Reset params": removes the material's overrides (its settings and camera
+ * stay) and makes the copy again from the asset. */
+const resetMaterialParams = (materialId: string) => {
+  patchMaterialRecord(materialId, { overrides: undefined });
+  if (materialId === selectedMaterialId && isEntered) void loadEditorMaterial(materialId);
+};
+
 /** After a tab's clear button removed the material's record: the copy is made again from the
  * asset alone, and the camera goes to the default pose. */
 const onMaterialRecordCleared = (materialId: string) => {
@@ -632,6 +664,8 @@ const createUI = (): EditorUI => {
         getViewCamera: () => viewCam,
         getCopy: getSelectedCopy,
         setParam: setCopyParam,
+        setNodeInput: setCopyNodeInput,
+        resetParams: resetMaterialParams,
         onRecordCleared: onMaterialRecordCleared,
         refresh: () => ui?.drawer.refresh(),
       }),
