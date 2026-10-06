@@ -78,6 +78,7 @@ If for some reason this plan can't or shouldn't be created with this specificati
 
 ************************************
 
+TODO: Change the title and description to become a toggle in Runtime view to either run or show the inital states (sort of a play button for debug mode)
 Create "Start editor view" plan in docs/plans/p090_start-editor-view.md
 
 Category: Debugger

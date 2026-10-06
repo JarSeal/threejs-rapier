@@ -15,6 +15,7 @@ import {
   setPhysicsStepLimit,
 } from '../PhysicsAPI';
 import type { RigidBodyAPI } from '../Physics/PhysicsAPITypes';
+import type { PhysicsTier } from '../Physics/PhysicsTierTypes';
 import { getCurrentSceneId, registerOnAllSceneEnterings, registerOnAllSceneExits } from '../Scene';
 import { getCharacters } from '../Character';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
@@ -28,7 +29,8 @@ type ProbeBody = {
   key: string;
   name: string;
   entityId: number;
-  /** Float32-rounded [pos xyz, rot xyzw, linvel xyz, angvel xyz] */
+  /** Float32-rounded [pos xyz, rot xyzw, linvel xyz, angvel xyz], plus the physics tier's index
+   * (TIER_INDEX) for an entity that has one, so scenes without tiers keep their hashes */
   values: number[];
 };
 
@@ -97,7 +99,10 @@ const readBodyValues = (rb: RigidBodyAPI) => {
   ].map(Math.fround);
 };
 
-/** Dynamic bodies (characters split out), keyed by appId or by creation order. */
+const TIER_INDEX: Record<PhysicsTier, number> = { FULL: 0, STATIC: 1, DISABLED: 2 };
+
+/** Dynamic bodies (characters split out), keyed by appId or by creation order. Bodies a physics
+ * tier froze into BODY_STATIC count too. */
 const collectBodies = () => {
   const world = getECSWorld();
   const characterEntityIds = new Set(getCharacters(world).map((c) => c.entityId));
@@ -105,12 +110,16 @@ const collectBodies = () => {
   const keyless: { body: ProbeBody; rbId: number }[] = [];
   const characters: ProbeBody[] = [];
 
-  const collect = (storage: IComponentStorage<RigidBodyAPI>) => {
+  const collect = (storage: IComponentStorage<RigidBodyAPI>, tieredOnly?: boolean) => {
     for (const entityId of storage.keys()) {
+      const tier = world.getComponent(entityId, ComponentType.PHYSICS_SIM_TIER)?.tier;
+      if (tieredOnly && !tier) continue;
       const rb = storage.get(entityId)!;
       const appId = getStableAppId(entityId, world);
       const name = world.getComponent(entityId, ComponentType.OBJECT3D)?.value.name ?? '';
-      const body = { key: appId ?? '', name, entityId, values: readBodyValues(rb) };
+      const values = readBodyValues(rb);
+      if (tier) values.push(TIER_INDEX[tier]);
+      const body = { key: appId ?? '', name, entityId, values };
       if (characterEntityIds.has(entityId)) characters.push({ ...body, key: appId ?? name });
       else if (appId) keyed.push(body);
       else keyless.push({ body, rbId: rb.id });
@@ -118,6 +127,7 @@ const collectBodies = () => {
   };
   collect(world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL));
   collect(world.getStorage(ComponentType.BODY_DYNAMIC_HEADLESS));
+  collect(world.getStorage(ComponentType.BODY_STATIC), true);
 
   keyed.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   keyless.sort((a, b) => a.rbId - b.rbId);

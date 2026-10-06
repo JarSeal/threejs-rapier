@@ -21,7 +21,8 @@ export enum CoreComponentType {
   COLLIDER = 'CORE_COLLIDER',
   BODY_DYNAMIC_VISUAL = 'CORE_BODY_DYNAMIC_VISUAL', // Moving + Has Mesh
   BODY_DYNAMIC_HEADLESS = 'CORE_BODY_DYNAMIC_HEADLESS', // Moving + No Mesh
-  BODY_STATIC = 'CORE_BODY_STATIC', // Never moves
+  BODY_STATIC = 'CORE_BODY_STATIC', // Never moves (or frozen by a physics tier)
+  PHYSICS_SIM_TIER = 'CORE_PHYSICS_SIM_TIER', // runtime-only, see PhysicsTiers.ts (p352)
   // Tags
   TAG_IS_MESH = 'CORE_TAG_IS_MESH',
   TAG_IS_GROUP = 'CORE_TAG_IS_GROUP',

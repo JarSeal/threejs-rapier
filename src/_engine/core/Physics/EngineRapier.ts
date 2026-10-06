@@ -175,15 +175,15 @@ export const setQueryObserver = (observer: PhysicsQueryObserver | null) => {
   queryObserver = observer;
 };
 
-/** Told the id of a FIXED body moved by setTranslation/setRotation, MAIN_THREAD only; see
- * setFixedBodyMovedObserver. */
-let fixedBodyMovedObserver: ((rigidBodyId: number) => void) | null = null;
+/** Told the id of every body moved by setTranslation/setRotation, MAIN_THREAD only; see
+ * setBodyMovedObserver. */
+let bodyMovedObserver: ((rigidBodyId: number) => void) | null = null;
 
-/** Sets (or clears, with null) the observer told about moved FIXED bodies. Only PhysicsAPI.ts
- * sets it, on the main thread, where it brings the move to the body's entity (p352: static
+/** Sets (or clears, with null) the observer told about moved bodies. Only PhysicsAPI.ts sets
+ * it, on the main thread, where it brings the move to the body's entity (p352: BODY_STATIC
  * bodies aren't synced per frame). The worker's engine never has one. */
-export const setFixedBodyMovedObserver = (observer: ((rigidBodyId: number) => void) | null) => {
-  fixedBodyMovedObserver = observer;
+export const setBodyMovedObserver = (observer: ((rigidBodyId: number) => void) | null) => {
+  bodyMovedObserver = observer;
 };
 
 /** Awake and sleeping dynamic bodies right now (step stats, p352), written into `out`. */
@@ -1383,6 +1383,10 @@ class EngineWorldProxyAPI implements WorldAPI {
 
 class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   private rb: Rapier.RigidBody;
+  /** Created FIXED (p352): its entity is never synced per frame. A dynamic body switched to
+   * FIXED (the STATIC physics tier) is a different case: its entity goes back to a dynamic
+   * bucket when it's switched back. */
+  private readonly isCreatedFixed: boolean;
   uData: Record<string, unknown> = {};
 
   isBeingDeleted: boolean = false;
@@ -1436,6 +1440,7 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
       `Could not find rigid body in the engineAPI with id: ${id}`
     );
     this.rb = rb;
+    this.isCreatedFixed = rb.isFixed();
   }
 
   getUserDataSync() {
@@ -1533,7 +1538,7 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
 
   setTranslation(tra: PhysVector, wakeUp: boolean) {
     this.rb.setTranslation(tra, wakeUp);
-    if (fixedBodyMovedObserver && this.rb.isFixed()) fixedBodyMovedObserver(this.id);
+    bodyMovedObserver?.(this.id);
   }
 
   setLinvel(vel: PhysVector, wakeUp: boolean) {
@@ -1553,7 +1558,7 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
 
   setRotation(rot: PhysRotation, wakeUp: boolean) {
     this.rb.setRotation(rot, wakeUp);
-    if (fixedBodyMovedObserver && this.rb.isFixed()) fixedBodyMovedObserver(this.id);
+    bodyMovedObserver?.(this.id);
   }
 
   setAngvel(vel: PhysVector, wakeUp: boolean) {
@@ -1695,7 +1700,7 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   }
 
   setBodyType(type: RigidBodyTypeAPI, wakeUp: boolean) {
-    if (isDebugEnvironment && type !== RigidBodyTypeAPI.Fixed && this.rb.isFixed()) {
+    if (isDebugEnvironment && type !== RigidBodyTypeAPI.Fixed && this.isCreatedFixed) {
       // p352: a body created FIXED has no transform-buffer slot (WORKER_THREAD) and its entity
       // sits in BODY_STATIC, which isn't synced per frame, so its new motion never reaches it.
       lwarn(

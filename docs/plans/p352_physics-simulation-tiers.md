@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Physics
 Epic: p350_lod-system-research.md (Tier 1.2, §6)
 Blocks: p353_macro-streaming-grid.md (its physics phase)
@@ -230,10 +230,64 @@ As built (differs from §3):
   (N=120) is the same as on `main` in both targets; 3,000 `FIXED` bodies take no slot, and
   dynamic creates fill exactly 2048 slots, then reject.
 
-### Phase 2 — `STATIC` and `DISABLED`
+### Phase 2 — `STATIC` and `DISABLED` — done
 
 Component, `requestPhysicsTier`, one-transition-at-a-time state machine, the two in-place
 transitions, joint groups.
+
+As built (differs from §4):
+
+- **Module:** `core/PhysicsTiers.ts` registers itself on import (`ECSWorld.registerPlugin`), so an
+  app that never requests a tier pays nothing. Types in `core/Physics/PhysicsTierTypes.ts`.
+  `requestPhysicsTier(entityId, tier, world?)` returns `false` (with a debug-env warning) when it
+  refuses, instead of `void`. `PhysicsTier` is `'FULL' | 'STATIC' | 'DISABLED'`; Phase 3 adds
+  `'REMOVED'`.
+- **Component:** `PHYSICS_SIM_TIER { tier, target, bucket }`, `bucket` being the dynamic bucket
+  `FULL` restores. No `inFlight` / `snapshot` yet: both Phase 2 transitions are one-way commands
+  applied in one sub-step, so nothing is ever in flight. Phase 3 adds them. Pending entities are
+  a per-world set; the system (`APP_PHYSICS_STEP`, order 100, first in the stage) walks only them.
+  A request whose target equals the current tier drops the pending entry (flip-flops collapse).
+- **Each tier is a body state:** `FULL` = dynamic + enabled, `STATIC` = `FIXED` + enabled,
+  `DISABLED` = dynamic + disabled; a transition writes the difference, so `STATIC ↔ DISABLED` is
+  direct. "Enabled" also needs the entity not to be world-disabled: `ECSWorld.setDisabled` keeps
+  a `DISABLED`-tier body disabled, and a tier change keeps a world-disabled body disabled.
+- **Buckets:** `STATIC` and `DISABLED` both move the entity to `BODY_STATIC` (no per-frame read,
+  compare or interpolation); `FULL` moves it back and its interpolation history reseeds. On
+  demotion the transform is marked dirty (the mesh showed the interpolated pose) and the entity
+  is synced every frame until a snapshot stamped at or after the transition is visible
+  (`queueStaticBodySync`, `PhysicsManager.ts`): in `WORKER_THREAD` mode the frame's snapshot can
+  predate the freeze. Phase 1's moved-body sync uses the same queue. `ECS.ts`'s `setTransform`,
+  `setVelocity` and `setDisabled` treat a tiered entity as dynamic for their velocity resets.
+- **No slot changes:** both tiers keep the body's slot (Phase 1's as built), which answers open
+  question 2 for Phase 2.
+- **`STATIC` resumes from rest:** Rapier zeroes a body's velocities when it becomes `FIXED`, and
+  they aren't restored (decided in review; Phase 3's snapshot is the exact path). `DISABLED`
+  keeps pose and velocities exactly.
+- **Moved-body listener generalized:** `setFixedBodyMovedListener` / `setFixedBodyMovedObserver`
+  are now `setBodyMovedListener` / `setBodyMovedObserver`, called for every
+  `setTranslation` / `setRotation` in both targets. `staticBodyOwners` is now `bodyOwners`
+  (every `createPhysicsEntity` body with its created `rigidType`, `getPhysicsBodyOwner`), and
+  only an entity in `BODY_STATIC` is queued. So a direct move of a tier-frozen body (which keeps
+  its slot, so the worker proxy didn't report it before) reaches its mesh too.
+- **Phase 1's `setBodyType` warning** fires only for bodies created `FIXED`
+  (`EngineRigidBodyProxyAPI.isCreatedFixed`), not on every `STATIC → FULL`.
+- **Joint groups:** `JointProxyAPI` keeps its body ids from the create params, so
+  `body1IdSync` / `body2IdSync` work in `WORKER_THREAD` mode too (`forEachJointBodyPair`,
+  `hasJoints` in `PhysicsAPI.ts`). A group is resolved when the request is made, linked only
+  through tier-able bodies: `FIXED`, kinematic and bare-API bodies end a group without joining
+  it (two chains on one fixed anchor are two groups). Refused when the entity or a member is a
+  character, has no body yet, or wasn't created `DYNAMIC` by `createPhysicsEntity`.
+- **Probe:** collects tiered `BODY_STATIC` entities too and appends a tier index to the values of
+  entities that have the component, so scenes without tiers keep their hashes (§4.4's first half;
+  the frozen policy is Phase 4).
+- Verified headless (WebGL2/SwiftShader), both worker targets: 33 scripted checks on
+  `physicsTest` (buckets, body type / enabled state, frozen pose, `world.setTransform` and
+  direct `setTranslation` on a frozen body, velocity through `DISABLED`, `setDisabled`
+  interplay, a two-body chain on a fixed anchor beside a second chain, refusals, flip-flop,
+  delete while pending). The probe's `physicsTest` hash (N=120) without tiers equals Phase 1's
+  in both targets (`d5c1562a`); a fixed tier sequence driven from `APP_PHYSICS_STEP` gives the
+  same hash on every run and in both targets (N=120 and N=60, with bodies still frozen).
+  `thirdPersonGym`: every static body's transform at its body's pose, no errors.
 
 ### Phase 3 — `REMOVED`
 
@@ -256,9 +310,12 @@ promise, which is a fix). App patch if a test scene adopts the policy.
 
 ## 9. Open questions
 
-1. Does Rapier's `setEnabled(false)` take the body's colliders out of the broad phase, or only out
-   of the solver? Check against the bundled `@dimforge/rapier3d-compat` version in Phase 2. If only
-   the solver, `DISABLED` saves less than `STATIC` and may not be worth keeping.
+1. ~~Does Rapier's `setEnabled(false)` take the body's colliders out of the broad phase?~~
+   Answered in Phase 2 (`@dimforge/rapier3d-compat` 0.19.3, Node): yes. A disabled body has no
+   contact pairs and rays miss it; 3,000 resting balls step in 0.026 ms disabled vs 0.15 ms
+   sleeping or `FIXED`, and 300 overlapping ones in 0.003 ms vs 0.78 ms `FIXED`. `STATIC`
+   costs the same per step as a sleeping body: what it buys is that nothing wakes it. Disabling
+   one body of a jointed pair lets the joint drag the other (why groups change tier together).
 2. Should `STATIC` keep the body's slot so promotion back to `FULL` needs no allocation? Only if
    Phase 2 shows allocation churn; slots are cheap.
 3. Snapshot format: align with p500 before Phase 3.

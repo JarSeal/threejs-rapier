@@ -145,8 +145,6 @@ import {
   CreateJointResponse,
   DeleteJointResponse,
   JointIsValidResponse,
-  JointBody1IdResponse,
-  JointBody2IdResponse,
   JointAnchor1Response,
   JointAnchor2Response,
   JointContactsEnabledResponse,
@@ -248,17 +246,19 @@ const throwIfCapacityExceeded = (capacityExceeded: number | undefined) => {
   throw new PhysicsCapacityError(capacityExceeded);
 };
 
-/** Told the id of every FIXED rigid body moved by setTranslation/setRotation (p352). */
-let fixedBodyMovedListener: ((rigidBodyId: number) => void) | null = null;
+/** Told the id of every rigid body moved by setTranslation/setRotation (p352). */
+let bodyMovedListener: ((rigidBodyId: number) => void) | null = null;
 
 /**
- * Sets (or clears, with null) the one listener told the id of every `FIXED` rigid body moved by
- * `setTranslation` / `setRotation`, in both worker targets. Static bodies aren't synced to their
- * entities every frame (p352), so PhysicsManager.ts uses this to bring such a move to the mesh.
+ * Sets (or clears, with null) the one listener told the id of every rigid body moved by
+ * `setTranslation` / `setRotation`, in both worker targets. `BODY_STATIC` entities (bodies
+ * created `FIXED`, and dynamic ones in the `STATIC` or `DISABLED` physics tier) aren't synced to
+ * their entities every frame (p352), so PhysicsManager.ts uses this to bring such a move to the
+ * mesh. It's called for every move, so it must be cheap.
  */
-export const setFixedBodyMovedListener = (listener: ((rigidBodyId: number) => void) | null) => {
-  fixedBodyMovedListener = listener;
-  engAPI?.setFixedBodyMovedObserver(listener);
+export const setBodyMovedListener = (listener: ((rigidBodyId: number) => void) | null) => {
+  bodyMovedListener = listener;
+  engAPI?.setBodyMovedObserver(listener);
 };
 
 const rigidBodies = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
@@ -292,7 +292,7 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
     engineInitiated = Boolean(engine);
     engAPI = engineAPI;
     engAPI.setQueryObserver(queryObserver);
-    engAPI.setFixedBodyMovedObserver(fixedBodyMovedListener);
+    engAPI.setBodyMovedObserver(bodyMovedListener);
     const worldOrUndefined = engAPI.init(
       physicsState,
       isDebugEnvironment(),
@@ -1996,7 +1996,12 @@ export const createJoint = async (params: JointParams) => {
       type: PhysicsProtocolType.CREATE_JOINT,
       params,
     });
-    const jointProxy = new JointProxyAPI(res.id, params.userData) as JointAPI;
+    const jointProxy = new JointProxyAPI(
+      res.id,
+      params.body1Id,
+      params.body2Id,
+      params.userData
+    ) as JointAPI;
     joints.set(res.id, jointProxy);
     return jointProxy;
   }
@@ -2076,6 +2081,15 @@ export const deleteJointSync = (id: number, wakeUp?: boolean) => {
   }
   return deletedId;
 };
+
+/** Calls `fn` with the two body ids of every live impulse joint, synchronously in both worker
+ * targets (p352's joint groups). */
+export const forEachJointBodyPair = (fn: (body1Id: number, body2Id: number) => void) => {
+  for (const joint of joints.values()) fn(joint.body1IdSync(), joint.body2IdSync());
+};
+
+/** Whether any impulse joint exists, so a joint walk can be skipped. */
+export const hasJoints = () => joints.size > 0;
 
 export const getRigidBody = (id: number) => rigidBodies.get(id);
 export const getCollider = (id: number) => colliders.get(id);
@@ -3015,13 +3029,13 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       pos.x = tra.x;
       pos.y = tra.y;
       pos.z = tra.z;
-      fixedBodyMovedListener?.(this.id);
     } else {
       this.pendingPos = {
         value: { x: tra.x, y: tra.y, z: tra.z },
         visibleAt: getWriteVisibleStep(),
       };
     }
+    bodyMovedListener?.(this.id);
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_TRANSLATION,
       rigidBodyId: this.id,
@@ -3069,10 +3083,10 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   setRotation(rot: PhysRotation, wakeUp: boolean): void {
     if (this.staticPose) {
       this.staticPose.rot = toPlainRot(rot);
-      fixedBodyMovedListener?.(this.id);
     } else {
       this.pendingRot = { value: toPlainRot(rot), visibleAt: getWriteVisibleStep() };
     }
+    bodyMovedListener?.(this.id);
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_ROTATION,
       rigidBodyId: this.id,
@@ -4025,6 +4039,8 @@ class JointProxyAPI implements JointAPI {
 
   constructor(
     public id: number,
+    private _body1Id: number,
+    private _body2Id: number,
     userData?: Record<string, unknown>
   ) {
     if (userData) this.uData = userData;
@@ -4065,27 +4081,19 @@ class JointProxyAPI implements JointAPI {
     throw new Error('Sync isValid not supported on Proxy');
   }
 
+  // A joint's bodies never change, so they're known here from its creation params (p352: joint
+  // groups are resolved on the main thread) and need no round trip.
   async body1Id(): Promise<number> {
-    return (
-      await messageWorkerAsync<JointBody1IdResponse>({
-        type: PhysicsProtocolType.JOINT_BODY1_ID,
-        jointId: this.id,
-      })
-    ).body1Id;
+    return this._body1Id;
   }
   body1IdSync(): number {
-    throw new Error('Sync body1Id not supported on Proxy');
+    return this._body1Id;
   }
   async body2Id(): Promise<number> {
-    return (
-      await messageWorkerAsync<JointBody2IdResponse>({
-        type: PhysicsProtocolType.JOINT_BODY2_ID,
-        jointId: this.id,
-      })
-    ).body2Id;
+    return this._body2Id;
   }
   body2IdSync(): number {
-    throw new Error('Sync body2Id not supported on Proxy');
+    return this._body2Id;
   }
 
   async anchor1(): Promise<PhysVector> {

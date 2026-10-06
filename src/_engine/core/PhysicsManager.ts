@@ -20,10 +20,11 @@ import {
   getPhysicsSimClock,
   getPhysicsSimClockEpoch,
   getPhysicsSimHistoryEpoch,
+  getPhysicsSnapshotStepIndex,
   getPhysicsState,
   getPhysicsWriteVisibleStep,
   readPhysicsSnapshotStamp,
-  setFixedBodyMovedListener,
+  setBodyMovedListener,
 } from './PhysicsAPI';
 import {
   ColliderParams,
@@ -106,12 +107,13 @@ export const registerPhysicsManager = (world: ECSWorld) => {
     });
   }
 
-  setFixedBodyMovedListener(onFixedBodyMoved);
+  setBodyMovedListener(onBodyMoved);
   ECSWorld.registerComponentHooks(ComponentType.TAG_IS_PHYSICS_OBJECT, {
     onDeleteEntity: (entityId, w) => {
-      const staticBody = w.getComponent(entityId, ComponentType.BODY_STATIC);
-      if (staticBody && staticBodyOwners.get(staticBody.id)?.entityId === entityId) {
-        staticBodyOwners.delete(staticBody.id);
+      const body = w.getRigidBody(entityId);
+      if (body) {
+        const owner = bodyOwners.get(body.id);
+        if (owner?.world === w && owner.entityId === entityId) bodyOwners.delete(body.id);
       }
       // onDeleteEntity is synchronous; disposal is fire-and-forget (WORKER_THREAD mode
       // has no synchronous delete path, see disposePhysicsEntity).
@@ -323,11 +325,9 @@ const createPhysicsEntityNow = async (
 
   const hasVisual = world.hasComponent(entityId, ComponentType.OBJECT3D);
   const isStatic = !rb || rigidBodyParams?.rigidType === 'FIXED';
+  if (rb) bodyOwners.set(rb.id, { world, entityId, rigidType: rigidBodyParams!.rigidType });
   if (isStatic) {
-    if (rb) {
-      world.addComponent(entityId, ComponentType.BODY_STATIC, rb);
-      staticBodyOwners.set(rb.id, { world, entityId });
-    }
+    if (rb) world.addComponent(entityId, ComponentType.BODY_STATIC, rb);
   } else {
     const bucket = hasVisual
       ? ComponentType.BODY_DYNAMIC_VISUAL
@@ -365,22 +365,47 @@ export const deleteAllPhysicsEntities = (ecsWorld?: ECSWorld) => {
   for (const id of ids) world.deleteEntity(id);
 };
 
-/** The entity of every BODY_STATIC body, by body id (body ids are unique across ECS worlds), so
- * a moved FIXED body can be synced alone (p352). */
-const staticBodyOwners = new Map<number, { world: ECSWorld; entityId: number }>();
-/** Per world: entities whose FIXED body was moved since the last physicsToTransformSystem. */
-const movedStaticEntities = new WeakMap<ECSWorld, Set<number>>();
+/** The entity of a createPhysicsEntity body and the type it was created as. */
+export type PhysicsBodyOwner = {
+  world: ECSWorld;
+  entityId: number;
+  rigidType: RigidBodyParams['rigidType'];
+};
 
-/** setFixedBodyMovedListener's listener: queues the body's entity for its world's next sync. */
-const onFixedBodyMoved = (rigidBodyId: number) => {
-  const owner = staticBodyOwners.get(rigidBodyId);
-  if (!owner) return;
-  let moved = movedStaticEntities.get(owner.world);
+/** The entity of every createPhysicsEntity body, by body id (body ids are unique across ECS
+ * worlds): a moved BODY_STATIC body is synced alone through it, and physics tiers resolve joint
+ * groups with it (p352). */
+const bodyOwners = new Map<number, PhysicsBodyOwner>();
+
+/** The entity a rigid body was created for by createPhysicsEntity, and its created type;
+ * undefined for a body made through the bare Physics API. */
+export const getPhysicsBodyOwner = (rigidBodyId: number): Readonly<PhysicsBodyOwner> | undefined =>
+  bodyOwners.get(rigidBodyId);
+
+/** Per world: BODY_STATIC entities to sync, each until the snapshot step that shows its change
+ * (getPhysicsWriteVisibleStep at the change). */
+const movedStaticEntities = new WeakMap<ECSWorld, Map<number, number>>();
+
+/**
+ * Syncs `entityId`'s BODY_STATIC body into its TRANSFORM in every physicsToTransformSystem until
+ * the visible snapshot includes what changed it now (a move, or a physics tier freezing it): in
+ * WORKER_THREAD mode the snapshot a frame reads can predate that change.
+ */
+export const queueStaticBodySync = (world: ECSWorld, entityId: number) => {
+  let moved = movedStaticEntities.get(world);
   if (!moved) {
-    moved = new Set();
-    movedStaticEntities.set(owner.world, moved);
+    moved = new Map();
+    movedStaticEntities.set(world, moved);
   }
-  moved.add(owner.entityId);
+  moved.set(entityId, getPhysicsWriteVisibleStep());
+};
+
+/** setBodyMovedListener's listener, called for every moved body: only a BODY_STATIC one (not
+ * synced per frame) is queued for its world's next sync. */
+const onBodyMoved = (rigidBodyId: number) => {
+  const owner = bodyOwners.get(rigidBodyId);
+  if (!owner || !owner.world.hasComponent(owner.entityId, ComponentType.BODY_STATIC)) return;
+  queueStaticBodySync(owner.world, owner.entityId);
 };
 
 // [pos xyz, quat xyzw] scratch every body's pose is read into — Float64 so TRANSFORM gets the
@@ -438,10 +463,10 @@ const syncBodyPose = (world: ECSWorld, entityId: number, rb: RigidBodyAPI) => {
  * Update transform from physics
  */
 export const physicsToTransformSystem = (world: ECSWorld) => {
-  // Dynamic/kinematic bodies move every step. FIXED bodies (BODY_STATIC) don't move under
-  // simulation, so they aren't walked (p352): an explicit move (setTranslation/setRotation, eg.
-  // an imported level piece snapped into place once) queues its entity through
-  // onFixedBodyMoved, and only those are synced here.
+  // Dynamic/kinematic bodies move every step. BODY_STATIC bodies (created FIXED, or frozen by a
+  // STATIC/DISABLED physics tier) don't move under simulation, so they aren't walked (p352): an
+  // explicit move (setTranslation/setRotation, eg. an imported level piece snapped into place
+  // once) queues its entity through onBodyMoved, and only those are synced here.
   // keys() + get(): destructuring the storage's own iterator allocates a [key, value] array
   // per entry, per frame.
   const dynamicVisuals: IComponentStorage<RigidBodyAPI> = world.getStorage(
@@ -453,11 +478,12 @@ export const physicsToTransformSystem = (world: ECSWorld) => {
 
   const moved = movedStaticEntities.get(world);
   if (!moved?.size) return;
-  for (const entityId of moved) {
+  const snapshotStep = getPhysicsSnapshotStepIndex();
+  for (const [entityId, untilStep] of moved) {
     const rb = world.getComponent(entityId, ComponentType.BODY_STATIC);
     if (rb) syncBodyPose(world, entityId, rb);
+    if (!rb || snapshotStep >= untilStep) moved.delete(entityId);
   }
-  moved.clear();
 };
 
 // --- Render interpolation (p059) ------------------------------------------------------------

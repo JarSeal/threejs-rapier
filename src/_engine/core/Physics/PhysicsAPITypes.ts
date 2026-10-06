@@ -93,10 +93,10 @@ export type EngineAPIType = {
    * While none is set a query costs one null check. Only the `*Sync` implementations report,
    * so an async wrapper that delegates to one is not counted twice. */
   setQueryObserver: (observer: PhysicsQueryObserver | null) => void;
-  /** MAIN_THREAD only: sets (or clears, with null) the observer told the id of every FIXED body
-   * moved by setTranslation/setRotation (p352: static bodies aren't synced per frame, so a move
+  /** MAIN_THREAD only: sets (or clears, with null) the observer told the id of every body moved
+   * by setTranslation/setRotation (p352: BODY_STATIC bodies aren't synced per frame, so a move
    * reaches the body's entity through this). While none is set a move costs one null check. */
-  setFixedBodyMovedObserver: (observer: ((rigidBodyId: number) => void) | null) => void;
+  setBodyMovedObserver: (observer: ((rigidBodyId: number) => void) | null) => void;
   /** Counts the awake and sleeping dynamic bodies into `out` and returns it (step stats). */
   countDynamicBodyActivity: (out: PhysicsBodyActivity) => PhysicsBodyActivity;
 };

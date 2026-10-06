@@ -674,7 +674,7 @@ export class ECSWorld {
       if (pos) rb.setTranslation(pos, wakeUp);
       if (rot) rb.setRotation(rot, wakeUp);
 
-      if (this.isEntityDynamic(entityId)) {
+      if (this._hasDynamicBody(entityId)) {
         this._resetBodyState(rb, Boolean(resetVelocity), Boolean(resetForces), wakeUp);
       }
     }
@@ -714,7 +714,7 @@ export class ECSWorld {
     const rb = this.getRigidBody(entityId);
 
     // Static bodies cannot have velocity; we only act if it's dynamic
-    if (rb && this.isEntityDynamic(entityId)) {
+    if (rb && this._hasDynamicBody(entityId)) {
       if (linvel) rb.setLinvel(linvel, true);
       if (angvel) rb.setAngvel(angvel, true);
     }
@@ -775,9 +775,11 @@ export class ECSWorld {
       const resetForces = opts?.resetForces === undefined ? true : opts.resetForces;
       const wakeUp = opts?.wakeUp === undefined ? true : opts.wakeUp;
 
-      rb.setEnabled(!disabled);
+      // A body in the DISABLED physics tier stays disabled (PhysicsTiers.ts applies the same rule)
+      const tier = this.getComponent(entityId, ComponentType.PHYSICS_SIM_TIER)?.tier;
+      rb.setEnabled(!disabled && tier !== 'DISABLED');
 
-      if (this.isEntityDynamic(entityId)) {
+      if (this._hasDynamicBody(entityId)) {
         this._resetBodyState(rb, Boolean(resetVelocity), Boolean(resetForces), wakeUp);
       }
     }
@@ -808,6 +810,14 @@ export class ECSWorld {
     return (
       this.hasComponent(entityId, ComponentType.BODY_DYNAMIC_VISUAL) ||
       this.hasComponent(entityId, ComponentType.BODY_DYNAMIC_HEADLESS)
+    );
+  }
+
+  /** A dynamic body, also while a STATIC or DISABLED physics tier has it in BODY_STATIC (only
+   * dynamic bodies get tiers): its velocities are its own, so resets apply to it. */
+  private _hasDynamicBody(entityId: number): boolean {
+    return (
+      this.isEntityDynamic(entityId) || this.hasComponent(entityId, ComponentType.PHYSICS_SIM_TIER)
     );
   }
 
