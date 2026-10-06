@@ -93,7 +93,16 @@ export type EngineAPIType = {
    * While none is set a query costs one null check. Only the `*Sync` implementations report,
    * so an async wrapper that delegates to one is not counted twice. */
   setQueryObserver: (observer: PhysicsQueryObserver | null) => void;
+  /** MAIN_THREAD only: sets (or clears, with null) the observer told the id of every FIXED body
+   * moved by setTranslation/setRotation (p352: static bodies aren't synced per frame, so a move
+   * reaches the body's entity through this). While none is set a move costs one null check. */
+  setFixedBodyMovedObserver: (observer: ((rigidBodyId: number) => void) | null) => void;
+  /** Counts the awake and sleeping dynamic bodies into `out` and returns it (step stats). */
+  countDynamicBodyActivity: (out: PhysicsBodyActivity) => PhysicsBodyActivity;
 };
+
+/** Dynamic bodies awake and asleep after the last measured step (step stats, p352). */
+export type PhysicsBodyActivity = { awake: number; sleeping: number };
 
 export type PhysicsState = {
   enabled: boolean;
@@ -2660,9 +2669,13 @@ export type PhysicsDownProtocol =
     | {
         type: PhysicsProtocolType.CREATE_RIGID_BODY;
         id: number;
+        /** -1 for a FIXED body: it has no transform-buffer slot (p352) */
         slot: number;
         /** The new body's pose as Rapier reports it, readable before any transform write-back */
         pose: RigidBodyPose;
+        /** Set (to maxBodies) when the transform buffer was full: nothing was created, and the
+         * other fields mean nothing. */
+        capacityExceeded?: number;
       }
     | {
         type: PhysicsProtocolType.CREATE_PHYSICS_ENTITY;
@@ -2672,6 +2685,8 @@ export type PhysicsDownProtocol =
         slot: number;
         pose?: RigidBodyPose;
         colliderIds: number[];
+        /** As in CREATE_RIGID_BODY: nothing was created, not even the colliders. */
+        capacityExceeded?: number;
       }
     | {
         type: PhysicsProtocolType.CREATE_RIGID_BODIES;
@@ -2679,6 +2694,8 @@ export type PhysicsDownProtocol =
         slots: number[];
         /** Per body, same as CREATE_RIGID_BODY's pose */
         poses: RigidBodyPose[];
+        /** As in CREATE_RIGID_BODY: none of the bodies was created (all or nothing). */
+        capacityExceeded?: number;
       }
     | {
         type: PhysicsProtocolType.DELETE_RIGID_BODY;
@@ -2795,6 +2812,9 @@ export type PhysicsDownProtocol =
         stepDuration?: number;
         dispatchMs?: number;
         stepEndAt?: number;
+        /** Awake and sleeping dynamic bodies after the step (p352), with the stats above. */
+        awakeBodies?: number;
+        sleepingBodies?: number;
       }
     // Events (unsolicited push, only sent when at least one event occurred that step) ----
     | {

@@ -153,6 +153,7 @@ import {
   JointLimitsEnabledResponse,
   JointGetUserDataResponse,
   RigidBodyPose,
+  type PhysicsBodyActivity,
 } from './Physics/PhysicsAPITypes';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 import {
@@ -218,6 +219,48 @@ let stepStatsFloats: Float64Array | undefined;
  * DEBUG_STATE_PUSH. */
 let debugStateBuffer: PhysicsDebugStateBuffer | undefined;
 
+/** Dynamic bodies awake and asleep after the last measured step (p352), mutated in place. Only
+ * meaningful while hasBodyActivity is set (a measured step has reported it). */
+const bodyActivity: PhysicsBodyActivity = { awake: 0, sleeping: 0 };
+let hasBodyActivity = false;
+
+/** Rigid body creates refused because the transform buffer was full (WORKER_THREAD), since boot. */
+let refusedBodyCount = 0;
+
+/**
+ * Rejection reason of a rigid body create that found every transform-buffer slot taken
+ * (`WORKER_THREAD` mode, p352): nothing of it was created. Raise `AppConfig.physics.maxBodies`,
+ * or create the bodies that never move as `FIXED` (they take no slot).
+ */
+export class PhysicsCapacityError extends Error {
+  constructor(public readonly maxBodies: number) {
+    super(
+      `Physics transform buffer full: all ${maxBodies} slots are taken (AppConfig.physics.maxBodies). FIXED bodies take no slot.`
+    );
+    this.name = 'PhysicsCapacityError';
+  }
+}
+
+/** Counts a refused create and throws its PhysicsCapacityError, if the worker refused it. */
+const throwIfCapacityExceeded = (capacityExceeded: number | undefined) => {
+  if (capacityExceeded === undefined) return;
+  refusedBodyCount++;
+  throw new PhysicsCapacityError(capacityExceeded);
+};
+
+/** Told the id of every FIXED rigid body moved by setTranslation/setRotation (p352). */
+let fixedBodyMovedListener: ((rigidBodyId: number) => void) | null = null;
+
+/**
+ * Sets (or clears, with null) the one listener told the id of every `FIXED` rigid body moved by
+ * `setTranslation` / `setRotation`, in both worker targets. Static bodies aren't synced to their
+ * entities every frame (p352), so PhysicsManager.ts uses this to bring such a move to the mesh.
+ */
+export const setFixedBodyMovedListener = (listener: ((rigidBodyId: number) => void) | null) => {
+  fixedBodyMovedListener = listener;
+  engAPI?.setFixedBodyMovedObserver(listener);
+};
+
 const rigidBodies = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
 const colliders = new Map<number, ColliderAPI>(); // { "Running id", ColliderAPI }
 const joints = new Map<number, JointAPI>(); // { "Running id", JointAPI }
@@ -249,6 +292,7 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
     engineInitiated = Boolean(engine);
     engAPI = engineAPI;
     engAPI.setQueryObserver(queryObserver);
+    engAPI.setFixedBodyMovedObserver(fixedBodyMovedListener);
     const worldOrUndefined = engAPI.init(
       physicsState,
       isDebugEnvironment(),
@@ -417,6 +461,10 @@ export const stepPhysics = (
     }
     if (trackStats) {
       lastPhysicsStepDurationMs = stepMs;
+      if (engAPI) {
+        engAPI.countDynamicBodyActivity(bodyActivity);
+        hasBodyActivity = true;
+      }
       // No thread boundary is crossed here, so there is no messaging overhead to report.
       lastPhysicsMessagingLatency = undefined;
       updatePhysicsPanel(stepMs);
@@ -473,6 +521,9 @@ const readSharedStepStats = () => {
     dispatchMs: stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.DISPATCH_MS],
     writeBackMs: performance.now() - stepEndAt,
   };
+  bodyActivity.awake = stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.AWAKE_BODIES];
+  bodyActivity.sleeping = stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.SLEEPING_BODIES];
+  hasBodyActivity = true;
   updatePhysicsPanel(lastPhysicsStepDurationMs);
 };
 
@@ -510,6 +561,30 @@ export const getLastPhysicsStepDuration = () => lastPhysicsStepDurationMs;
 export const getLastPhysicsStepMessagingLatency = () => lastPhysicsMessagingLatency;
 
 /**
+ * Dynamic bodies awake and asleep after the last measured physics step (p352): a body that
+ * should be resting but stays awake shows here. Measured with the step stats, so `undefined`
+ * while they are off and until a measured step has happened, like
+ * {@link getLastPhysicsStepDuration}. The returned object is reused: read it, don't keep it.
+ */
+export const getLastPhysicsBodyActivity = (): Readonly<PhysicsBodyActivity> | undefined =>
+  hasBodyActivity ? bodyActivity : undefined;
+
+/**
+ * The transform buffer's capacity (`WORKER_THREAD` mode, p352): slots taken by live non-fixed
+ * bodies, `AppConfig.physics.maxBodies`, and the creates refused since boot because it was
+ * full ({@link PhysicsCapacityError}). `undefined` in `MAIN_THREAD` mode, which has no buffer
+ * and no cap. Walks every body: for debug readouts, not per frame.
+ */
+export const getPhysicsBodyCapacity = () => {
+  if (physicsState.workerTarget !== 'WORKER_THREAD') return undefined;
+  let used = 0;
+  for (const rb of rigidBodies.values()) {
+    if (rb instanceof RigidBodyProxyAPI && rb.hasSlot) used++;
+  }
+  return { used, max: physicsState.maxBodies, refused: refusedBodyCount };
+};
+
+/**
  * Switches the physics step measurement ({@link getLastPhysicsStepDuration},
  * {@link getLastPhysicsStepMessagingLatency}) on or off at runtime. Its initial value is
  * `AppConfig.physics.stepStatsEnabled`. The debug "PHY" stats panel exists only when that boot
@@ -526,6 +601,7 @@ export const setPhysicsStepStatsEnabled = (enabled: boolean) => {
   if (enabled) {
     lastPhysicsStepDurationMs = undefined;
     lastPhysicsMessagingLatency = undefined;
+    hasBodyActivity = false;
     // The worker writes it only while measuring, which it isn't yet, so this can't race
     if (stepStatsFloats) stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.STEP_END_AT] = 0;
   }
@@ -763,6 +839,11 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
         dispatchMs: data.dispatchMs ?? 0,
         writeBackMs: data.stepEndAt !== undefined ? performance.now() - data.stepEndAt : 0,
       };
+      if (data.awakeBodies !== undefined && data.sleepingBodies !== undefined) {
+        bodyActivity.awake = data.awakeBodies;
+        bodyActivity.sleeping = data.sleepingBodies;
+        hasBodyActivity = true;
+      }
       // The panel shows the pure step time only — never step + messaging overhead.
       updatePhysicsPanel(data.stepDuration);
     }
@@ -1266,6 +1347,7 @@ export const createRigidBody = async (params: RigidBodyParams) => {
       type: PhysicsProtocolType.CREATE_RIGID_BODY,
       params,
     });
+    throwIfCapacityExceeded(res.capacityExceeded);
     const rbAPI = new RigidBodyProxyAPI(
       res.id,
       res.slot,
@@ -1321,6 +1403,7 @@ export const createRigidBodies = async (params: RigidBodyParams[]) => {
       type: PhysicsProtocolType.CREATE_RIGID_BODIES,
       params,
     });
+    throwIfCapacityExceeded(res.capacityExceeded);
     existsOrThrow(
       res.ids.length,
       `Could not create a rigid bodies ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
@@ -1608,6 +1691,7 @@ export const createRigidBodyWithColliders = async (
       rigidBody: rigidBodyParams,
       colliders: colliderParams.map(toWireColliderParams),
     });
+    throwIfCapacityExceeded(res.capacityExceeded);
     let rigidBody: RigidBodyAPI | undefined;
     if (rigidBodyParams && res.id !== undefined) {
       rigidBody = new RigidBodyProxyAPI(
@@ -2598,6 +2682,9 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   private pendingAvel?: PendingWrite<PhysVector>;
   /** Last known mass, for reflecting applyImpulse locally (refreshed by every mass() call) */
   private cachedMass?: number;
+  /** A body without a slot (created FIXED, p352) is never written back: it keeps its pose here
+   * instead, its creation pose updated by every setTranslation/setRotation, for good. */
+  private staticPose?: RigidBodyPose;
 
   constructor(
     public id: number,
@@ -2609,16 +2696,24 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     initialPose?: RigidBodyPose
   ) {
     if (userData) this.uData = userData;
-    if (initialPose) {
+    if (initialPose && slot === -1) {
+      this.staticPose = { pos: { ...initialPose.pos }, rot: { ...initialPose.rot } };
+    } else if (initialPose) {
       const visibleAt = getWriteVisibleStep();
       this.pendingPos = { value: { ...initialPose.pos }, visibleAt };
       this.pendingRot = { value: { ...initialPose.rot }, visibleAt };
     }
   }
 
+  /** Whether the body holds a transform-buffer slot (every body not created FIXED). */
+  get hasSlot() {
+    return this.slot !== -1;
+  }
+
   // Hot path — reads straight from the shared/latest-pushed transform buffer by slot.
   // Returns zeroed defaults if no buffer has arrived yet (before the first step/push).
   get pos(): PhysVector {
+    if (this.staticPose) return { ...this.staticPose.pos };
     if (this.pendingPos) {
       if (isWritePending(this.pendingPos.visibleAt)) return { ...this.pendingPos.value };
       this.pendingPos = undefined;
@@ -2627,6 +2722,7 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     return transformBuffer.getPosition(this.slot);
   }
   get rot(): PhysRotation {
+    if (this.staticPose) return { ...this.staticPose.rot };
     if (this.pendingRot) {
       if (isWritePending(this.pendingRot.visibleAt)) return { ...this.pendingRot.value };
       this.pendingRot = undefined;
@@ -2635,6 +2731,17 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     return transformBuffer.getRotation(this.slot);
   }
   readPoseInto(out: PoseArray, offset = 0): void {
+    const staticPose = this.staticPose;
+    if (staticPose) {
+      out[offset] = staticPose.pos.x;
+      out[offset + 1] = staticPose.pos.y;
+      out[offset + 2] = staticPose.pos.z;
+      out[offset + 3] = staticPose.rot.x;
+      out[offset + 4] = staticPose.rot.y;
+      out[offset + 5] = staticPose.rot.z;
+      out[offset + 6] = staticPose.rot.w;
+      return;
+    }
     if (this.pendingPos && !isWritePending(this.pendingPos.visibleAt)) this.pendingPos = undefined;
     if (this.pendingRot && !isWritePending(this.pendingRot.visibleAt)) this.pendingRot = undefined;
     if (transformBuffer && this.slot !== -1) {
@@ -2903,10 +3010,18 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   }
 
   setTranslation(tra: PhysVector, wakeUp: boolean): void {
-    this.pendingPos = {
-      value: { x: tra.x, y: tra.y, z: tra.z },
-      visibleAt: getWriteVisibleStep(),
-    };
+    if (this.staticPose) {
+      const pos = this.staticPose.pos;
+      pos.x = tra.x;
+      pos.y = tra.y;
+      pos.z = tra.z;
+      fixedBodyMovedListener?.(this.id);
+    } else {
+      this.pendingPos = {
+        value: { x: tra.x, y: tra.y, z: tra.z },
+        visibleAt: getWriteVisibleStep(),
+      };
+    }
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_TRANSLATION,
       rigidBodyId: this.id,
@@ -2952,7 +3067,12 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   }
 
   setRotation(rot: PhysRotation, wakeUp: boolean): void {
-    this.pendingRot = { value: toPlainRot(rot), visibleAt: getWriteVisibleStep() };
+    if (this.staticPose) {
+      this.staticPose.rot = toPlainRot(rot);
+      fixedBodyMovedListener?.(this.id);
+    } else {
+      this.pendingRot = { value: toPlainRot(rot), visibleAt: getWriteVisibleStep() };
+    }
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_ROTATION,
       rigidBodyId: this.id,

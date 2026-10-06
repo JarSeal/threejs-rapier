@@ -12,6 +12,7 @@ import type { IComponentStorage } from './ECS/ECSComponentStorage';
 import {
   createRigidBodyWithColliders,
   createRigidBodyWithCollidersSync,
+  type RigidBodyWithColliders,
   deleteColliders,
   deleteRigidBody,
   endPhysicsRayStatsFrame,
@@ -22,6 +23,7 @@ import {
   getPhysicsState,
   getPhysicsWriteVisibleStep,
   readPhysicsSnapshotStamp,
+  setFixedBodyMovedListener,
 } from './PhysicsAPI';
 import {
   ColliderParams,
@@ -104,8 +106,13 @@ export const registerPhysicsManager = (world: ECSWorld) => {
     });
   }
 
+  setFixedBodyMovedListener(onFixedBodyMoved);
   ECSWorld.registerComponentHooks(ComponentType.TAG_IS_PHYSICS_OBJECT, {
     onDeleteEntity: (entityId, w) => {
+      const staticBody = w.getComponent(entityId, ComponentType.BODY_STATIC);
+      if (staticBody && staticBodyOwners.get(staticBody.id)?.entityId === entityId) {
+        staticBodyOwners.delete(staticBody.id);
+      }
       // onDeleteEntity is synchronous; disposal is fire-and-forget (WORKER_THREAD mode
       // has no synchronous delete path, see disposePhysicsEntity).
       disposePhysicsEntity(entityId, w).catch((err) =>
@@ -158,6 +165,13 @@ export const settlePendingPhysicsEntities = async () => {
   await flushPhysics();
 };
 
+/**
+ * Creates a physics entity: an optional rigid body and its colliders, in the bucket its body
+ * type and visual call for (BODY_STATIC / BODY_DYNAMIC_VISUAL / BODY_DYNAMIC_HEADLESS).
+ * Rejects with a `PhysicsCapacityError` (PhysicsAPI.ts) when a `WORKER_THREAD` world's
+ * transform buffer is full (`AppConfig.physics.maxBodies`; `FIXED` bodies take no slot). Then
+ * nothing of it exists: a new entity is deleted, an existing `target` entity is left as it was.
+ */
 export const createPhysicsEntity = (
   colliderParams: ColliderParams | ColliderParams[],
   rigidBodyParams?: RigidBodyParams,
@@ -245,9 +259,19 @@ const createPhysicsEntityNow = async (
   // Body and colliders together, requested before this function's first await: in
   // WORKER_THREAD mode the worker then creates entities in call order (as MAIN_THREAD does),
   // and no step can land between a body and its colliders.
-  const { rigidBody: rb, colliders: colls } = isWorkerThread
-    ? await createRigidBodyWithColliders(rigidBodyParams, paramsArray)
-    : createRigidBodyWithCollidersSync(rigidBodyParams, paramsArray);
+  let created: RigidBodyWithColliders;
+  try {
+    created = isWorkerThread
+      ? await createRigidBodyWithColliders(rigidBodyParams, paramsArray)
+      : createRigidBodyWithCollidersSync(rigidBodyParams, paramsArray);
+  } catch (err) {
+    // Refused (PhysicsCapacityError) or failed: nothing physics-side exists, so the entity
+    // goes back to how it was handed in (a new one is deleted, an existing one loses the tag).
+    world.removeComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT);
+    if (typeof target !== 'number') world.deleteEntity(entityId);
+    throw err;
+  }
+  const { rigidBody: rb, colliders: colls } = created;
 
   // Primes the worker proxy's cached mass (only known once the colliders exist), so even the
   // very first applyImpulse on this body can be reflected in its read-your-writes linvel.
@@ -300,7 +324,10 @@ const createPhysicsEntityNow = async (
   const hasVisual = world.hasComponent(entityId, ComponentType.OBJECT3D);
   const isStatic = !rb || rigidBodyParams?.rigidType === 'FIXED';
   if (isStatic) {
-    if (rb) world.addComponent(entityId, ComponentType.BODY_STATIC, rb);
+    if (rb) {
+      world.addComponent(entityId, ComponentType.BODY_STATIC, rb);
+      staticBodyOwners.set(rb.id, { world, entityId });
+    }
   } else {
     const bucket = hasVisual
       ? ComponentType.BODY_DYNAMIC_VISUAL
@@ -338,54 +365,99 @@ export const deleteAllPhysicsEntities = (ecsWorld?: ECSWorld) => {
   for (const id of ids) world.deleteEntity(id);
 };
 
+/** The entity of every BODY_STATIC body, by body id (body ids are unique across ECS worlds), so
+ * a moved FIXED body can be synced alone (p352). */
+const staticBodyOwners = new Map<number, { world: ECSWorld; entityId: number }>();
+/** Per world: entities whose FIXED body was moved since the last physicsToTransformSystem. */
+const movedStaticEntities = new WeakMap<ECSWorld, Set<number>>();
+
+/** setFixedBodyMovedListener's listener: queues the body's entity for its world's next sync. */
+const onFixedBodyMoved = (rigidBodyId: number) => {
+  const owner = staticBodyOwners.get(rigidBodyId);
+  if (!owner) return;
+  let moved = movedStaticEntities.get(owner.world);
+  if (!moved) {
+    moved = new Set();
+    movedStaticEntities.set(owner.world, moved);
+  }
+  moved.add(owner.entityId);
+};
+
 // [pos xyz, quat xyzw] scratch every body's pose is read into — Float64 so TRANSFORM gets the
 // exact values, and one readPoseInto() per body instead of 7 object-allocating pos/rot reads.
 const transformSyncPose = new Float64Array(7);
+
+/** Copies one body's pose into its entity's TRANSFORM, and marks it dirty only when it changed:
+ * a sleeping body costs a read and a compare, no object3DSyncSystem copy or spatial churn. */
+const syncBodyPose = (world: ECSWorld, entityId: number, rb: RigidBodyAPI) => {
+  const p = transformSyncPose;
+  const transformStore = world.getTypedTransformStore();
+  if (transformStore) {
+    const slot = transformStore.getSlot(entityId);
+    if (slot === -1) return;
+    rb.readPoseInto(p);
+    // Exact compares: both sides hold the same float32 values the last sync wrote
+    if (
+      transformStore.posX[slot] === p[0] &&
+      transformStore.posY[slot] === p[1] &&
+      transformStore.posZ[slot] === p[2] &&
+      transformStore.quatX[slot] === p[3] &&
+      transformStore.quatY[slot] === p[4] &&
+      transformStore.quatZ[slot] === p[5] &&
+      transformStore.quatW[slot] === p[6]
+    ) {
+      return;
+    }
+    transformStore.setPosition(slot, p[0], p[1], p[2]);
+    transformStore.setQuaternion(slot, p[3], p[4], p[5], p[6]);
+    return;
+  }
+
+  const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+  if (!transform) return;
+  rb.readPoseInto(p);
+  const { position: pos, quaternion: q } = transform;
+  if (
+    pos.x === p[0] &&
+    pos.y === p[1] &&
+    pos.z === p[2] &&
+    q.x === p[3] &&
+    q.y === p[4] &&
+    q.z === p[5] &&
+    q.w === p[6]
+  ) {
+    return;
+  }
+  pos.set(p[0], p[1], p[2]);
+  q.set(p[3], p[4], p[5], p[6]);
+  // Mark as changed so the Render System knows to update the Mesh
+  transform.setDirty();
+};
 
 /**
  * Update transform from physics
  */
 export const physicsToTransformSystem = (world: ECSWorld) => {
-  const transformStore = world.getTypedTransformStore();
+  // Dynamic/kinematic bodies move every step. FIXED bodies (BODY_STATIC) don't move under
+  // simulation, so they aren't walked (p352): an explicit move (setTranslation/setRotation, eg.
+  // an imported level piece snapped into place once) queues its entity through
+  // onFixedBodyMoved, and only those are synced here.
+  // keys() + get(): destructuring the storage's own iterator allocates a [key, value] array
+  // per entry, per frame.
+  const dynamicVisuals: IComponentStorage<RigidBodyAPI> = world.getStorage(
+    ComponentType.BODY_DYNAMIC_VISUAL
+  );
+  for (const entityId of dynamicVisuals.keys()) {
+    syncBodyPose(world, entityId, dynamicVisuals.get(entityId)!);
+  }
 
-  const syncStorage = (storage: IComponentStorage<RigidBodyAPI>) => {
-    // keys() + get(): destructuring the storage's own iterator allocates a [key, value] array
-    // per entry, per frame.
-    for (const entityId of storage.keys()) {
-      const rb = storage.get(entityId)!;
-      if (transformStore) {
-        const slot = transformStore.getSlot(entityId);
-        if (slot === -1) continue;
-        const p = transformSyncPose;
-        rb.readPoseInto(p);
-        transformStore.setPosition(slot, p[0], p[1], p[2]);
-        transformStore.setQuaternion(slot, p[3], p[4], p[5], p[6]);
-        continue;
-      }
-
-      const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
-      if (!transform) continue;
-
-      const p = transformSyncPose;
-      rb.readPoseInto(p);
-      transform.position.set(p[0], p[1], p[2]);
-      transform.quaternion.set(p[3], p[4], p[5], p[6]);
-
-      // Mark as changed so the Render System knows to update the Mesh
-      transform.setDirty();
-    }
-  };
-
-  // Dynamic/kinematic bodies move every step, so this cost is expected. FIXED bodies (BODY_STATIC)
-  // don't move under simulation, but CAN be explicitly repositioned after creation (e.g. an
-  // imported level piece snapped into its final place once) — without also syncing this bucket,
-  // that reposition would update the physics body (confirmed via getRigidBody(id).pos) but never
-  // reach the mesh, leaving it visually stuck at its creation-time transform. Matches
-  // physicsWorker.ts's writeBackTransforms() writing all body types for the same reason — the
-  // per-step cost of re-copying a handful of unchanging static transforms is negligible next to
-  // the physics step itself.
-  syncStorage(world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL));
-  syncStorage(world.getStorage(ComponentType.BODY_STATIC));
+  const moved = movedStaticEntities.get(world);
+  if (!moved?.size) return;
+  for (const entityId of moved) {
+    const rb = world.getComponent(entityId, ComponentType.BODY_STATIC);
+    if (rb) syncBodyPose(world, entityId, rb);
+  }
+  moved.clear();
 };
 
 // --- Render interpolation (p059) ------------------------------------------------------------

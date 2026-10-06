@@ -23,6 +23,8 @@ import {
 } from '../UI/DraggableWindow';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import {
+  getLastPhysicsBodyActivity,
+  getPhysicsBodyCapacity,
   getPhysicsState,
   getPhysicsWorld,
   getResolvedTransportMode,
@@ -735,6 +737,39 @@ const getInterpolationClockFolder = (): DebuggerPaneItem<PhysicsState> => {
   };
 };
 
+/** The "Bodies" folder's values, synced by the tab's onRefresh (readonly bindings poll it). */
+const bodiesReadout = { slots: '', refused: 0, activity: '' };
+
+const refreshBodiesReadout = () => {
+  const capacity = getPhysicsBodyCapacity();
+  bodiesReadout.slots = capacity ? `${capacity.used} / ${capacity.max}` : 'N/A, worker only';
+  bodiesReadout.refused = capacity?.refused ?? 0;
+  const activity = getLastPhysicsBodyActivity();
+  bodiesReadout.activity = activity
+    ? `${activity.awake} awake, ${activity.sleeping} sleeping`
+    : 'Measured with the step time';
+};
+
+/** Transform-buffer slots and refused creates (p352: FIXED bodies take no slot, a full buffer
+ * refuses a create), and how many dynamic bodies sleep (with the step stats on). */
+const getBodiesFolder = (): DebuggerPaneItem<PhysicsState> => ({
+  type: 'folder',
+  id: 'bodies',
+  title: 'Bodies (live)',
+  expanded: false,
+  content: [
+    { key: 'slots', target: bodiesReadout, label: 'Slots used / max bodies', readonly: true },
+    {
+      key: 'refused',
+      target: bodiesReadout,
+      label: 'Refused creates (buffer full)',
+      readonly: true,
+      format: (v: number) => v.toFixed(0),
+    },
+    { key: 'activity', target: bodiesReadout, label: 'Dynamic bodies', readonly: true },
+  ] as DebuggerPaneItem<PhysicsState>[],
+});
+
 export const _createPhysicsAPIDebugGUI = () => {
   physicsApiUIState = { ...physicsApiUIState, ...lsGetItem(UI_LS_KEY, physicsApiUIState) };
   restoreWireframeState();
@@ -769,6 +804,7 @@ export const _createPhysicsAPIDebugGUI = () => {
     // No entity create/delete hook to subscribe to: poll, same tradeoff as the spatial grid
     // debug panel's live readout (the list only re-renders when its rows changed)
     refreshIntervalMs: 500,
+    onRefresh: refreshBodiesReadout,
     content: () => {
       // Read once: createPhysicsWorld() (which resolves this) always runs before this tab is
       // ever built (see InitApp.ts's boot order). The world is recreated on every scene load,
@@ -966,6 +1002,7 @@ export const _createPhysicsAPIDebugGUI = () => {
                 persistWireframeState();
               },
             },
+            getBodiesFolder(),
             getInterpolationClockFolder(),
             { type: 'separator' },
             getDeterminismProbeFolder(),

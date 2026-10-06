@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Physics
 Epic: p350_lod-system-research.md (Tier 1.2, §6)
 Blocks: p353_macro-streaming-grid.md (its physics phase)
@@ -191,14 +191,44 @@ priority list as its existing states. A "freeze tier policy" toggle.
 
 ## 7. Phases
 
-### Phase 1 — Fixes (§3)
+### Phase 1 — Fixes (§3) — done
 
 Slot-less static bodies, no static sync, no dirtying of unchanged poses, refuse on capacity,
 sleep counts.
 
 **Exit:** `physicsTest` and `thirdPersonGym` behave the same in both worker targets; the
 determinism probe stays green; a scene with 3,000 static colliders and 2048 `maxBodies` loads
-(today it throws).
+(before Phase 1 the worker threw, and the create never settled, so the scene load hung).
+
+As built (differs from §3):
+
+- **A moved fixed body syncs itself; no warning.** `setTranslation` / `setRotation` on a
+  `FIXED` body tells `setFixedBodyMovedListener` (`PhysicsAPI.ts`): the worker proxy calls it,
+  and on `MAIN_THREAD` the engine's `setFixedBodyMovedObserver`. `PhysicsManager.ts` maps the
+  body to its entity (`staticBodyOwners`), and `physicsToTransformSystem` syncs only the moved
+  ones. Direct moves keep working with no per-frame cost (the gym moves its imported stairs and
+  wall this way), and `syncStaticBodies` was never needed.
+- **A slot-less proxy keeps its own pose.** Without a slot, the worker proxy returned the origin
+  once its creation pose expired. It now keeps its creation pose, updated by every
+  `setTranslation` / `setRotation` (`staticPose`). The slot decision is the worker's
+  (`rb.isFixedSync()` at creation); the main thread only sees `slot === -1`.
+- **`setBodyType` doesn't move slots.** It's one-way, and the proxy's slot is fixed at
+  creation, so the main thread could never learn a new slot. Switching a body created `FIXED`
+  to another type logs a debug warning (`EngineRapier.ts`). Phase 2's `FULL ↔ STATIC` should
+  therefore keep the slot (open question 2), which keeps that transition one-way.
+- **Capacity:** a refused create gets a normal reply with `capacityExceeded` (= `maxBodies`),
+  not an `ERROR`; the worker deletes the half-made body first, and `CREATE_RIGID_BODIES` is all
+  or nothing. `createPhysicsEntity` removes the entity it created (or the tag it added to the
+  `target`) and rethrows the `PhysicsCapacityError`. Other worker errors still only log, and
+  their promise never settles: making every request reject is a separate change.
+- **Debug and stats:** `getPhysicsBodyCapacity()` (slots used, max, refused; worker only) and
+  `getLastPhysicsBodyActivity()` (awake and sleeping dynamic bodies, measured with the step
+  stats: two more fields in the stats buffer and on `TRANSFORMS_PUSH`), shown in the Physics API
+  tab's "Bodies (live)" folder.
+- Verified headless (WebGL2/SwiftShader): the gym and `physicsTest` in both worker targets, with
+  every static body's transform and mesh at its body's pose; the probe's `physicsTest` hash
+  (N=120) is the same as on `main` in both targets; 3,000 `FIXED` bodies take no slot, and
+  dynamic creates fill exactly 2048 slots, then reject.
 
 ### Phase 2 — `STATIC` and `DISABLED`
 

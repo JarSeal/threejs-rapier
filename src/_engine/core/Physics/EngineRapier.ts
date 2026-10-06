@@ -30,6 +30,7 @@ import {
   ShapeType,
   TempContactForceEvent,
   WorldAPI,
+  type PhysicsBodyActivity,
   type PhysicsQueryObserver,
 } from './PhysicsAPITypes';
 import type { RayDebugOpts } from '../RayDebugTypes';
@@ -172,6 +173,29 @@ let queryObserver: PhysicsQueryObserver | null = null;
  * nothing extra. */
 export const setQueryObserver = (observer: PhysicsQueryObserver | null) => {
   queryObserver = observer;
+};
+
+/** Told the id of a FIXED body moved by setTranslation/setRotation, MAIN_THREAD only; see
+ * setFixedBodyMovedObserver. */
+let fixedBodyMovedObserver: ((rigidBodyId: number) => void) | null = null;
+
+/** Sets (or clears, with null) the observer told about moved FIXED bodies. Only PhysicsAPI.ts
+ * sets it, on the main thread, where it brings the move to the body's entity (p352: static
+ * bodies aren't synced per frame). The worker's engine never has one. */
+export const setFixedBodyMovedObserver = (observer: ((rigidBodyId: number) => void) | null) => {
+  fixedBodyMovedObserver = observer;
+};
+
+/** Awake and sleeping dynamic bodies right now (step stats, p352), written into `out`. */
+export const countDynamicBodyActivity = (out: PhysicsBodyActivity) => {
+  out.awake = 0;
+  out.sleeping = 0;
+  for (const rbAPI of rigidBodyAPIs.values()) {
+    if (!rbAPI.isDynamicSync()) continue;
+    if (rbAPI.isSleepingSync()) out.sleeping++;
+    else out.awake++;
+  }
+  return out;
 };
 
 export const init = (
@@ -1509,6 +1533,7 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
 
   setTranslation(tra: PhysVector, wakeUp: boolean) {
     this.rb.setTranslation(tra, wakeUp);
+    if (fixedBodyMovedObserver && this.rb.isFixed()) fixedBodyMovedObserver(this.id);
   }
 
   setLinvel(vel: PhysVector, wakeUp: boolean) {
@@ -1528,6 +1553,7 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
 
   setRotation(rot: PhysRotation, wakeUp: boolean) {
     this.rb.setRotation(rot, wakeUp);
+    if (fixedBodyMovedObserver && this.rb.isFixed()) fixedBodyMovedObserver(this.id);
   }
 
   setAngvel(vel: PhysVector, wakeUp: boolean) {
@@ -1669,6 +1695,13 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   }
 
   setBodyType(type: RigidBodyTypeAPI, wakeUp: boolean) {
+    if (isDebugEnvironment && type !== RigidBodyTypeAPI.Fixed && this.rb.isFixed()) {
+      // p352: a body created FIXED has no transform-buffer slot (WORKER_THREAD) and its entity
+      // sits in BODY_STATIC, which isn't synced per frame, so its new motion never reaches it.
+      lwarn(
+        `Rigid body ${this.id} changed from FIXED to another type with setBodyType: a body created FIXED isn't synced to its entity while it moves. Create it with the type it moves as.`
+      );
+    }
     this.rb.setBodyType(type as unknown as RigidBodyType, wakeUp);
   }
 

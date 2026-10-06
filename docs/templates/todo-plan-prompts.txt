@@ -56,7 +56,7 @@ We should also be able to add text decals to meshes. I am not sure if this requi
 
 Debugger wise the decals should be editable from the material editor. There is a plan for the material editor view so these decal feature(s) should be blocked by that. In the material editor we should be able to attach decals, edit the text (if text decal), select the placement, select color, FX, what else? What about normal and other maps for the text, can they be implemented (maybe not as maps but normal map as a value that would make the text look like thick paint or something like that if possible)? I don't yet have the saving feature (I need a backend to handle saving files), but I would love to have the option to bake the decal onto the material if possible, so keep that in mind for future implementations.
 
-If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+If for some reason this plan or some features of it can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
 ************************************
 
