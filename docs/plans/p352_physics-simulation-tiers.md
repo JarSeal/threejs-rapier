@@ -1,9 +1,9 @@
-Status: in progress | Phases 1-3 implemented
+Status: in progress | Phases 1-3 implemented, Phase 4 §5 built
 Category: Physics
 Epic: p350_lod-system-research.md (Tier 1.2, §6)
 Blocked by: p343_deterministic-physics-tier-policy.md (Phase 4: the policy's `cadence` option)
 Blocks: p353_macro-streaming-grid.md (its physics phase)
-Related: p420_npc-simulation-tiers.md (characters and NPCs: their tiers, kinematic movers and crowds live there, not here), p102_physics-world-bounds.md (its `DISABLE` action is this plan's `DISABLED` tier), p500_restore-physics-snapshot.md (body snapshots share a format), _DONE_p063_triple-buffered-physics-transform-buffer.md (slot allocation), p101 scene-load determinism (implemented; CLAUDE.md Physics section)
+Related: p420_npc-simulation-tiers.md (characters and NPCs: their tiers, kinematic movers and crowds live there, not here), p102_physics-world-bounds.md (its `DISABLE` action is this plan's `DISABLED` tier), p500_restore-physics-snapshot.md (body snapshots share a format), \_DONE_p063_triple-buffered-physics-transform-buffer.md (slot allocation), p101 scene-load determinism (implemented; CLAUDE.md Physics section)
 
 # Physics Simulation Tiers
 
@@ -351,11 +351,12 @@ As built (differs from §4.1-4.4, decided in review):
   transform's pose and the index. Phase 2's tier-sequence hashes change with this.
 - Known limits: calls on a held body proxy while it's `REMOVED` fail as on a deleted body;
   removal sends no "stopped" collision event (as a delete doesn't).
+- **Fixed in Phase 4:** a body removed from the `DISABLED` tier came back with its colliders
+  disabled for good (Phase 4's as built). These checks never went `DISABLED → REMOVED`.
 - Verified headless (WebGL2/SwiftShader), `MAIN_THREAD`, `WORKER_THREAD` with SAB and without:
   a 200-box stack (a quarter with meshes) built at a `physicsTest` enter, removed at step 400
   and returned at 460 from an `APP_PHYSICS_STEP` system, frozen at 700: the stack's hash equals
-  the run without the round trip, and the same in all three (`6665576a`); slots go 209 → 9 →
-  209. An awake round trip (removed at 20, back at 60) gives the same hash on every run and in
+  the run without the round trip, and the same in all three (`6665576a`); slots go 209 → 9 → 209. An awake round trip (removed at 20, back at 60) gives the same hash on every run and in
   all three (`062ce8d5`).
   Scripted edge checks: a `REMOVED, FULL, STATIC, REMOVED, DISABLED` flip-flop one frame apart,
   `setDisabled` while `REMOVED`, delete while `REMOVED` and in flight, joint refusal, the
@@ -366,6 +367,76 @@ As built (differs from §4.1-4.4, decided in review):
 
 §5 and §6. §5's policy gets a `cadence` option (deterministic `STEPS` or frame-driven `FRAMES`)
 from p343_deterministic-physics-tier-policy.md before this phase is marked done.
+
+As built so far (§5; §6 not started; differs from §5):
+
+- **Module:** `core/PhysicsTierPolicy.ts` registers itself on import (an `APP_LOGIC` system per
+  world, a scene-exit hook, a world-registry hook), like `PhysicsTiers.ts`. Types in
+  `core/Physics/PhysicsTierTypes.ts` (`PhysicsTierRing`, `PhysicsTierPolicy`,
+  `PhysicsTierPolicyMemberData`).
+- **API**, the world last and optional like `requestPhysicsTier`:
+  `setPhysicsTierPolicy(policy | null, world?)`, `getPhysicsTierPolicy(world?)`,
+  `setPhysicsTierPolicyMember(entityId, member, world?)` (for an entity created without the
+  option; `false` with a debug warning without a `DYNAMIC` `createPhysicsEntity` body),
+  `setPhysicsTierPolicyFrozen(frozen, source = 'APP', world?)` and
+  `isPhysicsTierPolicyFrozen(world?, source?)`. Each source freezes on its own.
+- **Members:** `PHYSICS_TIER_POLICY { refusedTier, placed }`. `createPhysicsEntity`'s
+  `tierPolicy` is on `PhysicsEntityOpts` (`CoreEntityOpts` plus code-only physics options, so not
+  in any JSON schema; it applies to a `target` entity too). `PhysicsManager.ts` only adds the
+  component (`DYNAMIC` bodies only, else a debug warning) and never imports the policy module, so
+  an app without a policy pays nothing.
+- **Rings:** a bad policy throws: `within` strictly ascending, each tier at most once, every
+  ring but the last has a `within` and the last has none. Defaults: `hysteresis` 0.15,
+  `everyNFrames` 10 (p343 replaces it with `cadence` + `interval`).
+- **Ring choice:** from the entity's latest requested tier (`target`). Hysteresis applies only
+  moving out, and only after the entity's first pass (`placed`): a new member is `FULL` because
+  it was created so, not because it was near. An entity in a tier the policy has no ring for goes
+  straight to its ring.
+- **Joint groups:** each pass (only when joints exist) unions the members' bodies through joints
+  between `DYNAMIC` `createPhysicsEntity` bodies, as `requestPhysicsTier`'s groups are linked, and
+  gives a group its nearest member's ring. Otherwise a member that stays put never requests, and
+  another member's request drags the group away and back on the next pass.
+- **Refusals:** a refused tier (`REMOVED` for a jointed body) isn't asked again until the entity's
+  ring changes (`refusedTier`), and a refused group marks all its members, so one warning per
+  refusal, not one per member and pass.
+- **Focus:** default the policy's own world's main camera (`TAG_IS_MAIN_CAMERA`, not the debug
+  camera; `getMainCamera` reads the default world). An entity id reads its `TRANSFORM`; `null` or
+  `undefined` skips the pass. Distances are from each member's `TRANSFORM` position (a `REMOVED`
+  one keeps the pose it was removed at).
+- **Scope:** `sceneId` removes the policy when that scene exits; without it the policy stays on
+  the world (the next scene's members follow it), and a deleted world drops its policy. Removing
+  a policy or a member leaves the tiers as they are.
+- **Probe:** freezes the policy while armed (source `DETERMINISM_PROBE`; the probe module imports
+  the policy module, debug only).
+- **Not deterministic:** the policy runs on frames, so its requests land on frame-timing-dependent
+  steps, also with a deterministic focus. p343 adds the deterministic `STEPS` cadence.
+- **Cell owners:** p353 isn't built, so "entities with a cell owner follow the cell" waits for
+  Phase 5.
+- **Demo scene `physicsTiers`** (app, `app/physicsTiers.ts`): a 600 m ground with 49 crate
+  pyramids (686 crates, `tierPolicy: true`), and a kinematic plough ball moved in
+  `APP_PHYSICS_STEP` along every row (scene time, deterministic), the policy's focus. Rings
+  `FULL` 40, `STATIC` 90, `DISABLED` 160, `REMOVED` beyond, drawn around the plough. Crates are
+  tinted by tier (orange, blue, grey, a shadowless ghost) by swapping four shared materials, which
+  the scene holds a ref on until it exits (a tier no crate shows would otherwise drop to 0 refs
+  and be disposed). `C` switches between the overview and a chase camera; the sun's shadow fits
+  the main camera's view (`SUN_SHADOW_FIT`).
+- **Phase 3 bug found by the demo, fixed:** Rapier reports every collider of a disabled body as
+  disabled, so a body removed from the `DISABLED` tier was snapshotted with its colliders disabled
+  and came back with colliders that stayed disabled once the body was enabled (no collisions, mass
+  0, frozen in its last pose). The collider proxy now mirrors its own enabled flag
+  (`EngineColliderProxyAPI.ownEnabled`, set at creation and by every `setEnabled`), and detach
+  snapshots that. Rapier can't tell the two apart: its flag only updates on the next step.
+- Verified headless (WebGL2/SwiftShader), `MAIN_THREAD`, `WORKER_THREAD` with SAB and without:
+  27 scripted policy checks on `physicsTest` (ring placement, hysteresis both ways, first
+  placement, `REMOVED → FULL`, joint group nearest member and refusal, freeze and unfreeze, camera
+  focus, scene-scoped removal, validation, member on and off). `physicsTiers`: ~20-40 crates
+  `FULL` near the plough, ~500-570 `REMOVED`, worker slots 687 → ~120-180, no refusals; after
+  the collider fix, all 21 piles the plough reaches in 80 s move (14 of 14 crates each; piles
+  11-21 didn't before), no `FULL` crate rests on an edge, no transform mismatch. With the policy
+  frozen, the probe's `physicsTiers` hash (N=900) is the same on every load and in both targets
+  (`36d80379`); with it running, it isn't (p343). The plough's rendered position never reverses
+  along its row with the policy running or frozen (except one snap right after the scene load,
+  the interpolation clock starting, also frozen).
 
 ### Phase 5 — Cell driving (with p353)
 
