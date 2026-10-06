@@ -1,8 +1,7 @@
-Status: draft | not-implemented
+Status: implemented (Phases 1-4)
 Category: Editor-Creator View, Materials
-Blocked by: p083_editor-creator-view.md (view registry, scene suspension, view tools group, camera rig)
-Blocks: p085_material-editor-params-and-persistence.md
-Related: p083_editor-creator-view.md (epic), `createDebuggerTab` (p105, implemented: the right drawer reuses its declarative tabs), the layered sky box (p111, implemented: skybox environments in the editor can now build on it, still a non-goal here), the debug environment ball (`debug/EnvBall.ts`, p115, implemented: same "ball + environment" idea for the scene)
+Blocks: \_DONE_p085_material-editor-params-and-persistence.md
+Related: \_DONE_p083_editor-creator-view.md (epic), `createDebuggerTab` (p105, implemented: the right drawer reuses its declarative tabs), the layered sky box (p111, implemented: skybox environments in the editor can now build on it, still a non-goal here), the debug environment ball (`debug/EnvBall.ts`, p115, implemented: same "ball + environment" idea for the scene)
 
 # Material Editor — Stage, Camera and Material Selector
 
@@ -92,11 +91,9 @@ In this plan the editor is a viewer: clicking a material shows it on the ball. A
    - **Unavailable** materials (a TSL material without a `tslMaterialFileObjects` entry, ie. a production-gathered build) are listed but disabled, with the reason in the tooltip.
    - On view exit the copy is deleted; on enter it is created again from `selectedMaterialId`. So nothing the editor holds can outlive a scene switch that released its textures.
 4. **Editor camera.**
-   - Its own `PerspectiveCamera` (fov 45, near 0.01, far 100) and `OrbitControls` on the canvas, enabled only while the view is active. It is not an ECS entity: the view owns it, like a viewport owns its camera.
-   - `mainUpdate` runs `controls.update()` unless the gizmo suspended the controls; the camera is exposed as the p083 `ViewCameraRig`, so the axes gizmo follows it and can align and orbit it.
-   - Aspect: updated with an `addResizer('materialEditorCamera', …)` resizer and on every enter.
+   - Built with p083's `createViewCamera` (p083 DD7, `core/Debug/Editors/_dbg__ViewCamera.ts`), which every editor view shares. It provides the camera with its OrbitControls (enabled only while the view is active, not an ECS entity), `controls.update()` in `mainUpdate` unless the gizmo suspended the controls, the aspect resizer, and the `ViewCameraRig` the axes gizmo follows, aligns and orbits. This plan only configures it: `viewId: 'materialEditor'`, fov 45, near 0.01, far 100.
    - **Default pose**: position `(0, 0.4, 3.2)`, target `(0, 0, 0)` (the ball fills about half the height).
-   - **Per-material pose**: saved on the controls' `end` event (like `_dbg__DebugCamera.ts:69-74`) into that material's editor record `AEK_debugMatEditorMat_<id>` as `camera: { position, target, fov }`. Loading a material applies its pose, or the default when it has none. With no material selected, the pose goes to the UI state (DD8).
+   - **Per-material pose**: the pose key is the material id (`setPoseKey(materialId)` in `loadEditorMaterial`). The editor passes a `store` that saves the pose into that material's editor record `AEK_debugMatEditorMat_<id>` as `camera: { position, target, fov }`, so p085's clear button clears it with the rest. Loading a material applies its pose, or the default when it has none. With no material selected (`setPoseKey(null)`), the pose is the view's own pose in the helper's default store (`AEK_debugViewCams`).
    - "The camera data is kept in the material's debug data" is implemented as this per-material LS record. The JSON `debugData` is not written in this epic; saving to JSON is the later save plan.
 5. **The material selector (bottom drawer).**
    - Fixed to the bottom, from the left edge to the right edge of the canvas, `z-index: 10100`: above the stats panel and on-screen tools (so a shown stats panel is under it), below the right drawer (10200) and the toaster.
@@ -121,34 +118,34 @@ In this plan the editor is a viewer: clicking a material shows it on the ball. A
    - In this plan the tabs are **Params** (a read-only "Material" section: id, name, type, source path, description, TSL file, and the texture ids it uses) and **Settings** ("Reset camera to default", and the camera's pose as read-only values). p085 adds the editable content.
 7. **Pause and play.** `update(delta)` (p083 DD5) drives an optional slow auto-rotation of the preview object (p085 exposes it; off by default), so the pause button has something to pause. TSL materials that animate with the wall-clock `time` node keep moving, as in the scene.
 8. **Editor UI state** (LS `AEK_debugMatEditorUI`, written on each change, read on first enter):
-   - `selectedMaterialId`, `noMaterialCamera`
+   - `selectedMaterialId` (the camera pose without a material is in `AEK_debugViewCams`, DD4)
    - `selector: { isOpen, filterText, scrollTop }`
    - `drawer: { isOpen, currentTabId, scrollPos: Record<tabId, number> }`
    - With p083's saved view, a refresh returns to the editor with the same material, camera pose, drawers, tab, filter and scroll positions. A `selectedMaterialId` that no longer exists is dropped.
 
 ## Files touched
 
-| File                                                                              | Change                                                                       |
-| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `src/_engine/debug/MaterialEditor.ts` (new)                                       | Thin debug entry                                                             |
-| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditor.ts` (new)           | View def, stage, camera rig, `loadEditorMaterial`, UI state                  |
-| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditorSelector.ts` (new)   | Bottom drawer: header, filter, grid, cards                                   |
-| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditorTabs.ts` (new)       | Params/Settings tab defs (info + camera reset here)                          |
-| `src/_engine/core/Debug/Editors/Material/MaterialEditor.module.scss` (new)        | Selector layout, cards, responsive offsets, notice                           |
-| `src/_engine/core/Debug/Editors/_dbg__EditorDrawer.ts` (new)                      | Reusable right drawer instance                                               |
-| `src/_engine/core/Debug/_dbg__DebuggerGUI.ts`, `src/_engine/debug/DebuggerGUI.ts` | Export `_buildDebuggerTabContent`, `hydrateDebuggerTabState`                 |
-| `src/_engine/core/UI/icons/SvgIcon.ts`, `icons/svg/material-sphere.svg` (new)     | `material` icon (DD1)                                                        |
-| `src/_engine/InitApp.ts`                                                          | `registerMaterialEditor()` in the debug block                                |
-| `.claude/CLAUDE.md`                                                               | One line under the "Views" paragraph: the material editor and where it lives |
+| File                                                                              | Change                                                                               |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `src/_engine/debug/MaterialEditor.ts` (new)                                       | Thin debug entry                                                                     |
+| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditor.ts` (new)           | View def, stage, `createViewCamera` config and store, `loadEditorMaterial`, UI state |
+| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditorSelector.ts` (new)   | Bottom drawer: header, filter, grid, cards                                           |
+| `src/_engine/core/Debug/Editors/Material/_dbg__MaterialEditorTabs.ts` (new)       | Params/Settings tab defs (info + camera reset here)                                  |
+| `src/_engine/core/Debug/Editors/Material/MaterialEditor.module.scss` (new)        | Selector layout, cards, responsive offsets, notice                                   |
+| `src/_engine/core/Debug/Editors/_dbg__EditorDrawer.ts` (new)                      | Reusable right drawer instance                                                       |
+| `src/_engine/core/Debug/_dbg__DebuggerGUI.ts`, `src/_engine/debug/DebuggerGUI.ts` | Export `_buildDebuggerTabContent`, `hydrateDebuggerTabState`                         |
+| `src/_engine/core/UI/icons/SvgIcon.ts`, `icons/svg/material-sphere.svg` (new)     | `material` icon (DD1)                                                                |
+| `src/_engine/InitApp.ts`                                                          | `registerMaterialEditor()` in the debug block                                        |
+| `.claude/CLAUDE.md`                                                               | One line under the "Views" paragraph: the material editor and where it lives         |
 
 ## Phases
 
 Each phase compiles, lints and leaves the app working.
 
-1. **View, stage and camera.** Register the view with its title and the `material` icon (the view tools group appears, Runtime + Material editor), the stage (ball, lights, studio environment, background), the camera rig with the default pose, and `loadEditorMaterial` hard-wired to the first material. Check the `RoomEnvironment` PMREM on WebGPU and on WebGL2 (`forceWebGL`) and record the outcome in the Implementation notes.
-2. **Material selector.** Bottom drawer, cards, filter, click to load, texture loading, the load token, errors and unavailable materials, non-mesh preview objects.
-3. **Right drawer.** `_dbg__EditorDrawer.ts`, the two tabs with their info content, the `debugDrawerOpen` shift, `h`, and the selector's responsive offsets.
-4. **Persistence.** Per-material camera pose, UI state, and restore on refresh.
+1. **View, stage and camera.** — done. Register the view with its title and the `material` icon (the view tools group appears, Runtime + Material editor), the stage (ball, lights, studio environment, background), the camera rig with the default pose, and `loadEditorMaterial` hard-wired to the first material. Check the `RoomEnvironment` PMREM on WebGPU and on WebGL2 (`forceWebGL`) and record the outcome in the Implementation notes.
+2. **Material selector.** — done. Bottom drawer, cards, filter, click to load, texture loading, the load token, errors and unavailable materials, non-mesh preview objects.
+3. **Right drawer.** — done. `_dbg__EditorDrawer.ts`, the two tabs with their info content, the `debugDrawerOpen` shift, `h`, and the selector's responsive offsets.
+4. **Persistence.** — done. Per-material camera pose, UI state, and restore on refresh.
 
 ## Non-goals
 
@@ -187,4 +184,90 @@ Each phase compiles, lints and leaves the app working.
 
 ## Implementation notes
 
-(Filled in during implementation.)
+### Phase 1
+
+- **Code drift since the plan.**
+  - Line numbers moved: the material gathering is `gatherAppData.ts:604-682` (the production gate `:637`), `deleteMaterial` is `Material.ts:674`, `loadTextureAsync` `Texture.ts:447`, `loadNextSceneAssets` `SceneLoader.ts:248-339`.
+  - There are six project materials: the toolkit's `asteroid` is new.
+  - The scene drawer no longer has its own `buildTabContent` / `mountTab` / `refreshMountedTab`: it mounts tabs through `createTabHost` (`core/Debug/_dbg__TabHost.ts`, from the profiler work), which doesn't depend on its owner and is also used by the profiler window. Phase 3's editor drawer gets a host of its own, so `_buildDebuggerTabContent` isn't exported. `hydrateDebuggerTabState` is already exported.
+  - Scene asset release (`core/Assets/SceneAssetRelease.ts`) deletes the non-persistent materials with ref count 0 that the scene being left owns. The editor copy is one of them (nothing refs it, and it is tagged to the current scene), so a scene loaded while the view is active (app code, HMR) would dispose it under the ball.
+  - The on-screen, toast and window icon rules set `svg path { fill }`, which fills DD1's stroked specular arc (p083 Phase 2 hit the same with the `runtime` icon).
+- **As built.**
+  - The `material` icon has DD1's geometry as filled shapes: the outline is an even-odd ring (r 7 / 5.9), the arc a filled outline of the 1.1 stroke with round ends.
+  - The editor copy is created with `isPersistent: true`, so a scene release skips it; `deleteMaterial` still removes it. While it exists, its textures count as used (`isTextureUsedByAnyMaterial`).
+  - `loadEditorMaterial` deletes the previous copy right before creating the new one, in the same task (no frame in between): `createMaterial` returns an id that is already registered, so reloading the same material would otherwise get the old copy back.
+  - Default pose `(0, 0.6, 4.8)`: DD4's `(0, 0.4, 3.2)` at fov 45 makes the ball fill about 75% of the height, not half.
+  - Stage constants: background `0x5a5a5a` (renders about `#434343`), hemisphere `0xffffff` / `0x606060` at 0.7, key light 2 at `(-3, 4, 4)`, fill 0.6 at `(4, 1, 1)`. A lower hemisphere left the side away from the key light black on non-PBR materials (Phong ignores the environment).
+  - The stage scene and the ball are created at registration (no GPU work). The environment and the view camera are created on the first enter, since they need the renderer and the canvas. The PMREM generator and the `RoomEnvironment` are disposed after the bake.
+  - `stageSettings.autoRotateSpeed` (0) drives `update`; p085 exposes it.
+  - This phase shows the first material in the generated data (`testMaterial`).
+- **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2 on WSL2, Playwright clicking the view buttons):
+  - The view group shows Runtime and Material editor. The editor shows the grey stage, the ball with `testMaterial`, no scene objects and no sky box; the env ball shows the `RoomEnvironment` PMREM, and the gizmo follows the editor camera. Back in the Runtime view the scene is as it was.
+  - A canvas orbit moves the camera, the gizmo follows, and the pose is saved to `AEK_debugViewCams` (`materialEditor.view`). A refresh in the editor returns to it with that pose.
+  - `RoomEnvironment` PMREM on WebGL2: works (also p083 Phase 3's test view B). **WebGPU is not verified**: headless WebGPU can't render on WSL2 (`run-aekasha-js` skill), so it needs a check in a real browser.
+  - The icon, rendered at 16 px on dark and light backgrounds, reads as a shaded ball, not an eye.
+
+### Phase 2
+
+- **Code drift since the plan.**
+  - A production-gathered build (`yarn build:test`) writes only `{ scenes }` to `generatedAppData.json` (`gatherAppData.ts:1278`): there is no `materials` or `textures` registry, so Phase 1's `Object.keys(getGeneratedAppData().materials)` threw there. Such a build also only has the graphs of the TSL materials a scene uses, and those are the only materials its scenes list, so DD3's "unavailable" case can't come up there in practice.
+  - The debug toaster has no z-index (`position: fixed`, `z-index: auto`, `InitApp.ts:170`), so it isn't "above the selector" as DD5 assumed: the selector covered its bottom-left toasts.
+- **As built.**
+  - Without a dev registry, the editor lists the scenes' material entries (the first scene's entry per id, with that scene's overrides applied, no `debugData`) and loads textures from any scene's entry (`findInScenes`). The unavailable check (a `tslFile` without a `tslMaterialFileObjects` entry) is still there.
+  - The selector is UI only (`createMaterialSelector({ parent, entries, initialState, onSelect, getSelectedId, getLoadingId, getFailure, onStateChange })`); the editor owns the data and the load state. `initialState` / `onStateChange` / `getState` are there for Phase 4 and not wired yet.
+  - The editor's HUD (`materialEditorHud`: the selector and the notice) is a direct child of the HUD root with `KEEP_IN_VIEWS_CLASS`, shown only under `body.aekView_materialEditor`. It is created on the first enter and kept mounted, so its state survives a view switch; `restoreScroll()` on enter puts back the scroll position `display: none` lost.
+  - While the editor is active, `.toaster` gets `z-index: 10150` (above the selector, below the right drawer), in `MaterialEditor.module.scss`.
+  - Cards are horizontal (a 5.6rem square preview slot left of the name, id and badges) in `minmax(18rem, 1fr)` columns: with `1rem = 10px`, DD5's square full-width slot in an 11rem column is about 15.5rem tall, more than the 15rem body. Two rows fit now.
+  - Card badges: the type without its `NODEMATERIAL` suffix, plus `TSL` for a material with a `tslFile`. The swatch is `params.color` or the first `#` TSL input, so it can differ from the rendered colour (`triplanarCheckerboard`'s red `params.color`). Classes: `selected`, `loading` (the slot pulses), `failed`, `unavailable` (`aria-disabled`, clicks ignored).
+  - Clicking the shown material only retries a failed load. Escape in the filter clears it, a second Escape blurs it.
+  - Loads: `loadEditorMaterial(id | null)` returns `Promise<boolean>`. The previous copy stays on the stage while the textures load; the token is checked after the textures, before anything is created, so an overtaken load has no copy to delete. `onExit` bumps the token. A call while the view isn't active only sets the selection, loaded on the next enter.
+  - Textures already registered aren't passed to `loadTextureAsync`, so the editor doesn't re-tag them to the current scene. A texture that fails to load is left out (createMaterial warns).
+  - Preview objects live in a `previewRoot` group (the auto-rotation turns it): the ball, `Points` and dashed-ready `LineSegments` (`WireframeGeometry`, `computeLineDistances()`) on a coarser `SphereGeometry(1, 48, 24)`, and a `Sprite` scaled to the ball's diameter. A hidden object gets its own default material back. `SHADOW` / `DEPTH` / `DISTANCE` / `SHADER` / `SHADERRAW` create no copy, only the notice.
+  - `getMaterialTextureIds(asset)` is exported for Phase 3's info section.
+- **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2 on WSL2, Playwright):
+  - All six project materials load from the selector, with the selection following; three fast clicks end on the last one. From `oneMoreScene` (no `testTexture`), `testTslMat` loads its texture and shows it.
+  - Filter by id and name, the count, the empty-state text, Escape, `h` typed into the field without toggling anything, collapse and expand.
+  - Injected test materials (in the page's generated data only): `POINTS`, `LINEDASHED` and `SPRITE` previews, the `SHADOW` notice, a bad type (toast, magenta ball, failed card with the reason) and a TSL material without a graph (unavailable, click ignored).
+  - A scene load while the editor is active keeps the copy; after the switch back to Runtime no `__matEditor__` material is registered, and the selector is hidden.
+  - Not verified: WebGPU (headless WebGPU can't render on WSL2), and the production-gathered fallback (`yarn build:test`).
+
+### Phase 3
+
+- **Code drift since the plan.**
+  - DD6's `createEditorDrawer({ id, lsKey, … })` and DD8's single `AEK_debugMatEditorUI` record disagree about who persists the drawer. Built like the selector: the drawer is UI only and the editor will persist its state in Phase 4, so it has no `lsKey`.
+  - A CMP's `id` isn't the element's DOM id (only with `idAttr`), and a CMP `html` template keeps only its first root element.
+- **As built.**
+  - `createEditorDrawer({ id, parent, togglerText, headingLabel, getTitle, getTabs, initialState, onStateChange })` returns `{ cmp, toggle(open?), isOpen, setActive(active), rebuild, refresh, getState, dispose }`. It mounts its tabs through a `createTabHost` of its own and reuses `DebuggerGUI.module.scss` (drawer, toggler, title row, close button, tab menu buttons, tab container); `EditorDrawer.module.scss` only makes it a flex column, so the tab container takes the remaining height without the scene drawer's JS height.
+  - `setActive(true | false)` from the view's `onEnter` / `onExit`: only an active drawer sets `debugDrawerOpen` and runs its tab's refreshes. On exit it removes the class, and p083's `resumeScene` gives it back to the scene drawer. The scene drawer's own open state is untouched by a round trip.
+  - State: `{ isOpen, currentTabId, scrollPos: Record<tabId, number> }`. Each tab's scroll position is kept in memory and put back on a tab switch, a rebuild and an enter (`display: none` loses it). It isn't persisted yet (Phase 4).
+  - The editor rebuilds the drawer (`getTabs()` again, title, menu) only when the selected material changes, and otherwise refreshes it: `refreshUI()` replaces Phase 2's `refreshSelector()`.
+  - Tab menu buttons are icons, like the scene drawer's: Params `material`, Settings `gear`.
+  - Params: one info section (a CMP `html` function, so a refresh updates it): status (loading, the load failure, "Preview not supported"), id, name, type, source, description, TSL file, and textures (each marked "(not loaded)" when it isn't registered). Rows without a value are left out. "No material selected" without one.
+  - Settings: the camera's position, target and FOV, refreshed on the OrbitControls `change` event while the tab is mounted (its `onOpen`; orbits, gizmo moves and the reset all fire it), and "Reset camera to default" (`viewCam.resetPose()`).
+  - The selector's grid columns are `minmax(min(18rem, 100%), 1fr)` and its header wraps: at `$breakpointSmall` the drawer (30rem) leaves less than one 18rem column.
+- **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2 on WSL2, Playwright):
+  - With the scene drawer open, entering the editor clears `debugDrawerOpen` (editor drawer closed); the toggler, the close button and `h` open and close the editor drawer and set and clear the class; back in Runtime the open scene drawer has it again; with both closed it stays off.
+  - Selecting a material updates the title and the Params info. An orbit updates the pose readout, and the reset puts back `(0, 0.6, 4.8)`.
+  - Widths: 1400 px, selector right edge = drawer left edge (1000); 460 px, drawer 300 px and selector 160 px with every card visible; 360 px, full-width drawer over a full-width selector.
+  - No new console errors or warnings (only Rapier's init deprecation warning).
+  - Not verified: WebGPU (headless WebGPU can't render on WSL2).
+
+### Phase 4
+
+- **Code drift since the plan.**
+  - `_dbg__ViewCamera.ts` didn't export its default store, which DD4's material store needs for the view's own pose (`null` key, `AEK_debugViewCams`). It is exported as `createViewCameraLSStore(viewId)`.
+  - Nothing listed LocalStorage keys by prefix, which `store.clear()` (every `AEK_debugMatEditorMat_*` record) and p085's "Clear editor data of all materials" need: `lsGetKeysWithPrefix(prefix)` in `utils/LocalAndSessionStorage.ts`.
+  - DD8's "read on first enter" would overwrite a `loadEditorMaterial(id)` call made before the first enter, so the state is read at registration.
+- **As built.**
+  - The storage is its own module, `Editors/Material/_dbg__MaterialEditorStore.ts` (not in the Files table): the keys, `readMaterialRecord` / `patchMaterialRecord` (read, merge, write; a field set to undefined is removed, an empty record removes its key) / `getMaterialRecordIds`, `createMaterialCameraStore`, and `readMaterialEditorUIState` / `writeMaterialEditorUIState`. p085 adds `overrides` and `settings` to `MaterialEditorRecord` there.
+  - The camera store: a material's pose is `camera` in its record, the view's own pose (no material) goes to the view camera's default store. `clear()` clears both, and the `camera` field of every record.
+  - `AEK_debugMatEditorUI` is `{ selectedMaterialId, selector: { isOpen, filterText, scrollTop }, drawer: { isOpen, currentTabId, scrollPos } }`, written on every change (the selection, and the selector's and drawer's `onStateChange`; scroll events unthrottled, like `AEK_debugDrawerState`). Values of the wrong type are left out on read, so their defaults apply. A `selectedMaterialId` that no longer exists is dropped at registration and the state rewritten, without a warning.
+  - The pose key follows the load (DD3's order): `loadEditorMaterial` applies it with the swap (after the textures, so the previous material keeps its pose meanwhile) and in the failed, unavailable and not-supported paths, never in an overtaken load. `onEnter` applies the selected material's key right away (the stage shows nothing else yet), so a refresh doesn't show the view's own pose first. The same key is not re-applied, so a round trip to the Runtime view keeps the camera where it is.
+  - `onEnter` makes the drawer active before it restores the selector's scroll: restored first, the selector was laid out at full width (no `debugDrawerOpen` yet), the browser clamped its scroll to the shorter grid, and the scroll event saved the clamped value.
+- **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2 on WSL2, Playwright):
+  - From empty LS: no material selected, the default pose. An orbit on `testMaterial` writes `camera` to `AEK_debugMatEditorMat_testMaterial`; `testTslMat` starts at the default pose and keeps its own orbit; back on `testMaterial` and after a round trip to the Runtime view, its pose is back.
+  - Refresh (1400×800): the editor, `testMaterial` selected, its pose, the open drawer on Settings, the filter (`t`, 5 / 6). At 760×250: the selector's scroll (60) and the Params tab's (4), and each tab's own scroll on a tab switch.
+  - "Reset camera to default" applies the default pose and removes the record (its only field). A saved `selectedMaterialId` that no longer exists: nothing selected, the saved id cleared, the view's own pose.
+  - No console errors or warnings (only Rapier's init deprecation warning).
+  - `yarn build` passes. The editor, its drawer and its store are in one lazy chunk (`_dbg__MaterialEditor-*.js`: `AEK_debugMatEditorUI`, `__matEditor__`, the tab ids); the main chunk has only `ViewManager.ts` (`AEK_debugViews`).
+  - Not verified: WebGPU (headless WebGPU can't render on WSL2).

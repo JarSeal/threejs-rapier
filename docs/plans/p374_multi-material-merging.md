@@ -2,7 +2,7 @@ Status: draft | not-implemented
 Category: Merging, Materials, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 2.1)
 Blocked by: p372_mesh-merge-groups.md, p299_texture-arrays-and-atlases.md, p302_material-and-texture-system-refactor.md (the `setup` entry and input resolvers)
-Related: p303_texture-sets-and-terrain-texture-library.md (layer arrays: the terrain case of the same idea), p305_terrain-material-generator.md (binding budget), \_DONE_p345_gpu-memory-and-draw-call-debugger.md, p085_material-editor-params-and-persistence.md
+Related: p303_texture-sets-and-terrain-texture-library.md (layer arrays: the terrain case of the same idea), p305_terrain-material-generator.md (binding budget), \_DONE_p345_gpu-memory-and-draw-call-debugger.md, \_DONE_p085_material-editor-params-and-persistence.md
 
 # Multi-Material Merging (Merge Materials)
 

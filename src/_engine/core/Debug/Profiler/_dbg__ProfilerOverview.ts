@@ -75,6 +75,12 @@ const fromSource =
     return reading.value === null ? { value: '—', sub: MEASURING } : read(reading.value);
   };
 
+/** What a census was counted against, for a row's secondary text ('' for the main camera). */
+const censusCountedIn = (c: SceneCensus) => {
+  if (c.view) return ` · ${c.view.title}'s view`;
+  return c.isDebugCamera ? " · debug camera's view" : '';
+};
+
 /** An in-view census row: the in-view figure, "of <total>", and what it was counted against. */
 const censusRow = (
   id: string,
@@ -89,8 +95,7 @@ const censusRow = (
   sources: [PROFILER_SOURCE.CENSUS],
   read: fromSource<SceneCensus>(PROFILER_SOURCE.CENSUS, (c) => {
     const { inView, total } = pick(c);
-    let sub = `in view, of ${formatNumber(total)}`;
-    if (c.isDebugCamera) sub += " · debug camera's view";
+    let sub = `in view, of ${formatNumber(total)}${censusCountedIn(c)}`;
     if (c.isApprox) sub += ' · approx. (BatchedMesh)';
     const more = extra?.(c);
     if (more) sub += ` · ${more}`;
@@ -245,10 +250,11 @@ const OVERVIEW_METRICS: OverviewMetric[] = [
     defaultVisible: true,
     sources: [PROFILER_SOURCE.CENSUS],
     read: fromSource<SceneCensus>(PROFILER_SOURCE.CENSUS, (c) => {
+      // An editor view's scene has no entities, and the worlds are the suspended scene's
+      if (c.view) return { value: '—', na: `no ECS entities in ${c.view.title}` };
       const worlds = `${c.worlds} world${c.worlds === 1 ? '' : 's'}`;
-      let sub = `own Object3D drawn in view, of ${formatNumber(c.entities.total)} in ${worlds}`;
-      if (c.isDebugCamera) sub += " · debug camera's view";
-      return { value: formatNumber(c.entities.inView), sub };
+      const sub = `own Object3D drawn in view, of ${formatNumber(c.entities.total)} in ${worlds}`;
+      return { value: formatNumber(c.entities.inView), sub: sub + censusCountedIn(c) };
     }),
   },
   {

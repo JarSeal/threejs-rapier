@@ -24,6 +24,7 @@ import lightBulbIcon from './svg/lightbulb-fill.svg?raw';
 import lampIcon from './svg/lamp.svg?raw';
 import lockIcon from './svg/lock-fill.svg?raw';
 import lodIcon from './svg/lod.svg?raw';
+import materialIcon from './svg/material-sphere.svg?raw';
 import memoryIcon from './svg/memory.svg?raw';
 import objectsCubesIcon from './svg/cubes-wireframe.svg?raw';
 import pauseIcon from './svg/pause-fill.svg?raw';
@@ -35,6 +36,7 @@ import profilerIcon from './svg/profiler-pulse.svg?raw';
 import redoIcon from './svg/arrow-90deg-right.svg?raw';
 import rocketIcon from './svg/rocket.svg?raw';
 import rocketTakeoffIcon from './svg/rocket-takeoff-fill.svg?raw';
+import runtimeViewIcon from './svg/runtime-view.svg?raw';
 import spatialGridIcon from './svg/spatial-grid.svg?raw';
 import speedometerIcon from './svg/speedometer.svg?raw';
 import stopIcon from './svg/stop-fill.svg?raw';
@@ -73,6 +75,7 @@ const icons = {
   lamp: lampIcon,
   lock: lockIcon,
   lod: lodIcon,
+  material: materialIcon,
   memory: memoryIcon,
   objectsCubes: objectsCubesIcon,
   pause: pauseIcon,
@@ -84,6 +87,7 @@ const icons = {
   redo: redoIcon,
   rocket: rocketIcon,
   rocketTakeoff: rocketTakeoffIcon,
+  runtime: runtimeViewIcon,
   spatialGrid: spatialGridIcon,
   speedometer: speedometerIcon,
   stop: stopIcon,

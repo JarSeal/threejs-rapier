@@ -1,0 +1,328 @@
+@use 'sass:color';
+@use '../../../../styles/variables.scss';
+
+$selectorBodyHeight: 15rem;
+$cardSlotSize: 5.6rem;
+
+// The editor's HUD: a direct child of the HUD root (with KEEP_IN_VIEWS_CLASS), shown only while
+// the material editor view is active (ViewManager's `aekView_<id>` body class)
+.materialEditorHud {
+  display: none;
+
+  :global(body.aekView_materialEditor) & {
+    display: block;
+  }
+}
+
+// The toasters have no z-index of their own, so the selector would cover the debug toaster's
+// toasts (bottom left): above the selector, below the right drawer
+:global(body.aekView_materialEditor .toaster) {
+  z-index: 10150;
+}
+
+// "Preview not supported" in the middle of the canvas, in place of the ball
+.notice {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 80%;
+  padding: 1.2rem 1.6rem;
+  border-radius: variables.$borderRadiusSmall;
+  background: rgba(variables.$debugGuiBackground, 0.85);
+  color: variables.$debugTextColor;
+  font-size: 1.4rem;
+  text-align: center;
+  pointer-events: none;
+
+  &:empty {
+    display: none;
+  }
+}
+
+// The bottom drawer: above the stats panel and the on-screen tools (10000), below the right
+// drawer (10200)
+.selector {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10100;
+  display: flex;
+  flex-direction: column;
+  background-color: variables.$debugGuiBackground;
+  color: variables.$debugTextColor;
+  font-size: 1.2rem;
+  transition: right 0.2s ease-in-out;
+
+  // Its right edge follows the open right drawer (plan DD5), with the drawer's own breakpoints:
+  // the grid reflows to the rest of the width. Under the full-width drawer it stays full width.
+  :global(body.debugDrawerOpen) & {
+    right: variables.$drawerWidth;
+
+    @media screen and (max-width: variables.$breakpointSmall) {
+      right: variables.$drawerWidthSmall;
+    }
+    @media screen and (max-width: variables.$breakpointXSmall) {
+      right: 0;
+    }
+  }
+}
+
+.selectorHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1.2rem;
+  border-bottom: 1px solid variables.$debugGuiBackgroundLighter2;
+}
+
+.selectorTitle {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.selectorCount {
+  color: variables.$debugTextColorDark;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.filterInput {
+  flex: 0 1 24rem;
+  min-width: 8rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid variables.$debugGuiBackgroundLighter2;
+  border-radius: variables.$borderRadiusSmall;
+  background: variables.$debugGuiBackgroundDarker;
+  color: variables.$debugTextColor;
+  font: inherit;
+
+  &:focus {
+    outline: none;
+    border-color: variables.$debugTextColorDark;
+  }
+}
+
+.collapseButton {
+  @include variables.nakedButton;
+  margin-left: auto;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: variables.$borderRadiusSmall;
+  background: transparent;
+  color: variables.$debugTextColor;
+
+  // A caret: down while open (collapses), up while collapsed
+  &:before {
+    content: '';
+    display: block;
+    width: 0.7rem;
+    height: 0.7rem;
+    margin: -0.3rem auto 0;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+  }
+
+  &:hover {
+    background: variables.$debugGuiBackgroundLighter2;
+  }
+}
+
+.selectorBody {
+  height: $selectorBodyHeight;
+  overflow-y: auto;
+  padding: 1rem 1.2rem;
+  scrollbar-color: variables.$debugTextColor variables.$debugGuiBackground;
+}
+
+.selector_collapsed {
+  .selectorHeader {
+    border-bottom: 0;
+  }
+
+  .selectorBody {
+    display: none;
+  }
+
+  .collapseButton:before {
+    margin-top: 0.3rem;
+    transform: rotate(-135deg);
+  }
+}
+
+// Reflows to any width (the right drawer narrows it, plan DD5); a column narrower than the
+// minimum takes the whole row
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
+  gap: 0.8rem;
+}
+
+.emptyNotice {
+  margin: 0.4rem 0 0;
+  color: variables.$debugTextColorDark;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.card {
+  @include variables.nakedButton;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-width: 0;
+  padding: 0.6rem;
+  border: 1px solid transparent;
+  border-radius: variables.$borderRadiusSmall;
+  background: variables.$debugGuiBackgroundLighter2;
+  color: variables.$debugTextColor;
+  text-align: left;
+  font: inherit;
+  transition:
+    background 0.15s ease-in-out,
+    border-color 0.15s ease-in-out;
+
+  &:hover {
+    background: color.adjust(variables.$debugGuiBackgroundLighter2, $lightness: 6%);
+  }
+
+  &:focus-visible {
+    outline: 1px solid variables.$debugTextColor;
+  }
+
+  &:global(.selected) {
+    border-color: variables.$debugBoolTrue;
+    background: rgba(variables.$debugBoolTrue, 0.15);
+  }
+
+  &:global(.loading) .previewSlot {
+    animation: matEditorLoading 0.8s ease-in-out infinite alternate;
+  }
+
+  &:global(.failed) {
+    border-color: variables.$debugAlertLight;
+
+    .cardName {
+      color: variables.$debugAlertLight;
+    }
+  }
+
+  &:global(.unavailable) {
+    opacity: 0.45;
+    cursor: not-allowed;
+
+    &:hover {
+      background: variables.$debugGuiBackgroundLighter2;
+    }
+  }
+}
+
+.card_filteredOut {
+  display: none;
+}
+
+@keyframes matEditorLoading {
+  to {
+    opacity: 0.35;
+  }
+}
+
+// Reserved for the preview thumbnails (later); a colour swatch or the type's initials for now
+.previewSlot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: $cardSlotSize;
+  height: $cardSlotSize;
+  border-radius: variables.$borderRadiusSmall;
+  background: variables.$debugGuiBackgroundDarker;
+  color: variables.$debugTextColorDark;
+  font-size: 1.6rem;
+  font-weight: bold;
+}
+
+.cardInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.cardName,
+.cardId {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cardName {
+  font-size: 1.3rem;
+}
+
+.cardId {
+  color: variables.$debugTextColorDark;
+  font-family: monospace;
+  font-size: 1.1rem;
+}
+
+.cardBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.badge {
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  background: variables.$debugGuiBackgroundDarker;
+  color: variables.$debugTextColorDark;
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+}
+
+// The right drawer's read-only info sections (_dbg__MaterialEditorTabs.ts)
+.infoSection {
+  margin-bottom: 1.2rem;
+  font-size: 1.2rem;
+}
+
+.infoHeading {
+  margin: 0 0 0.6rem;
+  font-size: 1.3rem;
+}
+
+.infoList {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.4rem 1.2rem;
+  margin: 0;
+
+  dt {
+    color: variables.$debugTextColorDark;
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+  }
+}
+
+.mono {
+  font-family: monospace;
+  font-size: 1.1rem;
+}
+
+.infoEmpty {
+  margin: 0;
+  color: variables.$debugTextColorDark;
+}

@@ -3,7 +3,7 @@ import { TimestampQuery, type Renderer } from 'three/webgpu';
 import { getRenderer } from '../../core/Renderer';
 import { createDebuggerTab, updateDebuggerTab } from '../../debug/DebuggerGUI';
 import { GPU_MEMORY_TAB_ID } from '../../debug/GPUMemory';
-import { getHUDRootCMP } from '../../core/HUD';
+import { getHUDRootCMP, KEEP_IN_VIEWS_CLASS } from '../../core/HUD';
 import { CMP, type TCMP } from '../../utils/CMP';
 import { defaultStatsOptions, type StatsOptions } from '../../debug/Stats';
 import { setBootOverride } from './_dbg__PhysicsBootOverrides';
@@ -118,7 +118,7 @@ export const _initStats = (config?: StatsOptions) => {
     }
     statsCmp = CMP({
       id: '_statsContainer',
-      class: ['statsContainer', ...(!cfg.horizontal ? ['vertical'] : [])],
+      class: ['statsContainer', KEEP_IN_VIEWS_CLASS, ...(!cfg.horizontal ? ['vertical'] : [])],
     });
     statsCmp.elem.appendChild(stats.dom);
     // stats-gl only listens to clicks in its minimal mode, which is forced off above

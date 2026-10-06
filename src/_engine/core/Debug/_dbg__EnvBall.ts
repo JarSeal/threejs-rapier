@@ -7,19 +7,30 @@
  * lights involved. Its camera turns with the active camera, so the ball shows what that camera
  * would see reflected.
  *
- * Visibility: `show && there is an environment && (debug camera active || showInMainCamera)`,
- * evaluated every frame by a MAIN-stage system (a boolean compare, the viewport only changes on
- * a transition). While not visible, the viewport is disabled and costs nothing.
+ * Views (p083): in an editor view the ball follows the view's camera (Camera/_dbg__CameraRig.ts)
+ * and shows the view scene's own environment (`scene.environment`), what the view's materials
+ * sample; the root scene's sky box environment is shown only in the Runtime view.
+ *
+ * Visibility: `show && there is an environment && (a camera rig is active || showInMainCamera)`,
+ * evaluated every frame by tickEnvBall (a boolean compare, the viewport only changes on a
+ * transition): a MAIN-stage system in the Runtime view, a view frame listener in an editor view.
+ * While not visible, the viewport is disabled and costs nothing.
  */
 import * as THREE from 'three/webgpu';
 import { pmremTexture, reflectVector, uniform } from 'three/tsl';
 import { ECSWorld, getECSWorld } from '../ECS';
 import { ECSSystemStage } from '../../../AppECSRegistry';
-import { getActiveCamera, isDebugCameraActive } from '../CameraManager';
 import { getRootScene } from '../Scene';
 import { getActiveEnvironmentTexture, getActiveSkyBox, onSkyBoxChange } from '../SkyBox/SkyBox';
 import { isBaseFlipY, turnUpsideDown } from '../SkyBox/layers/base';
 import { createViewport, setViewportEnabled } from '../Viewports';
+import {
+  addViewChangeListener,
+  addViewFrameListener,
+  getActiveView,
+  isRuntimeViewActive,
+} from '../ViewManager';
+import { getViewSourceCamera, isCameraRigActive } from './Camera/_dbg__CameraRig';
 import styles from './EnvBall.module.scss';
 
 export type EnvBallOpts = { show: boolean; showInMainCamera: boolean; roughness: number };
@@ -50,26 +61,51 @@ ECSWorld.registerPlugin((world) => {
   world.addSystem(ECSSystemStage.MAIN, 'envBallSystem', envBallSystem);
 });
 
-/** Visibility. Plugins run per world: the ball is global, so only the default world drives it. */
+/** The Runtime view's tick. Plugins run per world: the ball is global, so only the default world
+ * drives it. */
 function envBallSystem(world: ECSWorld) {
-  if (!isInitialized || world !== getECSWorld()) return;
-  const visible = showBall && envTexture !== null && (showInMainCamera || isDebugCameraActive());
+  if (world !== getECSWorld()) return;
+  tickEnvBall();
+}
+
+/** Visibility, once per frame in every view: from envBallSystem in the Runtime view, from a view
+ * frame listener in an editor view (the scene's ECS stages don't run there). */
+const tickEnvBall = () => {
+  if (!isInitialized) return;
+  // An editor view sets its scene's environment whenever it likes (no change event to follow)
+  if (!isRuntimeViewActive()) syncEnvironment();
+  const visible =
+    showBall &&
+    envTexture !== null &&
+    getViewSourceCamera() !== null &&
+    (showInMainCamera || isCameraRigActive());
   if (visible !== isVisible) {
     isVisible = visible;
     setViewportEnabled(VIEWPORT_ID, visible);
   }
-}
+};
 
-/** Points the ball at the active sky box's environment. A new node per texture, never a
- * `.value` swap: re-pointing a PMREMNode at another target left stale bindings on WebGL2 (the
- * env bake's own node is never re-pointed either, SkyEnvironment.ts). A re-bake renders into
- * the same target, so the ball follows it without a new node. A direct-path cube's flipY is
- * not in its PMREM but in the root scene's environment node (layers/base.ts), so the ball's
- * lookup gets the same flip; the composite path bakes it in. */
+/** The scene whose environment the ball shows: the root scene, or the editor view's own. */
+const getSourceScene = () =>
+  isRuntimeViewActive() ? (getRootScene() as THREE.Scene) : getActiveView()?.scene ?? null;
+
+/** Points the ball at the shown environment: the active sky box's in the Runtime view, the view
+ * scene's `environment` in an editor view. A new node per texture, never a `.value` swap:
+ * re-pointing a PMREMNode at another target left stale bindings on WebGL2 (the env bake's own
+ * node is never re-pointed either, SkyEnvironment.ts). A re-bake renders into the same target,
+ * so the ball follows it without a new node. A direct-path cube's flipY is not in its PMREM but
+ * in the root scene's environment node (layers/base.ts), so the ball's lookup gets the same
+ * flip; the composite path bakes it in. */
 const syncEnvironment = () => {
-  const texture = getActiveEnvironmentTexture();
-  const active = getActiveSkyBox();
-  const flipY = Boolean(active && !active.isComposite && isBaseFlipY(active.def.base));
+  let texture: THREE.Texture | null;
+  let flipY = false;
+  if (isRuntimeViewActive()) {
+    texture = getActiveEnvironmentTexture();
+    const active = getActiveSkyBox();
+    flipY = Boolean(active && !active.isComposite && isBaseFlipY(active.def.base));
+  } else {
+    texture = getActiveView()?.scene.environment ?? null;
+  }
   if (texture === envTexture && flipY === isEnvFlipY) return;
   envTexture = texture;
   isEnvFlipY = flipY;
@@ -79,16 +115,17 @@ const syncEnvironment = () => {
   ballMaterial.needsUpdate = true;
 };
 
-/** Follows the active camera's world rotation, orbiting the ball at a fixed distance, and the
- * root scene's environment rotation (the ball scene has no environment of its own, so
- * PMREMNode applies the material's envMapRotation). */
+/** Follows the view's camera's world rotation (getViewSourceCamera), orbiting the ball at a
+ * fixed distance, and the shown scene's environment rotation (the ball scene has no environment
+ * of its own, so PMREMNode applies the material's envMapRotation). */
 const updateBall = () => {
-  const sourceCamera = getActiveCamera();
-  if (!sourceCamera || !ballCamera || !ballMaterial) return;
+  const sourceCamera = getViewSourceCamera();
+  const sourceScene = getSourceScene();
+  if (!sourceCamera || !sourceScene || !ballCamera || !ballMaterial) return;
   sourceCamera.getWorldQuaternion(_cameraQuat);
   ballCamera.quaternion.copy(_cameraQuat);
   ballCamera.position.set(0, 0, CAMERA_DISTANCE).applyQuaternion(_cameraQuat);
-  ballMaterial.envMapRotation.copy((getRootScene() as THREE.Scene).environmentRotation);
+  ballMaterial.envMapRotation.copy(sourceScene.environmentRotation);
 };
 
 const createBallScene = () => {
@@ -136,6 +173,13 @@ export const _initEnvBall = (opts: EnvBallOpts) => {
 
   syncEnvironment();
   onSkyBoxChange(syncEnvironment);
+  // In an editor view, the default world's MAIN stage (envBallSystem) doesn't run
+  addViewFrameListener(tickEnvBall);
+  addViewChangeListener(() => {
+    syncEnvironment();
+    // Also when the master loop is paused, so the frame rendered after the switch is right
+    tickEnvBall();
+  });
 };
 
 /**

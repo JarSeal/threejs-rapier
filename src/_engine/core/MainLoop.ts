@@ -28,6 +28,7 @@ import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers
 import { getActivePostFxPipeline } from './PostFX';
 import { renderViewports } from './Viewports';
 import { updateDebuggerTab } from '../debug/DebuggerGUI';
+import { getActiveView, runActiveViewAfterRender, runActiveViewFrame } from './ViewManager';
 
 /** Debugger drawer tab id of the loop controls. */
 export const LOOP_DEBUGGER_TAB_ID = 'loopControls';
@@ -67,6 +68,9 @@ export type LoopState = {
   isWindowHidden: boolean;
   isUnloading: boolean;
   isLoadingScene: boolean;
+  /** An editor view is active (ViewManager.ts): the loaded scene is neither rendered nor ticked,
+   * and physics sees it as a pause. */
+  isSceneSuspended: boolean;
 };
 
 const loopState: LoopState = {
@@ -80,6 +84,7 @@ const loopState: LoopState = {
   isWindowHidden: false,
   isUnloading: false,
   isLoadingScene: false,
+  isSceneSuspended: false,
 };
 
 /**
@@ -97,7 +102,8 @@ export const getAppDelta = () => deltaApp;
 /**
  * Returns the main loop's accumulated elapsed time in seconds: the sum of every main loop
  * delta, so it scales with loopState.playSpeedMultiplier and stands still while the master
- * loop is paused (it keeps running while only the app loop is paused). Unlike TSL's `time`
+ * loop is paused or the scene is suspended by an editor view (it keeps running while only the
+ * app loop is paused). Unlike TSL's `time`
  * node (renderer wall-clock), this is the clock anything that must freeze and speed up with
  * the loop should read.
  * @returns (number) elapsed time in seconds
@@ -179,9 +185,10 @@ const notePhysicsAppPause = () => stepPhysics(loopState);
  * Starts out true, which also covers a loop that starts paused (saved loop state) and so
  * never reaches the paused branch before its first resume.
  * Detected here rather than in toggleMainPlay because the debug GUI's master loop toggle
- * flips loopState.masterPlay directly. */
+ * flips loopState.masterPlay directly. A suspended scene (an editor view is active) stands still
+ * the same way, so scene code reading it resumes without a jump. */
 const advanceElapsedTime = () => {
-  if (!loopState.masterPlay) {
+  if (!loopState.masterPlay || loopState.isSceneSuspended) {
     discardNextElapsedDelta = true;
     return;
   }
@@ -194,6 +201,19 @@ const advanceElapsedTime = () => {
 
 const renderScene = () => {
   const renderer = getRenderer() as Renderer;
+
+  if (loopState.isSceneSuspended) {
+    // An editor view: its own scene and camera, without the scene's PostFX pipeline (built for
+    // the root scene and its camera). Between two editor views (no active one), or without a
+    // view camera, nothing is rendered and the canvas keeps its last frame.
+    const view = getActiveView();
+    const viewCamera = view?.getCamera();
+    if (!view || !viewCamera) return;
+    renderer.render(view.scene, viewCamera);
+    renderViewports(renderer, delta);
+    return;
+  }
+
   const rootScene = getRootScene() as Scene;
   const camera = getActiveCamera() as Camera;
 
@@ -235,24 +255,36 @@ const mainLoopForDebug = async () => {
   // --- Max FPS limiter ---
   const skipFrame = shouldSkipFrameForMaxFPS();
 
-  // main loopers
-  for (const world of getAllECSWorlds()) world.updateMainLoop(delta);
-  runSceneMainLoopers(delta, skipFrame);
+  // An editor view is active (ViewManager.ts): the scene is suspended. None of its per-frame
+  // work runs (every world's stages, the scene loopers, physics and held keys), the view's runs
+  // instead.
+  const isSceneSuspended = loopState.isSceneSuspended;
 
-  if (loopState.appPlay) {
-    loopState.isAppPlaying = true;
-    deltaApp = dt * loopState.playSpeedMultiplier;
-
-    // Step the physics and poll held-key input at the same cadence
-    stepPhysicsAndPollHeldKeys(delta);
-
-    // app loopers
-    for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
-    runSceneAppLoopers(deltaApp);
-  } else {
-    // Only master loop is playing (app loop is paused)
+  if (isSceneSuspended) {
     loopState.isAppPlaying = false;
+    // Steps nothing, but lets physics notice the pause, so resuming never catches up on it
     notePhysicsAppPause();
+    runActiveViewFrame(delta);
+  } else {
+    // main loopers
+    for (const world of getAllECSWorlds()) world.updateMainLoop(delta);
+    runSceneMainLoopers(delta, skipFrame);
+
+    if (loopState.appPlay) {
+      loopState.isAppPlaying = true;
+      deltaApp = dt * loopState.playSpeedMultiplier;
+
+      // Step the physics and poll held-key input at the same cadence
+      stepPhysicsAndPollHeldKeys(delta);
+
+      // app loopers
+      for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
+      runSceneAppLoopers(deltaApp);
+    } else {
+      // Only master loop is playing (app loop is paused)
+      loopState.isAppPlaying = false;
+      notePhysicsAppPause();
+    }
   }
 
   if (skipFrame) {
@@ -265,8 +297,12 @@ const mainLoopForDebug = async () => {
 
   renderScene();
 
-  for (const world of getAllECSWorlds()) world.updateLateMainLoop(delta);
-  runSceneMainLateLoopers(delta);
+  if (isSceneSuspended) {
+    runActiveViewAfterRender(delta);
+  } else {
+    for (const world of getAllECSWorlds()) world.updateLateMainLoop(delta);
+    runSceneMainLateLoopers(delta);
+  }
 
   updateRestOfStats(getRenderer() as Renderer);
   frameProbe?.end(performance.now(), true);
@@ -512,6 +548,22 @@ export const toggleAppPlay = (value?: boolean) => {
  * @param isLoading (boolean) value for whether the scene is loading or not.
  */
 export const setIsLoadingScene = (isLoading: boolean) => (loopState.isLoadingScene = isLoading);
+
+/**
+ * Sets loopState.isSceneSuspended. ViewManager.ts only: it owns the enter and leave sequence of
+ * an editor view around it.
+ * @param isSuspended (boolean) whether the scene is suspended
+ */
+export const setSceneSuspended = (isSuspended: boolean) => {
+  loopState.isSceneSuspended = isSuspended;
+};
+
+/** Renders one frame while the master loop is paused (after a view switch), so the canvas shows
+ * the view that is now active. A no-op while the loop runs or before it has started. */
+export const renderFrameWhileMasterPaused = () => {
+  if (!mainLoopInitiated || loopState.isMasterPlaying) return;
+  renderScene();
+};
 
 /**
  * Returns the read-only loop state object

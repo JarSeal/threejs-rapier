@@ -242,7 +242,8 @@ const buildWindowContent = () => {
   return root;
 };
 
-registerDraggableWindow(PROFILER_WINDOW_ID, { content: buildWindowContent });
+// Kept in editor views (ViewManager.ts): F8 opens it in every view
+registerDraggableWindow(PROFILER_WINDOW_ID, { content: buildWindowContent, keepInViews: true });
 
 export const _toggleProfilerWindow = () => toggleDraggableWindow(getWindowProps());
 

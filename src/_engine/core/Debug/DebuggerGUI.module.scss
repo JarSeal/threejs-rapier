@@ -42,7 +42,7 @@
   position: absolute;
   right: 100%;
   top: 50%;
-  transform: translate3d(3.1rem, -50%, 0) rotate(-90deg);
+  transform: translate3d(3.6rem, -50%, 0) rotate(-90deg);
   height: 3rem;
   padding: 0 2rem;
   border-radius: 0.4rem 0.4rem 0 0;
@@ -154,10 +154,23 @@
     border-color 0.17s ease-in-out;
   width: 2.2rem;
   height: 2.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
   &:hover:not(:disabled) {
     background-color: rgba(255, 255, 255, 0.1);
     border-color: variables.$debugTextColor;
+  }
+
+  // An inline icon would sit on the text baseline, at the bottom of the button
+  :global(.uiIcon) {
+    display: block;
+    width: 100%;
+
+    svg {
+      display: block;
+    }
   }
 
   svg path {

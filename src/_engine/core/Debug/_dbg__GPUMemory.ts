@@ -9,6 +9,7 @@ import { ECSSystemStage } from '../../../AppECSRegistry';
 import { ECSWorld, getECSWorld } from '../ECS';
 import { getRenderer, onRendererCreated } from '../Renderer';
 import { getCurrentSceneId, registerOnAllSceneEnterings } from '../Scene';
+import { addViewFrameListener } from '../ViewManager';
 import { formatBytes, formatNumber } from './_dbg__AssetStats';
 import {
   assetOwnerItem,
@@ -165,6 +166,12 @@ const sampleFrame = (info: Renderer['info'], now: number) => {
 /** LATE_MAIN, so right after the frame's renderScene(); default world only (one renderer). */
 const gpuMemorySamplerSystem = (world: ECSWorld) => {
   if (world !== getECSWorld()) return;
+  sampleGPUMemory();
+};
+
+/** One frame's sample: from gpuMemorySamplerSystem, or in an editor view (ViewManager.ts, the
+ * scene's stages don't run) from an 'AFTER_RENDER' view frame listener. */
+const sampleGPUMemory = () => {
   const renderer = getRenderer();
   if (!renderer) return;
   sampleFrame(renderer.info, performance.now());
@@ -582,4 +589,5 @@ export const _createGPUMemoryDebugGUI = () => {
   ECSWorld.registerPlugin((world) => {
     world.addSystem(ECSSystemStage.LATE_MAIN, 'gpuMemorySamplerSystem', gpuMemorySamplerSystem);
   });
+  addViewFrameListener(sampleGPUMemory, 'AFTER_RENDER');
 };

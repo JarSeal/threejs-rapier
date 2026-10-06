@@ -1,6 +1,6 @@
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
-export type ToolTypes = 'SWITCH' | 'PLAY' | 'UNDO';
+export type ToolTypes = 'SWITCH' | 'PLAY' | 'UNDO' | 'VIEW';
 
 type OnScreenToolsGUIModule = typeof import('../core/Debug/_dbg__OnScreenTools');
 let debugGUI: DebugModuleRef<OnScreenToolsGUIModule> | null = null;

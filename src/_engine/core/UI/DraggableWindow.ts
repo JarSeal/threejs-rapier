@@ -3,7 +3,7 @@ import { lsGetItem, lsSetItem, StorageValue } from '../../utils/LocalAndSessionS
 import { lerror } from '../../utils/Logger';
 import { getWindowSize } from '../../utils/Window';
 import { getConfig, IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../Config';
-import { getHUDRootCMP } from '../HUD';
+import { getHUDRootCMP, KEEP_IN_VIEWS_CLASS } from '../HUD';
 import { addResizer } from '../MainLoop';
 import styles from './DraggableWindow.module.scss';
 import { getSvgIcon, type SvgIconKey } from './icons/SvgIcon';
@@ -192,6 +192,10 @@ export type DraggableWindowKindOpts = {
   onClose?: (id: string) => void;
   /** See {@link registerDraggableWindowSceneTargetResolver} */
   sceneTargetResolver?: SceneTargetResolver;
+  /** Keeps the kind's windows visible in editor views (ViewManager.ts), which hide the other
+   * windows with the rest of the suspended scene's HUD. Debug dialogs (`isDebugWindow` with a
+   * backdrop) are always kept. */
+  keepInViews?: boolean;
 };
 
 type Layer = 'APP' | 'DEBUG';
@@ -228,6 +232,7 @@ const pendingRuntimes: { [id: string]: Pick<DraggableWindowRuntime, 'content' | 
 const sceneTargetResolvers: { [kind: string]: SceneTargetResolver } = {};
 const registeredKinds = new Set<string>();
 const kindOnCloses: { [kind: string]: (id: string) => void } = {};
+const keepInViewsKinds = new Set<string>();
 const kindGeometry: { [kind: string]: KindGeometry } = {};
 /** Windows suspended at a scene change start: torn down but kept open until the scene change end
  * decides whether their target exists in the next scene. */
@@ -898,12 +903,18 @@ const addDragHandle = (entry: WindowEntry, elem: HTMLElement, mode: DragMode) =>
 const toClassList = (classes?: string | string[]) =>
   !classes ? [] : typeof classes === 'string' ? [classes] : classes;
 
+/** Whether the window (and its backdrop) stays visible in editor views: a debug dialog, or a
+ * window of a kind registered with `keepInViews`. */
+const isKeptInViews = (config: DraggableWindowConfig) =>
+  (config.isDebugWindow && config.hasBackDrop) || keepInViewsKinds.has(getWindowKind(config));
+
 const getWindowClasses = (config: DraggableWindowConfig) => {
   const classList = [styles.popupWindow];
   if (!config.disableVertResize) classList.push(styles.vertResizable);
   if (!config.disableHoriResize) classList.push(styles.horiResizable);
   if (!config.disableDragging) classList.push(styles.draggable);
   if (config.isCollapsed) classList.push(styles.collapsed);
+  if (isKeptInViews(config)) classList.push(KEEP_IN_VIEWS_CLASS);
   return classList.concat(toClassList(config.windowClass));
 };
 
@@ -949,7 +960,11 @@ const rebuildContent = (entry: WindowEntry) => {
 const createBackDropCMP = (entry: WindowEntry) => {
   const { id, backDropClass, backDropClickClosesWindow } = entry.config;
   return CMP({
-    class: [styles.backDrop, ...toClassList(backDropClass)],
+    class: [
+      styles.backDrop,
+      ...(isKeptInViews(entry.config) ? [KEEP_IN_VIEWS_CLASS] : []),
+      ...toClassList(backDropClass),
+    ],
     ...(backDropClickClosesWindow ? { onClick: () => closeDraggableWindow(id) } : {}),
   });
 };
@@ -1366,6 +1381,13 @@ export const registerDraggableWindow = (id: string, opts: DraggableWindowKindOpt
   if (opts.content) setContentFn(id, opts.content);
   if (opts.sceneTargetResolver) sceneTargetResolvers[id] = opts.sceneTargetResolver;
   if (opts.onClose) kindOnCloses[id] = opts.onClose;
+  if (opts.keepInViews !== undefined) {
+    if (opts.keepInViews) {
+      keepInViewsKinds.add(id);
+    } else {
+      keepInViewsKinds.delete(id);
+    }
+  }
 };
 
 /**

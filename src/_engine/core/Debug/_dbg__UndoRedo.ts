@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { getConfig } from '../Config';
 import { getCurrentSceneId } from '../Scene';
+import { getActiveView } from '../ViewManager';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lerror, lwarn } from '../../utils/Logger';
 import { updateOnScreenTools } from '../../debug/OnScreenTools';
@@ -31,6 +32,8 @@ const LS_KEY = 'AEK_debugUndoRedo';
 const SETTINGS_LS_KEY = 'AEK_debugUndoRedoSettings';
 /** Bucket for 'global' scoped actions, and for 'perScene' ones recorded while no scene is current. */
 const GLOBAL_BUCKET_ID = '_global';
+/** An editor view's bucket id is this prefix and the view id. */
+const VIEW_BUCKET_PREFIX = '__view:';
 const DEFAULT_HISTORY_SIZE = 50;
 const DEFAULT_COALESCE_WINDOW_MS = 800;
 const DEFAULT_SHOW_TOASTS = true;
@@ -54,7 +57,13 @@ const resolveSettings = (): UndoRedoSettings => ({
   showToasts: settingsOverrides.showToasts ?? DEFAULT_SHOW_TOASTS,
 });
 
-const getSceneBucketId = () => getCurrentSceneId() ?? GLOBAL_BUCKET_ID;
+/** The bucket of 'perScene' actions: the current scene's, or in an editor view that view's own
+ * (`__view:<id>`, ViewManager.ts), so undo there never touches the suspended scene. */
+const getSceneBucketId = () => {
+  const view = getActiveView();
+  if (view) return `${VIEW_BUCKET_PREFIX}${view.id}`;
+  return getCurrentSceneId() ?? GLOBAL_BUCKET_ID;
+};
 
 /** The buckets undo/redo work on: the current scene's and the global one (merged by timestamp). */
 const getVisibleBucketIds = () => {

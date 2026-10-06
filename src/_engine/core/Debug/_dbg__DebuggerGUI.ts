@@ -24,6 +24,10 @@ let currentSceneTitleText: string = '';
 let tabsContainerWrapper: null | TCMP = null;
 let debugSceneLoaderCreated = false;
 let debuggerDisabled = false;
+/** An editor view is active (see _setDrawerSuspendedByView). */
+let isSuspendedByView = false;
+/** Set while a right-side debug drawer is open: this one in the Runtime view, an editor's own one
+ * in an editor view (ViewManager.ts). The top on-screen row and the viewport stack shift by it. */
 const DRAWER_OPEN_BODY_CLASS = 'debugDrawerOpen';
 const LS_KEY = 'AEK_debugDrawerState';
 const SCENE_EXIT_HOOK_ID = 'debuggerSceneTabs';
@@ -65,7 +69,9 @@ const initDrawerState = () => {
   if (!savedState || typeof savedState !== 'string') return drawerState;
   const parsedSavedState = JSON.parse(savedState);
   drawerState = { ...drawerState, ...parsedSavedState };
-  if (drawerState.isOpen) document.body.classList.add(DRAWER_OPEN_BODY_CLASS);
+  if (drawerState.isOpen && !isSuspendedByView) {
+    document.body.classList.add(DRAWER_OPEN_BODY_CLASS);
+  }
   return drawerState;
 };
 
@@ -79,7 +85,8 @@ const tabs = new Map<string, TabEntry>();
  * point to a tab that is not registered yet). */
 const host = createTabHost({
   getContainer: () => tabsContainerWrapper,
-  isVisible: () => Boolean(drawerCMP) && drawerState.isOpen,
+  // Hidden in editor views too (_setDrawerSuspendedByView)
+  isVisible: () => Boolean(drawerCMP) && drawerState.isOpen && !isSuspendedByView,
   onMount: (def) => {
     for (const other of tabs.values()) {
       other.button?.updateClass(styles.debugDrawerTabButton_selected, 'remove');
@@ -268,6 +275,8 @@ export const _toggleDrawer = (openOrClose?: 'OPEN' | 'CLOSE') => {
   if (drawerState.isOpen) {
     drawerCMP.updateClass(styles.debuggerGUI_open, 'add');
     drawerCMP.updateClass(styles.debuggerGUI_closed, 'remove');
+    // Hidden in an editor view: _setDrawerSuspendedByView shows it on the way back
+    if (isSuspendedByView) return;
     document.body.classList.add(DRAWER_OPEN_BODY_CLASS);
     // The tab was not refreshed while hidden
     if (!wasOpen) host.resume();
@@ -276,7 +285,27 @@ export const _toggleDrawer = (openOrClose?: 'OPEN' | 'CLOSE') => {
   host.pause();
   drawerCMP.updateClass(styles.debuggerGUI_open, 'remove');
   drawerCMP.updateClass(styles.debuggerGUI_closed, 'add');
-  document.body.classList.remove(DRAWER_OPEN_BODY_CLASS);
+  if (!isSuspendedByView) document.body.classList.remove(DRAWER_OPEN_BODY_CLASS);
+};
+
+/**
+ * Hides the drawer for an editor view (ViewManager.ts), or shows it again. The open state is kept,
+ * but while suspended, its open tab isn't refreshed and the `debugDrawerOpen` body class is left
+ * to the editor view (an editor's own right drawer sets it, so the offset rules of the top row and
+ * the viewport stack keep working).
+ * @param suspended (boolean) whether an editor view is active
+ */
+export const _setDrawerSuspendedByView = (suspended: boolean) => {
+  if (isSuspendedByView === suspended) return;
+  isSuspendedByView = suspended;
+  if (!drawerState.isOpen) return;
+  if (suspended) {
+    host.pause();
+    document.body.classList.remove(DRAWER_OPEN_BODY_CLASS);
+    return;
+  }
+  document.body.classList.add(DRAWER_OPEN_BODY_CLASS);
+  host.resume();
 };
 
 export const _createDebuggerTab = (def: AnyDebuggerTabDef, opts?: DebugGUIOpts) => {

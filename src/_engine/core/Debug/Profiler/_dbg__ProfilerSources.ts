@@ -20,6 +20,7 @@ import { getRayCastStats, isRayCastStatsEnabled, setRayCastStatsEnabled } from '
 import { getRenderer } from '../../Renderer';
 import { getCurrentSceneId } from '../../Scene';
 import { getNextSceneId, isCurrentlyLoading } from '../../SceneLoader';
+import { addViewFrameListener } from '../../ViewManager';
 import { registerStatsSource, type ProfilerSettings } from '../../../debug/Profiler';
 import {
   getPostFxPassStats,
@@ -65,7 +66,8 @@ const PHYSICS_OFF = 'physics off';
 // --- FRAME SAMPLER ---
 // One LATE_MAIN system on the default world (right after the frame's renderScene(), the p345
 // reason: three resets `info.render` at the start of its own animation frame), added while a
-// per-frame source is acquired and removed with the last one.
+// per-frame source is acquired and removed with the last one. In an editor view (ViewManager.ts)
+// the scene's stages don't run, so an 'AFTER_RENDER' view frame listener samples there.
 
 const SAMPLER_SYSTEM_ID = 'aekProfilerFrameSampler';
 /** After every other LATE_MAIN system, so a late render pass still counts for the frame. */
@@ -73,6 +75,7 @@ const SAMPLER_ORDER = -10000;
 
 const sampled = { draw: false, subSteps: false, gpu: false };
 let isSamplerAdded = false;
+let removeViewSampler: (() => void) | null = null;
 
 const frameSamplerSystem = () => {
   const now = performance.now();
@@ -89,8 +92,11 @@ const updateSampler = () => {
   const world = getECSWorld();
   if (isNeeded) {
     world.addSystem(ECSSystemStage.LATE_MAIN, SAMPLER_SYSTEM_ID, frameSamplerSystem, SAMPLER_ORDER);
+    removeViewSampler = addViewFrameListener(frameSamplerSystem, 'AFTER_RENDER');
   } else {
     world.removeSystem(SAMPLER_SYSTEM_ID);
+    removeViewSampler?.();
+    removeViewSampler = null;
   }
 };
 

@@ -26,6 +26,7 @@
 .symbol {
   flex-shrink: 0;
   color: variables.$white;
+  margin-top: -0.8rem;
 
   :global(.uiIcon) {
     display: block;

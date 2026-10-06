@@ -3,7 +3,7 @@ import { isDebugEnvironment } from '../Config';
 import { addOnWindowBlurFn, addVisibilityChangeFn } from '../MainLoop';
 import { getCurrentSceneId } from '../Scene';
 import { lwarn } from '../../utils/Logger';
-import { areAllInputsEnabled } from './InputState';
+import { areAllInputsEnabled, areAppInputsEnabled, areAppInputsSuspended } from './InputState';
 import type { BindingMeta, EnabledInDebugCam, Modifiers } from './InputSharedTypes';
 
 export type KeyChord = Modifiers & {
@@ -25,6 +25,9 @@ type KeyBindingBase = BindingMeta & {
   enabled?: boolean; // default true
   sceneId?: string;
   enabledInDebugCam?: EnabledInDebugCam;
+  /** Runs in editor views too (ViewManager.ts), which suspend the other bindings. Set by the
+   * engine for its debug keys and the CONFIG.ts `debugKeys`. */
+  isDebugKey?: boolean;
 };
 
 export type KeyUpDownBinding = KeyBindingBase & {
@@ -186,6 +189,7 @@ const bindingMatchesEvent = (
 ): binding is KeyUpDownBinding => {
   if (binding.type !== type) return false;
   if (isBindingDisabled(binding) || !isSceneMatch(binding.sceneId)) return false;
+  if (areAppInputsSuspended() && !binding.isDebugKey) return false;
   const caseInsensitive = binding.caseInsensitive ?? true;
   return getChordArray(binding.chord).some((c) =>
     eventMatchesChord(e, c, caseInsensitive, binding.ignoreModifiers)
@@ -292,7 +296,7 @@ export const isChordHeld = (chord: KeyChord, caseInsensitive: boolean = true): b
  */
 export const pollHeldKeyBindings = (delta: number): void => {
   initKeyListeners();
-  if (!keyInputsEnabled || !areAllInputsEnabled()) return;
+  if (!keyInputsEnabled || !areAppInputsEnabled()) return;
   for (let i = 0; i < bindings.length; i++) {
     const binding = bindings[i];
     if (binding.type !== 'KEY_HELD') continue;

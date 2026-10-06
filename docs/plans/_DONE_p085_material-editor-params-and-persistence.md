@@ -1,7 +1,6 @@
-Status: draft | not-implemented
+Status: implemented (Phases 1-4)
 Category: Editor-Creator View, Materials
-Blocked by: p084_material-editor-stage-and-selector.md (editor view, editor copy, right drawer, per-material record)
-Related: p083_editor-creator-view.md (epic; undo buckets per view), the debugger undo engine (`core/Debug/_dbg__UndoRedo.ts`, p060-p062, implemented: undo recording pattern), `createDebuggerTab` (p105, implemented: pane bindings, clear-LS buttons)
+Related: \_DONE_p083_editor-creator-view.md (epic; undo buckets per view), \_DONE_p084_material-editor-stage-and-selector.md (implemented: editor view, editor copy, right drawer, per-material record), the debugger undo engine (`core/Debug/_dbg__UndoRedo.ts`, p060-p062, implemented: undo recording pattern), `createDebuggerTab` (p105, implemented: pane bindings, clear-LS buttons)
 
 # Material Editor — Editable Params, Settings and Persistence
 
@@ -91,10 +90,40 @@ Deeper params (textures, every three.js material type and property, TSL input ra
 
 Each phase compiles, lints and leaves the app working.
 
-1. **Record and overrides.** `MaterialEditorRecord`, read/patch, merge before creation, clear with rebuild. Params tab with the Base, Surface, Transparency and Rendering folders.
-2. **TSL inputs and the remaining params.** TSL input bindings, Points/lines and Physical folders, read-only "Other asset params", "Reset params".
-3. **Settings tab.** Stage, preview and camera settings per material, "Clear editor data of all materials".
-4. **Undo/redo.** Action type, handlers (including the switch to another material), coalescing.
+1. **Record and overrides.** — done `MaterialEditorRecord`, read/patch, merge before creation, clear with rebuild. Params tab with the Base, Surface, Transparency and Rendering folders.
+   - As built:
+     - The record type and its read / patch were already in `_dbg__MaterialEditorStore.ts` (p084: `readMaterialRecord`, `patchMaterialRecord`), not in `_dbg__MaterialEditor.ts`. It adds `readMaterialOverrides` (shape-checked) and `setMaterialOverride(materialId, section, path, value)` (`path`: a param key or `<socket>.<input>`, `undefined` removes it, emptied objects and records are removed), and `MATERIAL_EDITOR_TABS_UI_LS_KEY`.
+     - p084 had no merge hook: the copy is built by `getCopyProps`. Only the **node** overrides are merged before creation (`mergeNodeOverrides` in `_dbg__MaterialEditorParams.ts`: an input the asset has, of an editable kind, with a value of the same kind; textures, `staticDefines` and `{ r, g, b }` objects never). The **param** overrides are set on the created copy through the bindings' own setter (`applyParamOverrides` → `setMaterialParamValue`): only the created copy tells whether it has the key with the expected kind, and three warns about unknown constructor params. The copy is never rendered in between, so it is the same.
+     - Deviation-only goes one step further: `current.baseParams` holds the copy's catalogue params as the asset alone gives them (read before the overrides), and a param set back to its base value drops its override, so it follows the JSON again.
+     - A binding applies every change and saves only a drag's last one (`e.last`).
+     - The drawer is rebuilt when the copy changes (`drawerCopy`), not only the material: the bindings are made from the copy (the clear, Phase 2's reset).
+     - The clear button's `onClearLS` (both tabs) calls `viewCam.setPoseKey(id)` (the record's pose is gone, so the default one) and `loadEditorMaterial(id)` (a new copy from the asset).
+     - A param the copy doesn't have is ignored but stays in the record (`roughness` on a Phong material).
+2. **TSL inputs and the remaining params.** — done TSL input bindings, Points/lines and Physical folders, read-only "Other asset params", "Reset params".
+   - As built:
+     - The Physical params are in the **Surface** folder (DD2), like the Phong ones in Base; there is no separate Physical folder. Their three.js setters bump the material's version when a value crosses 0, so they need no `needsUpdate`.
+     - The catalogue has an `appliesTo` check: `size` / `sizeAttenuation` only on points materials (a sprite also has `sizeAttenuation`), `dashSize` / `gapSize` / `scale` (label "Dash scale") only on dashed lines. `sizeAttenuation` sets `needsUpdate` (a build-time branch).
+     - A TSL input is editable when the asset's value has an editable kind and the copy has a uniform of that kind (`getEditableNodeInput`). The kind comes from the asset, not the uniform: a `{ r, g, b }` input also becomes a colour uniform, but its overrides are never merged (Phase 1). Everything else in a socket is a read-only row in asset order: texture ids, inputs without a uniform (a socket createMaterial skipped), `{ r, g, b }`. `staticDefines` (a socket's and the material-wide ones) are a read-only "staticDefines (read-only)" sub-folder.
+     - TSL input values are JSON values: colours `#rrggbb` (through `Color`, as the params are), vectors `{ x, y(, z, w) }`, also from an asset array. An input set back to the asset's value drops its override (`getNodeInputBaseValue`, `isSameNodeInputValue`), like the params.
+     - Folder ids: `params/TSL inputs`, `params/TSL inputs/<socket>`, `…/staticDefines`, `params/Other`.
+     - "Reset params" is a heading button (`arrowCounterClockwise`), made with `createClearLSButton`, whose `icon` now takes any `SvgIconKey` (`_dbg__ClearLSButtons.ts`). It is disabled while the record has no `overrides` (it watches the record key).
+     - Not exercised in the app: no app material is POINTS, LINEDASHED or PHYSICAL, and none has an asset param without a binding, so the Points / lines and Physical bindings and "Other asset params" were checked only by type-check.
+3. **Settings tab.** — done Stage, preview and camera settings per material, "Clear editor data of all materials".
+   - As built:
+     - The settings catalogue, defaults and value check are a new module, `_dbg__MaterialEditorSettings.ts` (`MaterialEditorSettings`, `DEFAULT_MATERIAL_EDITOR_SETTINGS`, `normalizeMaterialEditorSetting`, `getSettingsPaneItems`). The store adds `readMaterialSettings(id | null)` (the record's valid values over the defaults), `setMaterialSetting` (deviation-only: a value equal to its default is removed) and `clearAllMaterialRecords`.
+     - **`fov` is not a setting**: it was already part of the camera pose in the record's `camera` (p084), so it stays there, and storing it twice could let the two disagree. The Camera folder's FOV binding calls the new `ViewCamera.setFov(fov, save)`, and "Reset camera to default" resets it with the pose. The pose is read-only rows (Position, Target) in the same folder, replacing p084's HTML readout.
+     - `autoRotate` (default off) + `autoRotateSpeed` in deg/s (default 30) replace p084's `stageSettings.autoRotateSpeed` in turns per second. The stage keeps its lights and its baked studio PMREM (`Stage.lights`, `Stage.environmentTexture`), so 'NONE' sets `scene.environment = null` and 'STUDIO' puts the texture back without a re-bake.
+     - A material's settings are applied together with its camera pose (`applyMaterialStage`), i.e. with the swap to its copy, not on its selection: the previous material stays on the stage while the textures load. `stageSettingsMaterialId` records which material the stage settings belong to; until it matches the selection, the tab shows no Stage / Preview folders and edits are ignored. Without a selected material the stage has the defaults and the tab says so.
+     - "Clear editor data of all materials" opens a new plain confirm dialog, `confirmClearLS` (`_dbg__ClearLSButtons.ts`; `confirmClearScope` only offers all scenes / this scene). It removes every record, then resets the selected material like its own clear. The button is disabled while no record exists; the tab refreshes after a setting's last change and on the camera controls' `end`, so its disabled state follows the record.
+     - Folder ids: `settings/Stage`, `settings/Preview`, `settings/Camera`.
+4. **Undo/redo.** — done Action type, handlers (including the switch to another material), coalescing.
+   - As built:
+     - The tabs' bindings call wrappers (`editCopyParam`, `editCopyNodeInput`, `editStageSetting`, `editCameraFov` in `_dbg__MaterialEditor.ts`) that read the value before and after the setter, from the copy / stage / camera (so `prev` and `next` are normalized JSON values, not Tweakpane's), and record every tick with `_recordOrCoalesceUndoRedoAction`; nothing is recorded when the value didn't change. The handler path calls the setters directly, so it never records. Label: `Material <name or id>: <param label | socket.input | setting label | FOV>`.
+     - A fourth section, **`camera`** (path `fov`): the FOV moved into the camera pose in Phase 3, so it is undoable through it. Its material is the camera's pose key (the previous material while the selected one loads), and the view's own pose (no material) isn't recorded. Camera moves and "Reset camera to default" aren't recorded.
+     - **Record first, not apply in the continuation.** The handler sets the value live when its material is on the stage (copy, settings or pose key there), else writes it into the record and, when another material is selected, calls `loadEditorMaterial(id)`: the load builds the copy, the settings and the pose from the record. A load that is overtaken, fails or is discarded by the view's exit therefore can't lose the value, and the handler needs no continuation. A material that is selected but still loading (or failed) gets only the record write.
+     - Deviation-only without a copy: a TSL input is compared with the asset's value (`normalizeAssetNodeInputValue`, `getNodeInputBaseValue`), a setting with its default, the FOV is patched into the saved pose (or `DEFAULT_CAMERA_POSE`). A param's base value needs the copy, so the record write keeps it, and `applyParamOverrides` now removes an override equal to the copy's base value on every load. This also covers a JSON edited to match an override, which then follows the JSON again, the same rule as an edit back to the base value.
+     - New exports: `getNodeInputValue`, `normalizeAssetNodeInputValue` (`_dbg__MaterialEditorParams.ts`), `getMaterialEditorSettingLabel` (`_dbg__MaterialEditorSettings.ts`), and `setFov` on `MaterialEditorTabsCtx`.
+     - Verified with a scripted headless run (WebGL2 / SwiftShader, `?isDebug=true`): Shininess on `testMaterial`, `gridScale` on `testTslMat`, back to `testMaterial`; undo selects `testTslMat` and reverts `gridScale` live (record removed); undo again selects `testMaterial` with shininess 30 (record removed by the load's cleanup); both redos re-apply; after a reload the history is kept in `__view:materialEditor` and undo still works. Settings, FOV and drag coalescing were not exercised there.
 
 ## Non-goals
 

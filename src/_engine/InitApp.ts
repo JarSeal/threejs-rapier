@@ -7,7 +7,7 @@ import {
   PROJECT_METADATA,
 } from './core/Config';
 import { initAssets } from './core/Assets/AssetsAPI';
-import { createHudContainer, getHUDRootCMP } from './core/HUD';
+import { createHudContainer, getHUDRootCMP, KEEP_IN_VIEWS_CLASS } from './core/HUD';
 import {
   registerDefaultDebugKeyBindings,
   registerDefaultProdTestKeyBindings,
@@ -33,6 +33,7 @@ import { createAssetsDebugGUI } from './debug/Assets';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
 import { registerLineManager } from './core/LineManager';
 import { createPostFXDebugGUI, initPostFX } from './core/PostFX';
+import { restoreSavedView } from './core/ViewManager';
 
 // ECS Core Plugins
 import './core/ECS/ECSCoreSystems';
@@ -57,6 +58,7 @@ import { initUndoRedo, registerUndoRedoModule } from './debug/UndoRedo';
 import { registerPostFxProfiler } from './debug/PostFXProfiler';
 import { registerAxesGizmoModule } from './debug/AxesGizmo';
 import { registerEnvBallModule } from './debug/EnvBall';
+import { registerMaterialEditor } from './debug/MaterialEditor';
 import { registerGPUMemoryDebugGUI } from './debug/GPUMemory';
 import { registerProfiler } from './debug/Profiler';
 
@@ -116,6 +118,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerDebuggerGUI();
       await registerAxesGizmoModule();
       await registerEnvBallModule();
+      // Before restoreSavedView (the end of InitEngine) can switch back to it
+      await registerMaterialEditor();
       registerDefaultDebugKeyBindings();
       await registerCharacterTools();
       await registerECSModule();
@@ -166,6 +170,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       getHUDRootCMP().add(
         createToaster({
           id: DEBUG_TOASTER_ID,
+          // Shown in every view (ViewManager.ts)
+          className: KEEP_IN_VIEWS_CLASS,
           settings: {
             animationTimeMs: 200,
             verticalPosition: 'bottom',
@@ -186,6 +192,10 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     // Load draggableWindow states
     loadDraggableWindowStatesFromLS();
+
+    // Back to the view that was active before the refresh: last, so the scene and every debug
+    // GUI exist (hidden by the view) when switching back. Not awaited: the loop already runs
+    if (IS_DEBUG_ENV) void restoreSavedView();
   } catch (err) {
     const msg = 'Error at app start function (InitEngine)';
     lerror(msg, err);

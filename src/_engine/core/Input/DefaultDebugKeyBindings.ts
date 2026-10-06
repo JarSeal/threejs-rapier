@@ -1,4 +1,4 @@
-import { addDebugToast, toggleDrawer } from '../../debug/DebuggerGUI';
+import { addDebugToast } from '../../debug/DebuggerGUI';
 import {
   playInProdTestMode,
   stopProdTestMode,
@@ -16,8 +16,15 @@ import { toggleProfilerWindow } from '../../debug/Profiler';
 import { redoLastAction, undoLastAction } from '../../debug/UndoRedo';
 import { lwarn } from '../../utils/Logger';
 import { getConfig } from '../Config';
-import { getReadOnlyLoopState, isAppPlaying, toggleAppPlay, toggleMainPlay } from '../MainLoop';
+import { getReadOnlyLoopState, toggleAppPlay, toggleMainPlay } from '../MainLoop';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
+import {
+  getActiveView,
+  isRuntimeViewActive,
+  isViewPlaying,
+  toggleActiveViewDrawer,
+  toggleViewPlay,
+} from '../ViewManager';
 import { createKeyBinding, markChordReserved, type KeyUpDownBinding } from './KeyboardInput';
 
 /**
@@ -65,9 +72,9 @@ const DEFAULT_DEBUG_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
     category: 'DEBUGGER',
     type: 'KEY_UP',
     chord: { key: 'h' },
-    name: 'Toggle debug drawer',
+    name: 'Toggle debug drawer (an editor view: its own drawer)',
     fn: () => {
-      if (!isTypingInField()) toggleDrawer();
+      if (!isTypingInField()) toggleActiveViewDrawer();
     },
   },
   {
@@ -95,10 +102,11 @@ const DEFAULT_DEBUG_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
     category: 'CAMERA',
     type: 'KEY_DOWN', // keydown, so preventDefault can stop the browser's own F1 (help) action
     chord: { key: 'F1' },
-    name: 'Toggle debug camera',
+    name: 'Toggle debug camera (Runtime view)',
     fn: (e) => {
       e.preventDefault();
-      if (e.repeat || isTypingInField()) return;
+      // An editor view has its own camera
+      if (e.repeat || isTypingInField() || !isRuntimeViewActive()) return;
       toggleDebugCameraWithToast();
     },
   },
@@ -110,10 +118,11 @@ const DEFAULT_DEBUG_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
     category: 'LOOPS_AND_MODES',
     type: 'KEY_DOWN',
     chord: { key: 'F5' },
-    name: 'Play in production test mode',
+    name: 'Play in production test mode (Runtime view)',
     fn: (e) => {
       e.preventDefault();
-      if (e.repeat || isTypingInField()) return;
+      // Like the on-screen button, which an editor view doesn't have
+      if (e.repeat || isTypingInField() || !isRuntimeViewActive()) return;
       playInProdTestMode();
     },
   },
@@ -137,14 +146,16 @@ const DEFAULT_DEBUG_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
     category: 'LOOPS_AND_MODES',
     type: 'KEY_DOWN',
     chord: { key: 'F7' },
-    name: 'Pause / play app loop',
+    name: 'Pause / play app loop (an editor view: the view)',
     fn: (e) => {
       e.preventDefault();
       if (e.repeat || isTypingInField()) return;
-      toggleAppPlay();
+      // The on-screen pause button's key: it pauses the active view
+      toggleViewPlay();
       updateOnScreenTools('PLAY');
-      const isPlaying = isAppPlaying();
-      showLoopToast(isPlaying ? 'App loop playing' : 'App loop paused', isPlaying);
+      const isPlaying = isViewPlaying();
+      const target = getActiveView() ? 'View' : 'App loop';
+      showLoopToast(`${target} ${isPlaying ? 'playing' : 'paused'}`, isPlaying);
     },
   },
   {
@@ -267,7 +278,8 @@ export const registerDefaultDebugKeyBindings = (): void => {
   for (const def of DEFAULT_DEBUG_KEY_BINDINGS) {
     const override = debugKeys.find((k) => k.id === def.id);
     if (override?.enabled === false) continue; // the app turned this default off
-    const binding: KeyUpDownBinding = { ...def, ...override };
+    // Debug keys also run in editor views (ViewManager.ts), which suspend the app's bindings
+    const binding: KeyUpDownBinding = { ...def, ...override, isDebugKey: true };
     markChordReserved(binding.id, binding.chord); // reserve whatever chord actually ends up bound
     createKeyBinding(binding); // same id = sanctioned override, no warning
   }
@@ -284,7 +296,7 @@ export const registerDefaultDebugKeyBindings = (): void => {
       );
       continue;
     }
-    createKeyBinding({ ...appKey, type: appKey.type ?? 'KEY_UP', chord, fn });
+    createKeyBinding({ ...appKey, type: appKey.type ?? 'KEY_UP', chord, fn, isDebugKey: true });
   }
 };
 

@@ -8,7 +8,7 @@ import { getCurrentSceneId } from '../Scene';
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import { lwarn } from '../../utils/Logger';
 import { pickTargetsAt, type PickOpts } from './InputPicking';
-import { areAllInputsEnabled } from './InputState';
+import { areAppInputsEnabled } from './InputState';
 import type { BindingMeta, EnabledInDebugCam, TargetList } from './InputSharedTypes';
 
 // NOTE! Every raycast here tests only a binding's own `targets`, never the whole scene graph.
@@ -110,7 +110,7 @@ const isInputInDebugCamInvalid = (enabledInDebugCam?: EnabledInDebugCam) =>
 
 const isBindingActive = (binding: MouseBinding) =>
   mouseInputsEnabled &&
-  areAllInputsEnabled() &&
+  areAppInputsEnabled() &&
   binding.enabled !== false &&
   !isInputInDebugCamInvalid(binding.enabledInDebugCam) &&
   (!binding.sceneId || binding.sceneId === getCurrentSceneId());
@@ -219,7 +219,7 @@ const clearHover = (binding: MouseHoverBinding, callOnLeave: boolean) => {
  * (mousemove fires far more often than frames render). */
 const hoverSystem = () => {
   // The master switch (InputState.ts) can't flag hover dirty itself, so notice its changes here
-  const allEnabled = areAllInputsEnabled();
+  const allEnabled = areAppInputsEnabled();
   if (allEnabled !== hoverAllInputsEnabled) {
     hoverAllInputsEnabled = allEnabled;
     hoverDirty = true;

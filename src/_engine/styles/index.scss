@@ -33,6 +33,13 @@ body {
   height: 100%;
 }
 
+// Editor views (core/ViewManager.ts) hide the suspended scene's HUD: the debug drawer, the switch
+// tools, draggable windows, the scene loader and any app HUD. display: none keeps them mounted, so
+// the Runtime view shows them as they were. KEEP_IN_VIEWS_CLASS (core/HUD.ts) opts an element out.
+body.aekEditorView #hudRoot > :not(.aekKeepInViews) {
+  display: none;
+}
+
 .uiIcon {
   svg {
     display: inline-block;
