@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Physics
 Epic: p350_lod-system-research.md (Tier 1.2, §6)
 Blocks: p353_macro-streaming-grid.md (its physics phase)
@@ -289,13 +289,77 @@ As built (differs from §4):
   same hash on every run and in both targets (N=120 and N=60, with bodies still frozen).
   `thirdPersonGym`: every static body's transform at its body's pose, no errors.
 
-### Phase 3 — `REMOVED`
+### Phase 3 — `REMOVED` — done
 
 `SNAPSHOT_AND_DELETE_BODY` in `EngineRapier.ts` and the worker switch, snapshot storage, re-create
 from snapshot, interpolation reset.
 
 **Exit:** a stack of 200 boxes demoted to `REMOVED` and promoted back resumes from the same
 state in both worker targets (the probe's hash of the stack matches a run without the round trip).
+
+As built (differs from §4.1-4.4, decided in review):
+
+- **Detach and reattach, ids kept** (not delete + re-create through `createPhysicsEntity`, which
+  posts at once in `WORKER_THREAD` mode and so would land before the frame's first sub-step,
+  not on the requested one). `detachRigidBody` / `reattachRigidBody` (`EngineRapier.ts`, facade
+  in `PhysicsAPI.ts`, worker `RIGID_DETACH` / `RIGID_REATTACH`) take the body and its colliders
+  out of the Rapier world and put them back with the same running ids and proxy objects. So app
+  references to the body and colliders, collider event callbacks and `bodyOwners` survive, and
+  later collider changes (friction, groups, sensor) aren't lost. The engine proxies get
+  `_rebind()` (p500's design decision 2).
+- **The snapshot stays engine side**, keyed by body id (`detachedBodies`), not in the component:
+  detach needs no reply for physics, and the snapshot dies with the world, as the entity does.
+  It holds what Rapier reads back (pose, velocities, sleep state, gravity scale, damping,
+  dominance, CCD, additional solver iterations, user force/torque, userData; per collider its
+  cached shape, local pose, materials and combine rules, sensor, enabled, groups, active
+  events/hooks/collision types, force threshold, contact skin) plus what it can't: locked axes,
+  additional mass and a collider's mass mode (density, mass or mass properties) are mirrored
+  from every write on the proxies (`writeOnly`, `massMode`).
+- **Sub-step requests:** `messageWorkerAtStep` (`PhysicsAPI.ts`) captures a request into the
+  current sub-step like a one-way command; the worker replies from the replay. Detach and
+  reattach both run right before their sub-step, in both targets.
+- **No blocking while in flight.** `PHYSICS_SIM_TIER` gained `body`, `colliders`, `inFlight`
+  and `removalSeq` (no `snapshot`). `→ REMOVED` removes the bucket and `COLLIDER` components at
+  once (the reply only brings the pose for the transform). `REMOVED →` reattaches straight into
+  the target tier's body type and enabled state; in `WORKER_THREAD` mode the components come
+  back when the reply brings the new slot (`inFlight` until then). Later requests apply on their
+  own steps without waiting (the worker runs commands in order); `removalSeq` and the worker
+  proxy's attach generation drop replies a later transition overtook. So chained transitions
+  don't depend on reply timing.
+- **Slots:** freed at detach, allocated at reattach before anything is re-created. A full buffer
+  refuses the return: the body stays detached, the entity stays `REMOVED` (target too), the
+  refusal is counted and a `PhysicsCapacityError` is logged. A body back in `STATIC` keeps a slot,
+  like an in-place `STATIC`.
+- **Exactness:** a body at rest comes back exactly as if it had never left (its sleep state is
+  restored, so it doesn't settle again). A moving one keeps its pose, velocities and sleep state
+  and repeats the same way every run, but Rapier's contact and solver state starts over, so it
+  doesn't match a run where it never left. Verified in Node (0.19.3): a resting 200-box stack
+  removed for 0 or 50 steps matches; without the sleep state it wakes and drifts; an awake stack
+  put back at once differs. A returning body whose colliders overlap something resolves the
+  overlap like a new body would (a resting overlap in the never-removed run stays asleep).
+- **Joints:** `REMOVED` is refused for a body with any joint (also one to a fixed anchor), checked
+  at the request and again when it applies; the engine refuses too.
+- **Elsewhere:** `ECSWorld.setTransform` / `setVelocity` / `setDisabled` write to a body in flight
+  back (`_getWritableBody`); while `REMOVED` there's no body, so `setTransform` moves only the
+  visual and `setDisabled` is applied by the return. Deleting a `REMOVED` entity frees its engine
+  entry (`deleteRigidBody` handles detached ids; `PhysicsManager.getEntityBody`). The wireframe
+  module drops an entity's lines when `COLLIDER` goes and rebuilds a shown one when it's back.
+  `resetPhysicsInterpolationHistory` restarts the entity's render history on its return.
+- **Probe:** the tier index is appended only for non-`FULL` tiers (a body back from another tier
+  hashes like one that never left, which the exit test needs); a `REMOVED` entity hashes its
+  transform's pose and the index. Phase 2's tier-sequence hashes change with this.
+- Known limits: calls on a held body proxy while it's `REMOVED` fail as on a deleted body;
+  removal sends no "stopped" collision event (as a delete doesn't).
+- Verified headless (WebGL2/SwiftShader), `MAIN_THREAD`, `WORKER_THREAD` with SAB and without:
+  a 200-box stack (a quarter with meshes) built at a `physicsTest` enter, removed at step 400
+  and returned at 460 from an `APP_PHYSICS_STEP` system, frozen at 700: the stack's hash equals
+  the run without the round trip, and the same in all three (`6665576a`); slots go 209 → 9 →
+  209. An awake round trip (removed at 20, back at 60) gives the same hash on every run and in
+  all three (`062ce8d5`).
+  Scripted edge checks: a `REMOVED, FULL, STATIC, REMOVED, DISABLED` flip-flop one frame apart,
+  `setDisabled` while `REMOVED`, delete while `REMOVED` and in flight, joint refusal, the
+  wireframe going and coming back, and (worker) a full buffer refusing a return until a slot
+  frees.
 
 ### Phase 4 — Distance policy and debug
 
@@ -318,4 +382,7 @@ promise, which is a fix). App patch if a test scene adopts the policy.
    one body of a jointed pair lets the joint drag the other (why groups change tier together).
 2. Should `STATIC` keep the body's slot so promotion back to `FULL` needs no allocation? Only if
    Phase 2 shows allocation churn; slots are cheap.
-3. Snapshot format: align with p500 before Phase 3.
+3. ~~Snapshot format: align with p500 before Phase 3.~~ Answered in Phase 3: p500's snapshot is
+   Rapier's whole-world bytes, so there is no format to share. What is shared is the principle
+   (proxies survive with their ids and are re-pointed) and `_rebind()`. p500 has a note on
+   detached bodies.

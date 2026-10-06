@@ -110,7 +110,7 @@ export const registerPhysicsManager = (world: ECSWorld) => {
   setBodyMovedListener(onBodyMoved);
   ECSWorld.registerComponentHooks(ComponentType.TAG_IS_PHYSICS_OBJECT, {
     onDeleteEntity: (entityId, w) => {
-      const body = w.getRigidBody(entityId);
+      const body = getEntityBody(w, entityId);
       if (body) {
         const owner = bodyOwners.get(body.id);
         if (owner?.world === w && owner.entityId === entityId) bodyOwners.delete(body.id);
@@ -338,8 +338,14 @@ const createPhysicsEntityNow = async (
   return entityId;
 };
 
+/** The entity's body, also while a REMOVED physics tier (p352) has taken its bucket component
+ * away: the body keeps its id, and deleting it frees what the engine kept of it. */
+const getEntityBody = (world: ECSWorld, entityId: number) =>
+  world.getRigidBody(entityId) ??
+  world.getComponent(entityId, ComponentType.PHYSICS_SIM_TIER)?.body;
+
 export const disposePhysicsEntity = async (entityId: number, world: ECSWorld) => {
-  const rb = world.getRigidBody(entityId);
+  const rb = getEntityBody(world, entityId);
   // One call either way, so in WORKER_THREAD mode every delete is posted synchronously, in
   // deletion order, ahead of whatever the next scene creates. Deleting a body also deletes
   // its colliders (they're all attached to it, see createPhysicsEntity).
@@ -534,6 +540,12 @@ type InterpolationHistory = {
   snapUntilStep: number;
   /** The reset pose (POSE_FLOATS), allocated on the entity's first reset. */
   snapPose: Float32Array | null;
+};
+
+/** Throws away one entity's pose history: its next capture reseeds it, so it doesn't blend from
+ * a pose it left (a body back from the REMOVED physics tier, p352). */
+export const resetPhysicsInterpolationHistory = (world: ECSWorld, entityId: number) => {
+  worldInterpolationStates.get(world)?.histories.delete(entityId);
 };
 
 /** Live values for the Physics API debug tab, mutated in place (never reallocated). */

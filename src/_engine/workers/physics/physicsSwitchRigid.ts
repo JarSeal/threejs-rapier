@@ -113,6 +113,31 @@ export const physicsSwitchRigid = async (
       // DELETE_RIGID_BODIES
       for (const id of data.ids) transformBuffer?.freeSlot(id);
       return sendMessage({ type, ...engAPI.deleteRigidBodies(data.ids) }, data);
+    case PhysicsProtocolType.RIGID_DETACH: {
+      // RIGID_DETACH (p352 REMOVED tier): the slot goes with the body
+      const pose = engAPI.detachRigidBody(data.id);
+      if (pose) transformBuffer?.freeSlot(data.id);
+      return sendMessage({ type, pose }, data);
+    }
+    case PhysicsProtocolType.RIGID_REATTACH: {
+      // RIGID_REATTACH (p352): a slot first, so a full buffer leaves the body detached. Tier
+      // bodies are created DYNAMIC, so a STATIC one keeps a slot like an in-place STATIC does.
+      let slot = -1;
+      if (transformBuffer) {
+        slot = transformBuffer.allocateSlot(data.id);
+        if (slot === -1) {
+          const capacityExceeded = transformBuffer.maxBodies;
+          return sendMessage({ type, slot, capacityExceeded }, data);
+        }
+      }
+      const pose = engAPI.reattachRigidBody(data.id, data.state);
+      if (!pose) {
+        transformBuffer?.freeSlot(data.id);
+        return sendMessage({ type, slot: -1 }, data);
+      }
+      if (slot !== -1) transformBuffer?.setTransform(slot, pose.pos, pose.rot);
+      return sendMessage({ type, slot, pose }, data);
+    }
     case PhysicsProtocolType.RIGID_GET_USERDATA: {
       // RIGID_GET_USERDATA
       if (!rigidBodyAPI) return sendNoRigidBodyErrorMessage(sendMessage, data);

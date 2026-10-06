@@ -99,7 +99,17 @@ export type EngineAPIType = {
   setBodyMovedObserver: (observer: ((rigidBodyId: number) => void) | null) => void;
   /** Counts the awake and sleeping dynamic bodies into `out` and returns it (step stats). */
   countDynamicBodyActivity: (out: PhysicsBodyActivity) => PhysicsBodyActivity;
+  /** The REMOVED physics tier (p352): takes a body and its colliders out of the world, keeping
+   * their state and their ids. Returns the body's pose, or undefined when it has no body to
+   * detach (unknown, already detached, or held by a joint). */
+  detachRigidBody: (id: number) => RigidBodyPose | undefined;
+  /** Puts a detached body back as it was detached, with `state`'s type and enabled state.
+   * Returns its pose, or undefined when it isn't detached. */
+  reattachRigidBody: (id: number, state: RigidBodyAttachState) => RigidBodyPose | undefined;
 };
+
+/** What a reattached body (p352 REMOVED tier) comes back as; everything else is as detached. */
+export type RigidBodyAttachState = { bodyType: RigidBodyTypeAPI; enabled: boolean };
 
 /** Dynamic bodies awake and asleep after the last measured step (step stats, p352). */
 export type PhysicsBodyActivity = { awake: number; sleeping: number };
@@ -2281,6 +2291,8 @@ export type PhysicsUpProtocol =
     | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; params: RigidBodyParams[] }
     | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number }
     | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; ids: number[] }
+    | { type: PhysicsProtocolType.RIGID_DETACH; id: number }
+    | { type: PhysicsProtocolType.RIGID_REATTACH; id: number; state: RigidBodyAttachState }
     | { type: PhysicsProtocolType.RIGID_GET_USERDATA; rigidBodyId: number }
     | {
         type: PhysicsProtocolType.RIGID_SET_USERDATA;
@@ -2704,6 +2716,20 @@ export type PhysicsDownProtocol =
         jointIds: number[];
       }
     | {
+        type: PhysicsProtocolType.RIGID_DETACH;
+        /** The detached body's pose; undefined when nothing was detached. */
+        pose?: RigidBodyPose;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_REATTACH;
+        /** The body's new transform-buffer slot (-1 when nothing was reattached) */
+        slot: number;
+        /** The reattached body's pose; undefined when nothing was reattached. */
+        pose?: RigidBodyPose;
+        /** Set (to maxBodies) when the transform buffer was full: the body stays detached. */
+        capacityExceeded?: number;
+      }
+    | {
         type: PhysicsProtocolType.DELETE_RIGID_BODIES;
         ids: number[];
         colliderIds: number[];
@@ -2878,6 +2904,8 @@ export type CreatePhysicsEntityResponse =
 export type CreateRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.CREATE_RIGID_BODIES>;
 export type DeleteRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODY>;
 export type DeleteRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODIES>;
+export type RigidDetachResponse = PhysicsResponse<PhysicsProtocolType.RIGID_DETACH>;
+export type RigidReattachResponse = PhysicsResponse<PhysicsProtocolType.RIGID_REATTACH>;
 export type RigidGetUserDataResponse = PhysicsResponse<PhysicsProtocolType.RIGID_GET_USERDATA>;
 export type RigidIsValidResponse = PhysicsResponse<PhysicsProtocolType.RIGID_IS_VALID>;
 export type RigidDominanceGroupResponse =
@@ -3100,6 +3128,10 @@ export enum PhysicsProtocolType {
   RIGID_USER_TORQUE = 471,
   /** A rigid body (optional) and its colliders in one message (see createRigidBodyWithColliders) */
   CREATE_PHYSICS_ENTITY = 472,
+  /** The REMOVED physics tier (p352): body and colliders out of the world, state and ids kept */
+  RIGID_DETACH = 473,
+  /** Back from the REMOVED physics tier (p352) */
+  RIGID_REATTACH = 474,
 
   // COLLIDER >= 600 && COLLIDER < 800
   CREATE_COLLIDER = 600,

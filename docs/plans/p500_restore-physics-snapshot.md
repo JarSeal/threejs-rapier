@@ -128,6 +128,13 @@ All of the following was read out of the original TypeScript embedded in
   `messageWorker`/`messageWorkerAsync` (`PhysicsAPI.ts:328, 333`) have no transfer parameter — and
   per Design decision 9 they deliberately still won't.
 
+- **Detached bodies (p352's `REMOVED` tier) are a fourth kind.** `detachRigidBody`
+  (`EngineRapier.ts`) takes a body and its colliders out of the Rapier world but keeps their ids
+  and proxies in `detachedBodies`, and `reattachRigidBody` puts them back with `_rebind()` (the
+  method decision 2 describes, already on the body and collider proxies). A restore must neither
+  reap them (they aren't in the snapshot, but they aren't gone) nor count them as survivors, and
+  a snapshot taken while one is detached doesn't contain it.
+
 ### Pre-existing bugs this plan folds in
 
 - **Neither `restoreSnapshot` frees the world it replaces** — a whole `Rapier.World` leaks per

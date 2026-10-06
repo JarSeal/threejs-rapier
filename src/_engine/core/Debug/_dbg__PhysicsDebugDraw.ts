@@ -722,9 +722,13 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
       built.push({ collider, line, localPos, localQuat, lastState: null });
     }
 
-    // The component may have been removed (or the entity deleted) while the awaits above
-    // were in flight — throw the work away rather than leaking orphaned lines.
-    if (!world.hasComponent(entityId, ComponentType.DEBUG_PHYSICS_WIREFRAME)) {
+    // The component may have been removed (or the entity deleted, or its colliders taken out
+    // of the world) while the awaits above were in flight — throw the work away rather than
+    // leaking orphaned lines.
+    if (
+      !world.hasComponent(entityId, ComponentType.DEBUG_PHYSICS_WIREFRAME) ||
+      !world.hasComponent(entityId, ComponentType.COLLIDER)
+    ) {
       for (const cw of built) disposeColliderWireframe(cw);
       return;
     }
@@ -1005,9 +1009,22 @@ ECSWorld.registerComponentHooks(ComponentType.DEBUG_PHYSICS_WIREFRAME, {
 // rather than TAG_IS_PHYSICS_OBJECT because the tag is added first, before there is
 // anything to draw; the microtask defers past the rest of createPhysicsEntity's
 // synchronous tail so the rigid-body bucket component is in place too.
+// The REMOVED physics tier (p352) takes COLLIDER away while the colliders are out of the world
+// (the lines would read a body that isn't there), and puts it back with them: a shown
+// wireframe is built again then.
 ECSWorld.registerComponentHooks(ComponentType.COLLIDER, {
   onAddComponent: (entityId, world) =>
-    queueMicrotask(() => restoreEntityWireframe(entityId, world)),
+    queueMicrotask(() => {
+      if (!world.hasComponent(entityId, ComponentType.COLLIDER)) return;
+      if (isWireframeVisible(entityId, world)) {
+        buildEntityWireframes(entityId, world).catch((err) =>
+          lwarn(`Physics debug wireframe: failed to build for entity ${entityId}.`, err)
+        );
+        return;
+      }
+      restoreEntityWireframe(entityId, world);
+    }),
+  onRemoveComponent: (entityId) => disposeEntityWireframes(entityId),
 });
 
 ECSWorld.registerPlugin((world) => {

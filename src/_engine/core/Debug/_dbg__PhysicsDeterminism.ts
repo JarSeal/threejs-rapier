@@ -99,10 +99,19 @@ const readBodyValues = (rb: RigidBodyAPI) => {
   ].map(Math.fround);
 };
 
-const TIER_INDEX: Record<PhysicsTier, number> = { FULL: 0, STATIC: 1, DISABLED: 2 };
+const TIER_INDEX: Record<PhysicsTier, number> = { FULL: 0, STATIC: 1, DISABLED: 2, REMOVED: 3 };
+
+/** A REMOVED entity's values: its kept pose (shown by its transform) and no velocities, which
+ * the engine keeps for it but the main thread can't read. */
+const readRemovedValues = (entityId: number) => {
+  const transform = getECSWorld().getComponent(entityId, ComponentType.TRANSFORM);
+  if (!transform) return [];
+  const { position: p, quaternion: q } = transform;
+  return [p.x, p.y, p.z, q.x, q.y, q.z, q.w].map(Math.fround);
+};
 
 /** Dynamic bodies (characters split out), keyed by appId or by creation order. Bodies a physics
- * tier froze into BODY_STATIC count too. */
+ * tier froze into BODY_STATIC or took out of the world (REMOVED) count too. */
 const collectBodies = () => {
   const world = getECSWorld();
   const characterEntityIds = new Set(getCharacters(world).map((c) => c.entityId));
@@ -110,24 +119,35 @@ const collectBodies = () => {
   const keyless: { body: ProbeBody; rbId: number }[] = [];
   const characters: ProbeBody[] = [];
 
+  const add = (entityId: number, rbId: number, values: number[]) => {
+    const appId = getStableAppId(entityId, world);
+    const name = world.getComponent(entityId, ComponentType.OBJECT3D)?.value.name ?? '';
+    const body = { key: appId ?? '', name, entityId, values };
+    if (characterEntityIds.has(entityId)) characters.push({ ...body, key: appId ?? name });
+    else if (appId) keyed.push(body);
+    else keyless.push({ body, rbId });
+  };
   const collect = (storage: IComponentStorage<RigidBodyAPI>, tieredOnly?: boolean) => {
     for (const entityId of storage.keys()) {
       const tier = world.getComponent(entityId, ComponentType.PHYSICS_SIM_TIER)?.tier;
       if (tieredOnly && !tier) continue;
       const rb = storage.get(entityId)!;
-      const appId = getStableAppId(entityId, world);
-      const name = world.getComponent(entityId, ComponentType.OBJECT3D)?.value.name ?? '';
       const values = readBodyValues(rb);
-      if (tier) values.push(TIER_INDEX[tier]);
-      const body = { key: appId ?? '', name, entityId, values };
-      if (characterEntityIds.has(entityId)) characters.push({ ...body, key: appId ?? name });
-      else if (appId) keyed.push(body);
-      else keyless.push({ body, rbId: rb.id });
+      // Not for FULL: a body back from another tier hashes like one that never left
+      if (tier && tier !== 'FULL') values.push(TIER_INDEX[tier]);
+      add(entityId, rb.id, values);
     }
   };
   collect(world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL));
   collect(world.getStorage(ComponentType.BODY_DYNAMIC_HEADLESS));
   collect(world.getStorage(ComponentType.BODY_STATIC), true);
+  // REMOVED, and in flight back from it (no bucket yet: hashed as removed)
+  const tiers = world.getStorage(ComponentType.PHYSICS_SIM_TIER);
+  for (const entityId of tiers.keys()) {
+    if (world.getRigidBody(entityId)) continue;
+    const data = tiers.get(entityId)!;
+    add(entityId, data.body.id, [...readRemovedValues(entityId), TIER_INDEX.REMOVED]);
+  }
 
   keyed.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   keyless.sort((a, b) => a.rbId - b.rbId);

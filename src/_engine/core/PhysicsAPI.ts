@@ -151,7 +151,10 @@ import {
   JointLimitsEnabledResponse,
   JointGetUserDataResponse,
   RigidBodyPose,
+  RigidDetachResponse,
+  RigidReattachResponse,
   type PhysicsBodyActivity,
+  type RigidBodyAttachState,
 } from './Physics/PhysicsAPITypes';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 import {
@@ -812,6 +815,18 @@ const messageWorkerAsync = async <T>(message: PhysicsUpProtocol) =>
     const requestId = createNewResolver(resolve);
     worker.postMessage({ ...message, requestId });
   });
+
+/** A request that runs where a one-way command would (messageWorker): inside an APP_PHYSICS_STEP
+ * sub-step it's captured and replayed right before that sub-step, and the worker replies from
+ * the replay. So what it does lands on a fixed step, not on the frame's first one (p352). */
+const messageWorkerAtStep = async <T>(message: PhysicsUpProtocol) => {
+  if (!substepCommandCapture) return messageWorkerAsync<T>(message);
+  const capture = substepCommandCapture;
+  return new Promise<T>((resolve) => {
+    const requestId = createNewResolver(resolve);
+    capture.push(structuredClone({ ...message, requestId }));
+  });
+};
 
 const onWorkerError = (err: ErrorEvent) => {
   lerror(`Physics worker error: ${err.message}`);
@@ -1626,6 +1641,72 @@ export const deleteRigidBodiesSync = (ids: number[]) => {
   }
 
   return deletedIds;
+};
+
+/**
+ * Engine internal, for the REMOVED physics tier (p352, PhysicsTiers.ts): takes a body and its
+ * colliders out of the world with their state, ids and proxies kept (engine side), and frees
+ * its transform-buffer slot. Resolves with its pose, or undefined when nothing was detached or
+ * a later detach/reattach of the body has overtaken this one. In WORKER_THREAD mode, called
+ * from an APP_PHYSICS_STEP system, it runs right before that sub-step.
+ */
+export const detachRigidBody = async (id: number): Promise<RigidBodyPose | undefined> => {
+  if (!physicsWorldEnabled) return undefined;
+  if (physicsState.workerTarget === 'MAIN_THREAD') return detachRigidBodySync(id);
+  const rb = rigidBodies.get(id);
+  if (!(rb instanceof RigidBodyProxyAPI)) return undefined;
+  const generation = rb._detach();
+  const res = await messageWorkerAtStep<RigidDetachResponse>({
+    type: PhysicsProtocolType.RIGID_DETACH,
+    id,
+  });
+  return rb._isAttachGeneration(generation) ? res.pose : undefined;
+};
+
+/** detachRigidBody (sync). Only for main thread mode. */
+export const detachRigidBodySync = (id: number) => {
+  if (physicsState.workerTarget !== 'MAIN_THREAD') {
+    throw new Error('Cannot use detachRigidBodySync in worker mode. Use detachRigidBody instead.');
+  }
+  return physicsWorldEnabled ? engAPI?.detachRigidBody(id) : undefined;
+};
+
+/**
+ * Engine internal (p352): puts a detached body (detachRigidBody) back, as it was detached
+ * except for `state`. Resolves with its pose, or undefined when it wasn't detached or a later
+ * detach/reattach has overtaken this one. Rejects with a PhysicsCapacityError when a
+ * WORKER_THREAD world's transform buffer is full: the body stays detached. Runs at the sub-step
+ * like detachRigidBody.
+ */
+export const reattachRigidBody = async (
+  id: number,
+  state: RigidBodyAttachState
+): Promise<RigidBodyPose | undefined> => {
+  if (!physicsWorldEnabled) return undefined;
+  if (physicsState.workerTarget === 'MAIN_THREAD') return reattachRigidBodySync(id, state);
+  const rb = rigidBodies.get(id);
+  if (!(rb instanceof RigidBodyProxyAPI)) return undefined;
+  const generation = rb._beginReattach();
+  const res = await messageWorkerAtStep<RigidReattachResponse>({
+    type: PhysicsProtocolType.RIGID_REATTACH,
+    id,
+    state,
+  });
+  if (!rb._isAttachGeneration(generation)) return undefined;
+  throwIfCapacityExceeded(res.capacityExceeded);
+  if (!res.pose) return undefined;
+  rb._attach(res.slot, res.pose);
+  return res.pose;
+};
+
+/** reattachRigidBody (sync). Only for main thread mode, which has no capacity limit. */
+export const reattachRigidBodySync = (id: number, state: RigidBodyAttachState) => {
+  if (physicsState.workerTarget !== 'MAIN_THREAD') {
+    throw new Error(
+      'Cannot use reattachRigidBodySync in worker mode. Use reattachRigidBody instead.'
+    );
+  }
+  return physicsWorldEnabled ? engAPI?.reattachRigidBody(id, state) : undefined;
 };
 
 /** Strips collisionEventFn/contactForceEventFn from a ColliderParams before it crosses
@@ -2719,9 +2800,43 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     }
   }
 
-  /** Whether the body holds a transform-buffer slot (every body not created FIXED). */
+  /** Whether the body holds a transform-buffer slot (every body not created FIXED, unless it's
+   * detached by the REMOVED physics tier). */
   get hasSlot() {
     return this.slot !== -1;
+  }
+
+  /** Bumped by every detach and reattach (p352), so a reply to an older one is ignored. */
+  private attachGeneration = 0;
+
+  /** @internal detachRigidBody: the slot is the worker's to reuse from now on. Returns the
+   * detach's generation. */
+  _detach() {
+    this.slot = -1;
+    this.pendingPos = undefined;
+    this.pendingRot = undefined;
+    this.pendingLvel = undefined;
+    this.pendingAvel = undefined;
+    return ++this.attachGeneration;
+  }
+
+  /** @internal reattachRigidBody, before its request. Returns the reattach's generation. */
+  _beginReattach() {
+    return ++this.attachGeneration;
+  }
+
+  /** @internal Whether no detach/reattach has been requested since `generation`'s. */
+  _isAttachGeneration(generation: number) {
+    return this.attachGeneration === generation;
+  }
+
+  /** @internal reattachRigidBody's reply: the new slot, and its pose read until a transform
+   * write-back includes it (as at creation). */
+  _attach(slot: number, pose: RigidBodyPose) {
+    this.slot = slot;
+    const visibleAt = getWriteVisibleStep();
+    this.pendingPos = { value: { ...pose.pos }, visibleAt };
+    this.pendingRot = { value: { ...pose.rot }, visibleAt };
   }
 
   // Hot path — reads straight from the shared/latest-pushed transform buffer by slot.
