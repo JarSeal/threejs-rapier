@@ -38,17 +38,86 @@ export const registerLodDebugGUI = async () => {
 // An InstancedMesh entity (a static instance cell, §4.3) is a plain mesh whose swap changes every
 // instance: its bounds are level 0 over all its instances (Lod/LodBounds.ts), not one instance.
 
+//
+// Cross-fades (docs/plans/p351_impostor-billboard-lod.md §2.4): a level change, or hiding and
+// showing, dissolves over `fadeSeconds` (LodFade.ts). The entity gets TAG_LOD_TRANSITIONING and
+// `_fade` (its progress) and lodFadeSystem drives it; a change while a fade runs finishes that fade
+// first. The first apply after the LOD is added never fades (the load), nor does removing the LOD.
+// Only targets with `setFade` fade so far.
+
 /** A definition's `hysteresis` when it has none. */
 export const DEFAULT_LOD_HYSTERESIS = 0.1;
+
+// --- FADES ---
+
+let globalFadeSeconds: number | undefined;
+
+/** How long a LOD change cross-fades, in seconds, for LODs without their own `fadeSeconds`. */
+export const getLodFadeSeconds = () => (globalFadeSeconds ??= getConfig().lod?.fadeSeconds ?? 0.25);
+
+/**
+ * Sets how long a LOD change (or hiding and showing) cross-fades, in seconds, for LODs without
+ * their own `fadeSeconds` (initially `AppConfig.lod.fadeSeconds`); 0 switches at once. Fades
+ * already running take the new duration from the next frame.
+ */
+export const setLodFadeSeconds = (seconds: number) => {
+  globalFadeSeconds = Math.max(seconds, 0);
+};
+
+const getFadeSeconds = (lod: LodData) => lod.def.fadeSeconds ?? getLodFadeSeconds();
+
+/** Set while a LOD component is removed: everything it does then is instant. */
+let areFadesSuppressed = false;
+
+/** Ends the entity's running fade, if any: only the incoming copy stays, drawn whole. */
+const endFade = (entityId: number, world: ECSWorld, lod: LodData) => {
+  if (!world.hasComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING)) return;
+  lod._target?.setFade?.(entityId, world, 1);
+  lod._fade = undefined;
+  world.removeComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING);
+};
+
+/** Before a change of what the entity shows: finishes a running fade, and says whether the change
+ * fades (not the first apply, not while the LOD is removed, not for a target that can't). */
+const prepareChange = (entityId: number, world: ECSWorld, lod: LodData) => {
+  endFade(entityId, world, lod);
+  return (
+    !areFadesSuppressed &&
+    lod.applied >= 0 &&
+    lod._target?.setFade !== undefined &&
+    getFadeSeconds(lod) > 0
+  );
+};
+
+const startFade = (entityId: number, world: ECSWorld, lod: LodData) => {
+  lod._fade = 0;
+  world.addComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING, true);
+};
 
 ECSWorld.registerComponentHooks(ComponentType.TAG_LOD_CULLED, {
   onAddComponent: (entityId, world) => {
     reconcileObject3DVisibility(entityId, world, { isLodCulled: true });
-    world.getComponent(entityId, ComponentType.LOD)?._target?.setCulled(entityId, world, true);
+    const lod = world.getComponent(entityId, ComponentType.LOD);
+    const target = lod?._target;
+    if (!lod || !target) return;
+    const fade = prepareChange(entityId, world, lod);
+    target.setCulled(entityId, world, true, fade);
+    if (fade) startFade(entityId, world, lod);
   },
   onRemoveComponent: (entityId, world) => {
     reconcileObject3DVisibility(entityId, world, { isLodCulled: false });
-    world.getComponent(entityId, ComponentType.LOD)?._target?.setCulled(entityId, world, false);
+    const lod = world.getComponent(entityId, ComponentType.LOD);
+    const target = lod?._target;
+    if (!lod || !target) return;
+    const fade = prepareChange(entityId, world, lod);
+    if (fade && lod.level >= 0 && lod.level !== lod.applied) {
+      // Still hidden, so the swap shows nothing: it fades in in the selected level, not in the
+      // one it was hidden in (which would then fade into the selected one)
+      target.applyLevel(entityId, world, lod.level, false);
+      lod.applied = lod.level;
+    }
+    target.setCulled(entityId, world, false, fade);
+    if (fade) startFade(entityId, world, lod);
   },
 });
 
@@ -191,6 +260,10 @@ export type LodFrameStats = {
   totalApplies: number;
   /** lodSelectionSystem's duration. Measured in the debug environment only (else 0). */
   selectionMs: number;
+  /** Entities cross-fading (TAG_LOD_TRANSITIONING) after lodFadeSystem. */
+  fading: number;
+  /** lodFadeSystem's duration. Measured in the debug environment only (else 0). */
+  fadeMs: number;
 };
 
 const frameStats = new WeakMap<ECSWorld, LodFrameStats>();
@@ -198,7 +271,15 @@ const frameStats = new WeakMap<ECSWorld, LodFrameStats>();
 const getFrameStats = (world: ECSWorld) => {
   let stats = frameStats.get(world);
   if (!stats) {
-    stats = { selections: 0, lapFrames: 1, applies: 0, totalApplies: 0, selectionMs: 0 };
+    stats = {
+      selections: 0,
+      lapFrames: 1,
+      applies: 0,
+      totalApplies: 0,
+      selectionMs: 0,
+      fading: 0,
+      fadeMs: 0,
+    };
     frameStats.set(world, stats);
   }
   return stats;
@@ -375,12 +456,18 @@ ECSWorld.registerComponentHooks(ComponentType.LOD, {
   onRemoveComponent: (entityId, world) => {
     const lod = world.getComponent(entityId, ComponentType.LOD);
     if (!lod) return;
+    endFade(entityId, world, lod);
     if (world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED)) {
-      world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
+      areFadesSuppressed = true;
+      try {
+        world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
+      } finally {
+        areFadesSuppressed = false;
+      }
     }
     const target = lod._target;
     if (target) {
-      if (lod.applied > 0) target.applyLevel(entityId, world, 0);
+      if (lod.applied > 0) target.applyLevel(entityId, world, 0, false);
       lod._target = undefined;
       lod._levels = [];
       return;
@@ -530,10 +617,11 @@ const selectEntity = (entityId: number, lod: LodData, world: ECSWorld, frame: Se
   if (lod._levels.length === 0) return false;
   if (frame.disabled.has(entityId) || frame.frustumCulled.has(entityId)) return false;
 
+  // The level is set before TAG_LOD_CULLED goes: its remove hook shows the entity in that level
   const isCulled = frame.lodCulled.has(entityId);
   if (frame.forceLevel >= 0) {
-    if (isCulled) world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
     lod.level = Math.min(frame.forceLevel, levels.length - 1);
+    if (isCulled) world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
     if (lod.level !== lod.applied) frame.pending.push(entityId);
     return true;
   }
@@ -549,10 +637,9 @@ const selectEntity = (entityId: number, lod: LodData, world: ECSWorld, frame: Se
     if (!isCulled) world.addComponent(entityId, ComponentType.TAG_LOD_CULLED, true);
     return true;
   }
-  if (isCulled) world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
-
   // Coming back from culled, it comes from beyond the last level
   lod.level = selectLevel(levels, s, isCulled ? levels.length - 1 : lod.level, h);
+  if (isCulled) world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
   if (lod.level !== lod.applied) frame.pending.push(entityId);
   return true;
 };
@@ -754,7 +841,7 @@ export const measureLodEntity = (entityId: number, world: ECSWorld, out: LodMeas
 // --- APPLY ---
 
 /** Applies the levels lodSelectionSystem changed this frame: a mesh's geometry, material(s) and
- * `castShadow`, or the entity's {@link LodTarget}. */
+ * `castShadow`, or the entity's {@link LodTarget} (cross-fading when it can). */
 export const lodApplySystem = (world: ECSWorld) => {
   const stats = getFrameStats(world);
   stats.applies = 0;
@@ -768,7 +855,11 @@ export const lodApplySystem = (world: ECSWorld) => {
     if (!lod || lod.level < 0 || lod.level === lod.applied) continue;
     const level = lod._levels[lod.level];
     if (lod._target) {
-      if (level) lod._target.applyLevel(entityId, world, lod.level);
+      if (level) {
+        const fade = prepareChange(entityId, world, lod);
+        lod._target.applyLevel(entityId, world, lod.level, fade);
+        if (fade) startFade(entityId, world, lod);
+      }
       lod.applied = lod.level;
       applies++;
       continue;
@@ -787,8 +878,46 @@ export const lodApplySystem = (world: ECSWorld) => {
   stats.totalApplies += applies;
 };
 
+/**
+ * Advances every running cross-fade (the TAG_LOD_TRANSITIONING entities) by the frame's `dt` over
+ * its `fadeSeconds`, and ends the ones that are done. Runs right after lodApplySystem, so a fade
+ * started this frame is drawn at its first step.
+ */
+export const lodFadeSystem = (world: ECSWorld, dt: number) => {
+  const stats = getFrameStats(world);
+  const storage = world.getStorage(ComponentType.TAG_LOD_TRANSITIONING);
+  stats.fadeMs = 0;
+  if (storage.size === 0) {
+    stats.fading = 0;
+    return;
+  }
+  const start = IS_DEBUG_ENV ? performance.now() : 0;
+
+  const lods = world.getStorage(ComponentType.LOD);
+  const globalSeconds = getLodFadeSeconds();
+  // Removing the current entry while iterating a Map is safe
+  for (const [entityId] of storage) {
+    const lod = lods.get(entityId);
+    if (!lod) {
+      world.removeComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING);
+      continue;
+    }
+    const seconds = lod.def.fadeSeconds ?? globalSeconds;
+    const progress = seconds > 0 ? (lod._fade ?? 0) + dt / seconds : 1;
+    if (progress >= 1) {
+      endFade(entityId, world, lod);
+      continue;
+    }
+    lod._fade = progress;
+    lod._target?.setFade?.(entityId, world, progress);
+  }
+
+  stats.fading = storage.size;
+  if (IS_DEBUG_ENV) stats.fadeMs = performance.now() - start;
+};
+
 ECSWorld.registerPlugin((world) => {
-  // Same order: selection runs first (registration order breaks the tie)
+  // Same order: selection, apply, then the fades (registration order breaks the tie)
   world.addSystem(
     ECSSystemStage.APP_RENDER_SYNC,
     'lodSelectionSystem',
@@ -799,6 +928,12 @@ ECSWorld.registerPlugin((world) => {
     ECSSystemStage.APP_RENDER_SYNC,
     'lodApplySystem',
     lodApplySystem,
+    APP_RENDER_SYNC_ORDER.LOD_SELECTION
+  );
+  world.addSystem(
+    ECSSystemStage.APP_RENDER_SYNC,
+    'lodFadeSystem',
+    lodFadeSystem,
     APP_RENDER_SYNC_ORDER.LOD_SELECTION
   );
   return world;

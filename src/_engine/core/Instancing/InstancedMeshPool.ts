@@ -6,6 +6,12 @@ import { incGeometryRef } from '../Geometry';
 import { incMaterialRef } from '../Material';
 import { registerLodTarget } from '../Lod/LodSystem';
 import {
+  createLodFadeAttribute,
+  enableLodDither,
+  getLodFadeAttribute,
+  LOD_FADE_OPAQUE,
+} from '../Lod/LodFade';
+import {
   DEFAULT_SPATIAL_DOMAIN,
   getConservativeGeometryRadius,
   getSpatialDomain,
@@ -57,27 +63,40 @@ const lodPoolsByMesh = new WeakMap<THREE.InstancedMesh, LodPoolState>();
 const getSlot = (entityId: number, world: ECSWorld) =>
   world.getComponent(entityId, ComponentType.INSTANCED_MESH_SLOT);
 
-/** Appends an instance to `mesh` with `matrix`, returning its slot index. */
-const appendInstance = (mesh: THREE.InstancedMesh, entityId: number, matrix: THREE.Matrix4) => {
+/** Writes one instance's LOD fade (LodFade.ts), when the mesh has a per-instance fade. */
+const writeFade = (mesh: THREE.InstancedMesh, index: number, fade: number) => {
+  const fades = getLodFadeAttribute(mesh);
+  if (!fades) return;
+  fades.setX(index, fade);
+  fades.needsUpdate = true;
+};
+
+/** Appends an instance to `mesh` with `matrix` and the LOD fade `fade`, returning its slot index. */
+const appendInstance = (
+  mesh: THREE.InstancedMesh,
+  entityId: number,
+  matrix: THREE.Matrix4,
+  fade = LOD_FADE_OPAQUE
+) => {
   const index = mesh.count;
   mesh.setMatrixAt(index, matrix);
+  writeFade(mesh, index, fade);
   slotEntitiesByMesh.get(mesh)![index] = entityId;
   mesh.count = index + 1;
   mesh.instanceMatrix.needsUpdate = true;
   return index;
 };
 
-/** Takes `entityId`'s instance out of its mesh with a swap-remove: the last instance's matrix (and
- * colour) moves into its slot, so the drawn range stays `0..count-1`, and `slot.index` becomes -1.
- * A no-op for an instance in no mesh. The mesh's bounds aren't recomputed: they only shrink, so the
- * old ones stay conservative. */
-const removeInstance = (entityId: number, slot: InstancedMeshSlotData, world: ECSWorld) => {
-  const { mesh, index } = slot;
-  const slotEntities = slotEntitiesByMesh.get(mesh);
-  if (!slotEntities || index < 0 || index >= mesh.count || slotEntities[index] !== entityId) {
-    return;
-  }
+/** Whether slot `index` of `mesh` holds an instance of `entityId`. */
+const holds = (mesh: THREE.InstancedMesh, index: number, entityId: number) =>
+  index >= 0 && index < mesh.count && slotEntitiesByMesh.get(mesh)?.[index] === entityId;
 
+/** Swap-removes slot `index` of `mesh`: the last instance's matrix (colour and LOD fade) moves into
+ * it, so the drawn range stays `0..count-1`, and that instance's entity is patched (its slot, or its
+ * outgoing copy during a LOD fade). The mesh's bounds aren't recomputed: they only shrink, so the old
+ * ones stay conservative. */
+const removeAt = (mesh: THREE.InstancedMesh, index: number, world: ECSWorld) => {
+  const slotEntities = slotEntitiesByMesh.get(mesh)!;
   const last = mesh.count - 1;
   if (index !== last) {
     const movedId = slotEntities[last];
@@ -88,21 +107,52 @@ const removeInstance = (entityId: number, slot: InstancedMeshSlotData, world: EC
       mesh.setColorAt(index, _color);
       mesh.instanceColor.needsUpdate = true;
     }
+    const fades = getLodFadeAttribute(mesh);
+    if (fades) {
+      fades.setX(index, fades.getX(last));
+      fades.needsUpdate = true;
+    }
     slotEntities[index] = movedId;
+    // An entity has at most one copy per mesh (a fade's two copies are in two level meshes, or a
+    // fade to culled has only the outgoing one)
     const movedSlot = getSlot(movedId, world);
-    if (movedSlot) movedSlot.index = index;
+    if (movedSlot?.mesh === mesh && movedSlot.index === last) movedSlot.index = index;
+    else if (movedSlot?._fadeOutMesh === mesh) movedSlot._fadeOutIndex = index;
   }
   mesh.count = last;
   mesh.instanceMatrix.needsUpdate = true;
+};
+
+/** Takes `entityId`'s instance out of its mesh (see removeAt); `slot.index` becomes -1. A no-op for
+ * an instance in no mesh. */
+const removeInstance = (entityId: number, slot: InstancedMeshSlotData, world: ECSWorld) => {
+  if (holds(slot.mesh, slot.index, entityId)) removeAt(slot.mesh, slot.index, world);
   slot.index = -1;
 };
 
-/** The slot's instance is going (its entity or the slot component): frees its slot. */
+/** Takes the instance's outgoing LOD fade copy out of its mesh, if it has one. */
+const removeFadeOut = (entityId: number, slot: InstancedMeshSlotData, world: ECSWorld) => {
+  const mesh = slot._fadeOutMesh;
+  if (mesh && holds(mesh, slot._fadeOutIndex, entityId)) removeAt(mesh, slot._fadeOutIndex, world);
+  slot._fadeOutMesh = null;
+  slot._fadeOutIndex = -1;
+};
+
+/** The instance's current copy becomes its outgoing one (a LOD fade starts). */
+const keepAsFadeOut = (slot: InstancedMeshSlotData) => {
+  slot._fadeOutMesh = slot.mesh;
+  slot._fadeOutIndex = slot.index;
+  writeFade(slot.mesh, slot.index, -LOD_FADE_OPAQUE);
+};
+
+/** The slot's instance is going (its entity or the slot component): frees its slot, and its
+ * outgoing copy during a LOD fade. */
 const freeInstanceSlot = (entityId: number, world: ECSWorld) => {
   const slot = getSlot(entityId, world);
   if (!slot) return;
   const lodPool = lodPoolsByMesh.get(slot.mesh);
   if (lodPool) lodPool.liveCount--;
+  removeFadeOut(entityId, slot, world);
   removeInstance(entityId, slot, world);
 };
 
@@ -115,27 +165,38 @@ ECSWorld.registerComponentHooks(ComponentType.INSTANCED_MESH_SLOT, {
 // A pool instance in an instanced LOD pool shows its level by moving to that level's mesh
 // (docs/plans/_DONE_p348_ecs-lod-selection.md §4.2). Its slot keeps pointing at the applied level's
 // mesh while it's LOD culled (index -1, in no mesh), so it knows where to come back to.
+//
+// A LOD cross-fade (docs/plans/p351_impostor-billboard-lod.md §2.4) keeps the instance's old copy
+// drawn as its outgoing copy (`_fadeOutMesh`/`_fadeOutIndex`) while the new one fades in, each
+// with its own per-instance fade (LodFade.ts). A fade to culled has only the outgoing copy, a fade
+// from culled only the incoming one. The LOD system ends a running fade before the next change.
 registerLodTarget(ComponentType.INSTANCED_MESH_SLOT, {
   resolveLevels: (entityId, world) => {
     const slot = getSlot(entityId, world);
     return slot && lodPoolsByMesh.get(slot.mesh)?.levels;
   },
-  applyLevel: (entityId, world, level) => {
+  applyLevel: (entityId, world, level, fade) => {
     const slot = getSlot(entityId, world);
     const target = slot && lodPoolsByMesh.get(slot.mesh)?.meshes[level];
     if (!slot || !target || slot.mesh === target) return;
     if (slot.index >= 0) {
       slot.mesh.getMatrixAt(slot.index, _moveMatrix);
-      removeInstance(entityId, slot, world);
-      slot.index = appendInstance(target, entityId, _moveMatrix);
+      if (fade) keepAsFadeOut(slot);
+      else removeInstance(entityId, slot, world);
+      slot.index = appendInstance(target, entityId, _moveMatrix, fade ? 0 : LOD_FADE_OPAQUE);
     }
     slot.mesh = target;
   },
-  setCulled: (entityId, world, isCulled) => {
+  setCulled: (entityId, world, isCulled, fade) => {
     const slot = getSlot(entityId, world);
     if (!slot) return;
     if (isCulled) {
-      removeInstance(entityId, slot, world);
+      if (fade && slot.index >= 0) {
+        keepAsFadeOut(slot);
+        slot.index = -1;
+      } else {
+        removeInstance(entityId, slot, world);
+      }
       return;
     }
     if (slot.index >= 0) return;
@@ -143,8 +204,19 @@ registerLodTarget(ComponentType.INSTANCED_MESH_SLOT, {
     const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
     if (!transform) return;
     _moveMatrix.compose(transform.position, transform.quaternion, transform.scale);
-    slot.index = appendInstance(slot.mesh, entityId, _moveMatrix);
+    slot.index = appendInstance(slot.mesh, entityId, _moveMatrix, fade ? 0 : LOD_FADE_OPAQUE);
     slot._lastVersion = transform.version;
+  },
+  setFade: (entityId, world, progress) => {
+    const slot = getSlot(entityId, world);
+    if (!slot) return;
+    if (progress >= 1) {
+      removeFadeOut(entityId, slot, world);
+      if (slot.index >= 0) writeFade(slot.mesh, slot.index, LOD_FADE_OPAQUE);
+      return;
+    }
+    if (slot.index >= 0) writeFade(slot.mesh, slot.index, progress);
+    if (slot._fadeOutMesh) writeFade(slot._fadeOutMesh, slot._fadeOutIndex, progress - 1);
   },
 });
 
@@ -314,6 +386,8 @@ export const createInstancedMeshPool = (
         mesh,
         index,
         _lastVersion: version,
+        _fadeOutMesh: null,
+        _fadeOutIndex: -1,
       });
       // After the slot, which its radius provider reads
       if (spatialDomain) joinSpatialDomain(entityId, spatialDomain, world);
@@ -363,7 +437,8 @@ export interface CreateInstancedLodPoolOptions {
   /** Hard cap on live instances, across every level (and LOD culled ones). Each level mesh is sized
    * for all of them. */
   maxInstances: number;
-  /** The selection settings every instance shares (`cullScreenSize`, `hysteresis`, `bias`). */
+  /** The selection settings every instance shares (`cullScreenSize`, `hysteresis`, `bias`,
+   * `fadeSeconds`). */
   lod?: Omit<LodDef, 'levels'>;
   receiveShadow?: boolean;
   /** Passed to each level mesh's owning entity. */
@@ -396,6 +471,10 @@ export interface InstancedLodPool {
  * `INSTANCED_MESH_SLOT` (pointing at its level's mesh) and `LOD`, so the engine's LOD selection
  * picks its level and moves it to that level's mesh (a swap-remove from the old one, an append to
  * the new one). A LOD-culled instance is in no mesh. One draw call per non-empty level.
+ *
+ * Level changes and LOD culling cross-fade (`lod.fadeSeconds`, default `AppConfig.lod.fadeSeconds`;
+ * docs/plans/p351_impostor-billboard-lod.md §2.4): during a fade the instance is in both levels'
+ * meshes, dithered by a per-instance fade. The pool calls `enableLodDither` on its level materials.
  *
  * Every level mesh gets the bounds of every placement, at spawn: instances moving between levels
  * never change them, so they are never recomputed.
@@ -434,6 +513,9 @@ export const createInstancedLodPool = (opts: CreateInstancedLodPoolOptions): Ins
     );
     mesh.boundingBox = new THREE.Box3();
     mesh.boundingSphere = new THREE.Sphere();
+    // LOD cross-fades: a fade per instance, read by the level materials' dither
+    createLodFadeAttribute(mesh);
+    enableLodDither(level.material);
     state.meshes.push(mesh);
     state.levels.push({ geometry: level.geometry, material: level.material, castShadow });
     meshEntityIds.push(meshEntityId);
@@ -469,6 +551,8 @@ export const createInstancedLodPool = (opts: CreateInstancedLodPoolOptions): Ins
         mesh: level0Mesh,
         index,
         _lastVersion: version,
+        _fadeOutMesh: null,
+        _fadeOutIndex: -1,
       });
       state.liveCount++;
       // After the slot, which the LOD target and the radius provider read
@@ -505,15 +589,22 @@ export const instancedMeshPoolSyncSystem = (world: ECSWorld) => {
   const dirtyMeshes = new Set<THREE.InstancedMesh>();
 
   for (const [entityId, slot] of storage) {
-    // LOD culled: in no mesh (re-baked from its Transform when it comes back)
-    if (slot.index < 0) continue;
+    // LOD culled: in no mesh (re-baked from its Transform when it comes back), unless it's still
+    // fading out
+    if (slot.index < 0 && !slot._fadeOutMesh) continue;
     const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
     if (!transform || slot._lastVersion === transform.version) continue;
 
     _matrix.compose(transform.position, transform.quaternion, transform.scale);
-    slot.mesh.setMatrixAt(slot.index, _matrix);
+    if (slot.index >= 0) {
+      slot.mesh.setMatrixAt(slot.index, _matrix);
+      dirtyMeshes.add(slot.mesh);
+    }
+    if (slot._fadeOutMesh) {
+      slot._fadeOutMesh.setMatrixAt(slot._fadeOutIndex, _matrix);
+      dirtyMeshes.add(slot._fadeOutMesh);
+    }
     slot._lastVersion = transform.version;
-    dirtyMeshes.add(slot.mesh);
   }
 
   for (const dirtyMesh of dirtyMeshes) dirtyMesh.instanceMatrix.needsUpdate = true;

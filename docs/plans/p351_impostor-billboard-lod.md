@@ -194,7 +194,22 @@ Sections, each reviewed before the next:
    `lodApplySystem`, only the transitioning entities). During a fade the instance is in both level
    meshes (the slot's outgoing copy); the swap-remove, the matrix sync, despawn and LOD removal
    handle it; a change mid-fade finishes the running fade first. Fading out to culled and in from
-   culled. largeWorld fades with no code change.
+   culled. largeWorld fades with no code change. — done: `LodTarget.applyLevel` / `setCulled` take
+   a `fade` flag (keep the old copy as the outgoing one, start the new one hidden) and the optional
+   `setFade(entityId, world, progress)` draws a running fade (1 ends it). Only targets with
+   `setFade` fade; plain meshes still pop until section 3. The fade's progress is `LodData._fade`;
+   the outgoing copy is the slot's `_fadeOutMesh` / `_fadeOutIndex` (a fade to culled has only it,
+   with `index` -1), patched by the swap-remove like `index`. Pools create the `lodFade` attribute
+   per level mesh and call `enableLodDither` on their level materials. Found in the code: the first
+   apply after the LOD is added never fades (the load would cross-fade every instance out of level
+   0), removing the LOD never fades, and an entity shown again in another level than it was hidden
+   in switches to it while still hidden (the selection sets `lod.level` before removing
+   TAG_LOD_CULLED), so it fades in in the selected level. `LodFrameStats` gets `fading` and
+   `fadeMs`. Checked in largeWorld by changing the bias (all trees and bushes at once): ~2,000
+   instances fade per change, `lodFadeSystem` 0.2-0.35 ms for 2,000 (0.6 ms for 3,300 under
+   repeated mid-fade changes), every slot and outgoing copy holds its own matrix and fade and every
+   level mesh's `count` matches its copies, also after deleting entities and removing their LOD
+   mid-fade; `fadeSeconds` 0 switches at once. Dithers on WebGPU and WebGL2.
 3. **Plain-mesh fades:** the outgoing level drawn by a temporary clone of the mesh for the fade's
    duration, the per-object fade on both, culling included; also for an `InstancedMesh` entity (a
    p308 static cell fades as a whole). `fadeSeconds` in `*.mesh.json` / scene mesh overrides

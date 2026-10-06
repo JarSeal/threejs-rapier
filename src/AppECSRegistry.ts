@@ -89,7 +89,7 @@ export enum ECSSystemStage {
  *   SunShadowFit): after the camera rigs, before frustum culling.
  * - FRUSTUM_CULLING / LIGHT_CULLING: objectFrustumCullingSystem, then lightObjectCullingSystem
  *   (which depends on this frame's frustum-culling result).
- * - LOD_SELECTION: lodSelectionSystem and lodApplySystem (Lod/LodSystem.ts), between the two:
+ * - LOD_SELECTION: lodSelectionSystem, lodApplySystem and lodFadeSystem (Lod/LodSystem.ts), between the two:
  *   after frustum culling, so they skip entities culled this frame and see the final camera.
  */
 export const APP_RENDER_SYNC_ORDER = {

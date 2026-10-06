@@ -26,6 +26,9 @@ export type LodDef = {
   hysteresis?: number;
   /** Multiplies the screen size: >1 keeps detail longer. Default 1. */
   bias?: number;
+  /** How long a level change (or hiding and showing) cross-fades, in seconds; 0 switches at once.
+   * Default `AppConfig.lod.fadeSeconds` (setLodFadeSeconds). */
+  fadeSeconds?: number;
 };
 
 /** Levels read from the geometry's LOD chain (p347), each used while its simplification error
@@ -68,12 +71,19 @@ export type LodData = {
   _levels: LodResolvedLevel[];
   /** What shows the levels when the entity has no plain mesh, set by the add hook. */
   _target?: LodTarget;
+  /** The running cross-fade's progress, 0 → 1, while the entity has TAG_LOD_TRANSITIONING. */
+  _fade?: number;
 };
 
 /**
  * How a `LOD` entity without a plain mesh shows its levels, eg. an instanced LOD pool's
  * instance (registered with `registerLodTarget`). The entity's `Transform` gives its position and
  * scale, in world space. The target owns its levels' assets: the component takes no refs on them.
+ *
+ * Cross-fades (docs/plans/p351_impostor-billboard-lod.md §2.4): a target with `setFade` fades. With
+ * `fade` true, `applyLevel` and `setCulled` keep drawing what the entity showed as the outgoing
+ * copy, and the LOD system then drives `setFade` until it ends the fade with 1. A target without
+ * `setFade` always switches at once (its `fade` is always false).
  */
 export type LodTarget = {
   /** The entity's levels, called by the `LOD` add hook. Undefined: not this target's entity. */
@@ -82,8 +92,15 @@ export type LodTarget = {
     world: ECSWorld,
     lod: LodData
   ) => LodResolvedLevel[] | undefined;
-  /** Shows level `level` (an index into the resolved levels). Also called while LOD culled. */
-  applyLevel: (entityId: number, world: ECSWorld, level: number) => void;
-  /** TAG_LOD_CULLED was added (true) or removed (false). */
-  setCulled: (entityId: number, world: ECSWorld, isCulled: boolean) => void;
+  /** Shows level `level` (an index into the resolved levels). Also called while LOD culled. With
+   * `fade`, the level shown until now stays drawn as the outgoing copy, and the new one starts
+   * hidden. */
+  applyLevel: (entityId: number, world: ECSWorld, level: number, fade: boolean) => void;
+  /** TAG_LOD_CULLED was added (true) or removed (false). With `fade`, hiding keeps the entity drawn
+   * as the outgoing copy, and showing starts it hidden. */
+  setCulled: (entityId: number, world: ECSWorld, isCulled: boolean, fade: boolean) => void;
+  /** Draws a running fade at `progress` (0 → 1): the incoming copy with the signed fade `progress`,
+   * the outgoing one with `progress - 1` (LodFade.ts). 1 ends it: the outgoing copy goes and the
+   * incoming one is drawn whole. Never called while no fade runs. */
+  setFade?: (entityId: number, world: ECSWorld, progress: number) => void;
 };

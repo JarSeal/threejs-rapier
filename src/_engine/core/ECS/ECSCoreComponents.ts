@@ -89,6 +89,7 @@ export interface CoreComponentData {
   // LOD selection
   [CoreType.LOD]: LodData;
   [CoreType.TAG_LOD_CULLED]: boolean;
+  [CoreType.TAG_LOD_TRANSITIONING]: boolean;
   // Instanced mesh pools
   [CoreType.INSTANCED_MESH_SLOT]: InstancedMeshSlotData;
   // Debug
