@@ -83,9 +83,10 @@ export type OctahedralImpostor = {
    * to face the camera by `material`. */
   geometry: THREE.BufferGeometry;
   /** Registered: alpha-tested and double-sided, drawing the atlases through its `positionNode`,
-   * `colorNode` and (lit) `normalNode` (`OctahedralImpostorMaterial.ts`); a lit one also has
-   * `normalDepth` as its `normalMap`, so the asset tooling sees it. Use it on an InstancedMesh
-   * (eg. a LOD pool's level) or a plain mesh. */
+   * `colorNode`, `depthNode` (the baked surface's depth, in the main and the shadow pass) and, when
+   * lit, `normalNode` and `receivedShadowPositionNode` (`OctahedralImpostorMaterial.ts`); a lit one
+   * also has `normalDepth` as its `normalMap`, so the asset tooling sees it. Use it on an
+   * InstancedMesh (eg. a LOD pool's level) or a plain mesh. */
   material: THREE.Material;
   /** Registered sRGB atlas: albedo and coverage alpha. */
   albedo: THREE.Texture;
@@ -132,9 +133,10 @@ const deleteLeftovers = (id: string) => {
  * impostor: atlases of `frames × frames` orthographic views of its bounding sphere, from the
  * directions of a full or hemi octahedral map, each into its own atlas cell, and a camera-facing
  * quad with a material that blends the three frames nearest to the view direction (each moved
- * onto the object's surface by its baked depth), lit at runtime with the baked normals. Its geometry, material and atlases are registered (owned by the loading
- * scene, released with it), and a later call with the same `id` returns them as they are, without
- * baking (or reading `opts`), while they're registered.
+ * onto the object's surface by its baked depth), lit at runtime with the baked normals and
+ * shadowed at that surface. Its geometry, material and atlases are registered (owned by the
+ * loading scene, released with it), and a later call with the same `id` returns them as they are,
+ * without baking (or reading `opts`), while they're registered.
  *
  * Bakes synchronously with the renderer (after `InitEngine`), restoring its target and clear
  * state. Frames are in the object's local space, so they're used with its instance transforms.
@@ -276,9 +278,11 @@ export const generateOctahedralImpostor = (
   const nodes = createOctahedralImpostorNodes(layout, albedo, normalDepth);
   impostorMaterial.positionNode = nodes.positionNode;
   impostorMaterial.colorNode = nodes.colorNode;
-  // An unlit impostor has no use for normals
+  impostorMaterial.depthNode = nodes.depthNode;
+  // An unlit impostor has no use for normals or received shadows
   if (type !== 'BASICNODEMATERIAL') {
     impostorMaterial.normalNode = nodes.normalNode;
+    impostorMaterial.receivedShadowPositionNode = nodes.receivedShadowPositionNode;
     impostorMaterial.normalMap = normalDepth;
   }
 

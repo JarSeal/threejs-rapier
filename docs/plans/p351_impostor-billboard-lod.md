@@ -421,7 +421,47 @@ Sections, each reviewed before the next:
 4. **Shadows** (open question 1): measure the impostor's own light-facing shadow, its self-shadowing
    on its camera-facing quad, and the options (a depth offset from the depth channel through
    `depthNode`, a cross-quad or lower mesh level through `castShadowPositionNode` / a shadow-only
-   level, `castShadow: false`); pick one. Per-level `receiveShadow` if it needs it.
+   level, `castShadow: false`); pick one. Per-level `receiveShadow` if it needs it. — done: the
+   baked surface's depth. Both passes write the depth of the point the pixel's ray meets (each
+   frame's parallax landing point back on the ray, weighted by the frames' blend weights and
+   coverage, as an uncovered frame's depth is the back) through `depthNode`, and the impostor
+   receives its shadows at that point (`receivedShadowPositionNode`), out along its normal by one
+   frame texel (`SHADOW_OFFSET_TEXELS`). The shadow pass already took the light-facing quad and its
+   frames from section 2; now its depth is the surface's too, so the camera's surface point is
+   compared against the light's. No per-level `receiveShadow` is needed. Found in three r186:
+   `VSMShadowMap` (the app's) draws every _receiving_ object into the shadow map whatever its
+   `castShadow` (`ShadowBaseNode.js:90`), so `castShadow: false` alone doesn't remove an
+   impostor's shadow, nor its light-facing quad from its own self-shadowing; a shadow map renders
+   once per camera and node frame (`ShadowNode.updateBefore`), and a NodeMaterial `clone()` loses
+   `alphaTest` (`NodeMaterial.copy` skips `_alphaTest`; nothing in the engine clones materials).
+   Sections 2 and 3's harness drew both halves in one node frame, so its impostor half received the
+   mesh's shadow map. Measured with the asteroid beside its impostor (scale 1.3, a VSM sun at the
+   MEDIUM preset, three sun directions at 30°, 50° and 75°, each from its side, across it and from
+   behind; each variant against the mesh):
+   - Its own shadow on the ground (the object cast-only on its own layer, seen from above): shadow
+     mask IoU 0.98-0.99 against the mesh's, area 0.99-1.00, with flat quads and the surface depth
+     alike. The light-facing quad casts the right silhouette; it was never the problem.
+   - Self-shadowing (no ground), the share of the object's pixels in shadow, mesh / impostor: flat
+     quads 8-14 % / 30-44 % on lit views (a straight dark half: the camera's quad behind the
+     light's), mean luma difference 15-35; the surface depth with no offset 9-14 % / 12-15 %, the
+     excess acne (dark dots and slashes on lit faces, where the light's and the camera's frames
+     disagree by about a texel); with the one-texel offset within -3 to +1 points of the mesh in
+     every view, luma difference 4.8-10.8 (`receiveShadow: false`: 5.2-11.0). From 1.5 texels it
+     equals `receiveShadow: false` on this nearly convex rock: more offset removes real
+     self-shadowing.
+   - The main pass's surface depth also settles section 3's flat-depth note: a rock sunk into the
+     ground meets it along its surface, like the mesh, where the flat quad cut a straight line.
+   - WebGL2 agrees with WebGPU within 0.2 on every figure above.
+   - Cost (WebGPU, Apple GPU, 800×400, 1,600 impostors of 0.6 scale in a grid filling the view, with
+     a sun and a receiving floor): 2.15 → 4.33 ms a frame from a grazing view, 1.85 → 3.65 ms from
+     a steep one with little overlap; shadows off, 0.67 → 1.51 and 0.38 → 0.84 ms. Writing depth
+     costs about the same in both passes, overlap or not: on a tile-based GPU a shader that writes
+     depth turns off hidden-surface removal, so every fragment is shaded. Of an impostor's shadow
+     cost, the cast pass is nearly all (1.4 ms here, every fragment running the 12-sample blend for
+     its alpha), receiving next to nothing. Section 5 measures it at largeWorld's real coverage; if
+     it matters there, the options are a flat mode (no `depthNode` / `receivedShadowPositionNode`,
+     `receiveShadow: false`: loses shadows from neighbours, which under VSM needs per-level
+     `receiveShadow` in the pools) and a cheaper shadow-pass blend.
 5. **largeWorld rocks:** a rock pool (toolkit asteroids: the mesh, a lower level, the impostor last),
    the day-night sky box listed in the scene, the exit measured.
 6. **Close the phase:** As built, CLAUDE.md's Impostors section, versions and CHANGELOG.
@@ -445,6 +485,7 @@ Engine minor per phase: the generators and bake helpers live in core (`core/Lod/
 
 1. Shadows from octahedral impostors: a camera-facing quad casts a shadow facing the _camera_, not
    the light. Use the cross-quad or a lower mesh level as a shadow-only proxy, or
-   `castShadow: false`. Decide in Phase 3.
+   `castShadow: false`. Decided in Phase 3: the shadow pass's quad faces the light (section 2),
+   and both passes write the baked surface's depth (section 4).
 2. Can the impostor bake use the asset worker (OffscreenCanvas + a second WebGPU device)? It would
    keep bakes off the main thread, but doubles device memory for the bake. Main thread first.

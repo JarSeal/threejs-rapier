@@ -15,11 +15,17 @@
 // (three builds every InstancedMesh on its own, LodFade.ts), and reads `positionGeometry`, the
 // quad's corners before any transform. On a plain mesh it's the identity.
 //
-// The shadow pass reuses `positionNode` and `colorNode` (`Renderer._getShadowNodes`): there the
-// quad faces the light and shows the frame seen from it, so the impostor casts its own silhouette.
+// The shadow pass reuses `positionNode`, `colorNode` and `depthNode` (`Renderer._getShadowNodes`):
+// there the quad faces the light and shows the frames seen from it, so the impostor casts its own
+// silhouette. Both passes write the depth of the surface point the pixel's ray meets, not the
+// quad's, and the impostor receives its shadows at that point (`receivedShadowPositionNode`): the
+// light-facing and the camera-facing quads are different planes through the centre, and comparing
+// one against the other shadowed whatever half of the camera's quad lay behind the light's.
 import * as THREE from 'three/webgpu';
 import {
   abs,
+  cameraFar,
+  cameraNear,
   cameraPosition,
   cameraProjectionMatrix,
   cameraViewMatrix,
@@ -27,6 +33,7 @@ import {
   clamp,
   float,
   floor,
+  Fn,
   instancedDynamicBufferAttribute,
   mat3,
   mat4,
@@ -41,6 +48,11 @@ import {
   vec2,
   vec3,
   vec4,
+  viewZToLogarithmicDepth,
+  viewZToOrthographicDepth,
+  viewZToPerspectiveDepth,
+  viewZToReversedOrthographicDepth,
+  viewZToReversedPerspectiveDepth,
 } from 'three/tsl';
 import { IMPOSTOR_DEPTH_MIN } from './ImpostorBake';
 import {
@@ -115,6 +127,12 @@ const impostorInstanceMatrix = new ImpostorInstanceMatrixNode() as unknown as TH
 
 // --- THE MATERIAL ---
 
+/** How far the point the impostor receives its shadows at sits out along its normal, in frame
+ * texels: the surface is known to about a texel (and an 8-bit depth step), and the light's frames
+ * and the camera's disagree by that much, which drew acne on lit faces. One texel removes it; more
+ * removes the impostor's real self-shadowing too. */
+const SHADOW_OFFSET_TEXELS = 1;
+
 /** Parallax steps per frame: each samples the depth where the last one landed. */
 const PARALLAX_STEPS = 2;
 /** Where a hemi impostor's parallax fades out below the horizon, by the view direction's y: whole
@@ -139,12 +157,18 @@ export type OctahedralImpostorNodes = {
   colorNode: THREE.Node<'vec4'>;
   /** The baked object-space normals, blended, in view space. */
   normalNode: THREE.Node<'vec3'>;
+  /** The depth of the surface point the pixel's ray meets (the frames' baked depths), for the main
+   * and the shadow pass, instead of the quad's. */
+  depthNode: THREE.Node<'float'>;
+  /** That surface point in the world, out along its normal by a frame texel
+   * (`SHADOW_OFFSET_TEXELS`): where the impostor receives its shadows. */
+  receivedShadowPositionNode: THREE.Node<'vec3'>;
 };
 
 /**
  * The nodes that draw an octahedral impostor's atlases on its quad geometry (see
- * `generateOctahedralImpostor`): set them on a material as `positionNode`, `colorNode` and
- * `normalNode`, with an `alphaTest`.
+ * `generateOctahedralImpostor`): set them on a material as `positionNode`, `colorNode`,
+ * `normalNode`, `depthNode` and `receivedShadowPositionNode`, with an `alphaTest`.
  */
 export const createOctahedralImpostorNodes = (
   layout: OctahedralImpostorLayout,
@@ -187,12 +211,17 @@ export const createOctahedralImpostorNodes = (
     .add(0.5)
     .mul(frames - 1);
 
-  // To the fragment stage: the corner's offset from the centre and the view ray through it (both
-  // linear over the quad, so interpolated exactly), and the grid position
+  // To the fragment stage: the corner's offset from the centre and the view ray through it, in the
+  // instance's space and in the world (all linear over the quad, so interpolated exactly), and the
+  // grid position
+  const ray = select(isOrthographic, viewDir.negate(), offset.sub(toCamera));
   const pixelOffset = offset.toVarying('vImpostorOffset');
-  const pixelRay = select(isOrthographic, viewDir.negate(), offset.sub(toCamera))
-    .toVarying('vImpostorRay')
-    .normalize();
+  const pixelRayLocal = ray.toVarying('vImpostorRay');
+  const pixelRay = pixelRayLocal.normalize();
+  const pixelCornerWorld = world
+    .mul(vec4(centerLocal.add(offset), 1))
+    .xyz.toVarying('vImpostorCornerWorld');
+  const pixelRayWorld = mat3(world).mul(ray).toVarying('vImpostorRayWorld');
   const pixelGrid = grid.toVarying('vImpostorGrid');
   // A hemi bake has nothing below the horizon: from well under it, the horizon frames are drawn as
   // the flat cards they are (their parallax fades out, HEMI_PARALLAX_FADE), as stepping along a
@@ -228,7 +257,21 @@ export const createOctahedralImpostorNodes = (
       .div(atlasSize) as unknown as TextureUV;
   };
 
-  /** Frame `cell`'s albedo and normal-depth where the pixel's ray meets the object's surface. */
+  /** A depth atlas alpha as the distance from the frame's image plane toward its camera (±radius),
+   * scaled down by the hemi parallax fade. */
+  const decodeDepth = (depthAlpha: THREE.Node<'float'>) =>
+    clamp(
+      depthAlpha
+        .sub(IMPOSTOR_DEPTH_MIN)
+        .div(1 - IMPOSTOR_DEPTH_MIN)
+        .sub(0.5)
+        .mul(2 * radius),
+      -radius,
+      radius
+    ).mul(parallax);
+
+  /** Frame `cell`'s albedo and normal-depth where the pixel's ray meets the object's surface, and
+   * how far along the ray (from the quad) that is. */
   const sampleFrame = (cell: Vec2Node) => {
     const dir = decodeOctahedralNode(
       cell
@@ -243,7 +286,8 @@ export const createOctahedralImpostorNodes = (
     const along = min(pixelRay.dot(dir), -1e-3);
     // Where the ray crosses the frame's image plane (through the centre), then along it to the
     // depth baked there (toward the frame's camera, ±radius), PARALLAX_STEPS times
-    const onPlane = pixelOffset.sub(pixelRay.mul(pixelOffset.dot(dir).div(along)));
+    const toPlane = pixelOffset.dot(dir).div(along).negate();
+    const onPlane = pixelOffset.add(pixelRay.mul(toPlane));
     const planeUV = toAtlasUV(cell, onPlane, right, up);
     // The plane's gradients for every sample: the parallax offset jumps at depth edges, which
     // would pick a far mip in a line along them
@@ -252,20 +296,15 @@ export const createOctahedralImpostorNodes = (
     let surfaceUV = planeUV;
     for (let step = 0; step < PARALLAX_STEPS; step++) {
       const depthAlpha = (texture(normalDepth, surfaceUV).grad(dx, dy) as unknown as Vec4Node).a;
-      const depth = clamp(
-        depthAlpha
-          .sub(IMPOSTOR_DEPTH_MIN)
-          .div(1 - IMPOSTOR_DEPTH_MIN)
-          .sub(0.5)
-          .mul(2 * radius),
-        -radius,
-        radius
-      ).mul(parallax);
+      const depth = decodeDepth(depthAlpha);
       surfaceUV = toAtlasUV(cell, onPlane.add(pixelRay.mul(depth.div(along))), right, up);
     }
+    const normalDepthSample = texture(normalDepth, surfaceUV).grad(dx, dy) as unknown as Vec4Node;
     return {
       albedo: texture(albedo, surfaceUV).grad(dx, dy) as unknown as Vec4Node,
-      normalDepth: texture(normalDepth, surfaceUV).grad(dx, dy) as unknown as Vec4Node,
+      normalDepth: normalDepthSample,
+      // The depth where the steps landed, back onto the ray
+      distance: toPlane.add(decodeDepth(normalDepthSample.a).div(along)),
     };
   };
 
@@ -289,10 +328,59 @@ export const createOctahedralImpostorNodes = (
     .add(nz.mul(normalLocal.z))
     .normalize();
 
+  // The surface point: the frames' distances along the ray, weighted by their coverage too, as a
+  // frame that misses the object has its depth at the back
+  const coverage = samples.map((sample, i) => sample.albedo.a.mul(weights[i]));
+  const distance = samples
+    .map((sample, i) => sample.distance.mul(coverage[i]))
+    .reduce((sum, term) => sum.add(term))
+    .div(
+      max(
+        coverage.reduce((sum, term) => sum.add(term)),
+        1e-4
+      )
+    );
+  // `distance` is along the unit local ray; the world ray is the same ray before normalising
+  const perRayLength = float(1).div(pixelRayLocal.length());
+  const surfaceWorld = pixelCornerWorld.add(pixelRayWorld.mul(distance.mul(perRayLength)));
+  // A frame texel in the world, by the instance's scale along the ray
+  const texelWorld = pixelRayWorld
+    .length()
+    .mul(perRayLength)
+    .mul((2 * extent) / frameSize);
+  const shadowPositionWorld = surfaceWorld.add(
+    mat3(cameraWorldMatrix).mul(normalNode).normalize().mul(texelWorld.mul(SHADOW_OFFSET_TEXELS))
+  );
+  const surfaceViewZ = cameraViewMatrix.mul(vec4(surfaceWorld, 1)).z;
+  const depthNode = Fn((builder: THREE.NodeBuilder) => {
+    const { renderer } = builder;
+    if (renderer.logarithmicDepthBuffer) {
+      return select(
+        isOrthographic,
+        viewZToOrthographicDepth(surfaceViewZ, cameraNear, cameraFar),
+        viewZToLogarithmicDepth(surfaceViewZ, cameraNear, cameraFar)
+      );
+    }
+    if (renderer.reversedDepthBuffer) {
+      return select(
+        isOrthographic,
+        viewZToReversedOrthographicDepth(surfaceViewZ, cameraNear, cameraFar),
+        viewZToReversedPerspectiveDepth(surfaceViewZ, cameraNear, cameraFar)
+      );
+    }
+    return select(
+      isOrthographic,
+      viewZToOrthographicDepth(surfaceViewZ, cameraNear, cameraFar),
+      viewZToPerspectiveDepth(surfaceViewZ, cameraNear, cameraFar)
+    );
+  })();
+
   return {
     positionNode: positionNode as unknown as THREE.Node<'vec3'>,
     colorNode: colorNode as unknown as THREE.Node<'vec4'>,
     normalNode: normalNode as unknown as THREE.Node<'vec3'>,
+    depthNode: depthNode as unknown as THREE.Node<'float'>,
+    receivedShadowPositionNode: shadowPositionWorld as unknown as THREE.Node<'vec3'>,
   };
 };
 
