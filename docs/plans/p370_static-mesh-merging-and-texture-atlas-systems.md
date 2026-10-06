@@ -1,7 +1,7 @@
 Status: research done — epic, not-implemented
 Category: Rendering, Merging, Texture atlas
 Blocks: p299_texture-arrays-and-atlases.md, p371_geometry-merging.md, p372_mesh-merge-groups.md, p373_merge-debug-and-member-editing.md, p374_multi-material-merging.md, p375_batched-mesh-batches.md, p376_hlod-merged-cluster-proxies.md
-Related: p350_lod-system-research.md (the LOD epic this one follows; "feeds the instancing/batching layer"), \_DONE_p348_ecs-lod-selection.md (§4.4's `BatchedMesh` spike is shared with p375), \_DONE_p347_lod-chain-generation.md (HLOD reuses its simplifier), p353_macro-streaming-grid.md (merge groups never cross its cells), p352_physics-simulation-tiers.md (static body cost), \_DONE_p346_spatial-domains.md (cell maths), p301_terrain-texturing-epic.md (new terrain processes, §10), p303_texture-sets-and-terrain-texture-library.md and p309_terrain-decals.md (their array and atlas tools move to p299), p308_terrain-scatter.md, \_DONE_p083_editor-creator-view.md (future select/transform tools), \_DONE_p345_gpu-memory-and-draw-call-debugger.md (measures every result)
+Related: p350_lod-system-research.md (the LOD epic this one follows; "feeds the instancing/batching layer"), \_DONE_p348_ecs-lod-selection.md (§4.4's `BatchedMesh` spike is shared with p375), \_DONE_p347_lod-chain-generation.md (HLOD reuses its simplifier), p353_macro-streaming-grid.md (merge groups never cross its cells), \_DONE_p352_physics-simulation-tiers.md (static body cost), \_DONE_p346_spatial-domains.md (cell maths), p301_terrain-texturing-epic.md (new terrain processes, §10), p303_texture-sets-and-terrain-texture-library.md and p309_terrain-decals.md (their array and atlas tools move to p299), p308_terrain-scatter.md, \_DONE_p083_editor-creator-view.md (future select/transform tools), \_DONE_p345_gpu-memory-and-draw-call-debugger.md (measures every result)
 
 # Static Mesh Merging & Texture Arrays/Atlases — Research & Epic
 
@@ -51,8 +51,11 @@ Non-goal: merging colliders (§7).
   level are already same-material: the easiest merge case.
 - **Visibility** (`ECS/ECSCoreSystems.ts:22`): `reconcileObject3DVisibility` sets
   `.visible = !DISABLED && !TAG_FRUSTUM_CULLED && !TAG_OBJECT_CULLED`; p348 adds `TAG_LOD_CULLED`.
-- **Static bodies are synced every frame** (`PhysicsManager.ts:379-388`, on purpose): every
-  `BODY_STATIC` entity's transform is marked dirty every frame. p352 Phase 1 changes this.
+- **Static bodies aren't synced per frame** (`_DONE_p352` Phase 1): `physicsToTransformSystem`
+  skips `BODY_STATIC`, and a fixed body takes no transform-buffer slot. A fixed body moved by
+  `world.setTransform` or a direct `setTranslation` / `setRotation` is synced (and its transform
+  marked dirty) once, through `setBodyMovedListener` and `queueStaticBodySync`. A dynamic body
+  whose pose didn't change no longer marks its transform dirty either.
 - **Spatial index** (`core/Spatial/`): meshes are `SPATIAL_INDEXED` by default, with a radius
   from their geometry. A large merged mesh lands in the grid's oversized tier.
   `core/Spatial/CellKey.ts` (`worldToCell`, `packCellKey`, `cellBounds`) is the shared cell maths.
@@ -165,13 +168,15 @@ own output linked by one layout or palette id.
 
 ## 7. Physics
 
-Render merging never touches colliders. A `BODY_STATIC` member keeps its body and its
-`PhysicsTransformBuffer` slot. Merging colliders into compound or trimesh bodies is a separate
-concern for p352 (its slot-less static bodies) and is not planned here.
+Render merging never touches colliders. A `BODY_STATIC` member keeps its body (a fixed body has
+no `PhysicsTransformBuffer` slot since `_DONE_p352`). Merging colliders into compound or trimesh
+bodies is a separate concern and is not planned here.
 
-`physicsToTransformSystem` marks every static body's transform dirty every frame (§2). So a remerge
-is **never** driven by a transform's dirty flag: members are static by contract, and every move
-goes through `updateMergeMember` (p372) or an edit session (p373).
+A remerge is **never** driven by a transform's dirty flag: members are static by contract, and
+every move goes through `updateMergeMember` (p372) or an edit session (p373). Static bodies no
+longer dirty their transforms every frame (§2), but a dirty flag is still set by unrelated writes
+(a moved fixed body's one-off sync, a tier-frozen body's settling sync), so it isn't a reliable
+"this member moved" signal.
 
 ## 8. Culling, LOD, streaming and editing
 
@@ -236,7 +241,7 @@ Heightfield blocks themselves gain little: each is already one mesh.
 
 1. **Custom TSL materials in merge materials.** A `mergeable` contract (the material declares its
    per-entry parameters and array slots) would let custom materials merge. Wait for a use case.
-2. **Collider merging.** Many small static bodies cost broad phase and slots (p352). Merging them
+2. **Collider merging.** Many small static bodies cost broad phase (no slots since p352). Merging them
    into compound bodies per group is plausible but changes collision events per member. Not
    planned.
 3. **Indirect draws.** p354's compute culling plus `drawIndexedIndirect` could cull inside a merged

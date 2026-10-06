@@ -1,4 +1,4 @@
-// Physics tier distance policy (docs/plans/p352_physics-simulation-tiers.md §5,
+// Physics tier distance policy (docs/plans/_DONE_p352_physics-simulation-tiers.md §5,
 // _DONE_p343_deterministic-physics-tier-policy.md): each member entity (PHYSICS_TIER_POLICY)
 // gets the tier of the ring around the focus it's in, through requestPhysicsTier. With the STEPS
 // cadence (default) it measures on a fixed physics step and applies `interval` steps later, so

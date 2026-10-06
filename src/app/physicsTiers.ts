@@ -22,7 +22,7 @@ import { existsOrThrow } from '../_engine/utils/assert';
 import { lwarn } from '../_engine/utils/Logger';
 
 /**
- * Physics simulation tiers demo (docs/plans/p352_physics-simulation-tiers.md §5): crate piles
+ * Physics simulation tiers demo (docs/plans/_DONE_p352_physics-simulation-tiers.md §5): crate piles
  * whose tiers follow a distance policy around a kinematic plough ball. The plough mows a
  * serpentine through the piles, so the crates it scatters freeze (STATIC), drop out of the
  * simulation (DISABLED) and out of the physics world (REMOVED) as it moves on, and come back where

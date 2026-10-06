@@ -1,6 +1,6 @@
 Status: research done — epic, not-implemented
 Category: Rendering, LOD
-Blocks: \_DONE_p345_gpu-memory-and-draw-call-debugger.md, \_DONE_p346_spatial-domains.md, \_DONE_p347_lod-chain-generation.md, \_DONE_p348_ecs-lod-selection.md, p351_impostor-billboard-lod.md, p352_physics-simulation-tiers.md, p353_macro-streaming-grid.md, p354_gpu-driven-culling.md
+Blocks: \_DONE_p345_gpu-memory-and-draw-call-debugger.md, \_DONE_p346_spatial-domains.md, \_DONE_p347_lod-chain-generation.md, \_DONE_p348_ecs-lod-selection.md, p351_impostor-billboard-lod.md, \_DONE_p352_physics-simulation-tiers.md, p353_macro-streaming-grid.md, p354_gpu-driven-culling.md
 Related: \_DONE_p300_asset-optimization-pipeline-plan.md (LOD chains reuse its pipeline), p308_terrain-scatter.md (its static instance cells are the static case of p348), p306_terrain-blocks-and-procedural-terrain-meshes.md (block sizes line up with p353's cells), p420_npc-simulation-tiers.md (characters' side of p352), p240_client-device-capability-sniffer.md (device level as a LOD budget input), \_DONE_p050_spatial-index.md (p346 builds its Phase 4)
 
 # LOD System — Research & Epic
@@ -231,9 +231,9 @@ Child plans, in the order they should run. Each is independently useful.
 | 0    | `_DONE_p345_gpu-memory-and-draw-call-debugger` | GPU memory by category and owner, draw calls, high-water marks, snapshot diff                                     | —                                        |
 | 0    | `_DONE_p346_spatial-domains`                   | Named spatial grids per world; shared cell maths; radius fixes; pool instances indexable                          | —                                        |
 | 1    | `_DONE_p347_lod-chain-generation`              | meshoptimizer LOD chains: runtime (worker) for procedural geometry, build time for GLBs                           | p300 Phase 2 (build-time part only)      |
-| 1    | `p352_physics-simulation-tiers`                | Slot-less static bodies, no throw on capacity, then `STATIC`/`DISABLED`/`REMOVED` tiers                           | — (Phase 5: p353)                        |
+| 1    | `_DONE_p352_physics-simulation-tiers`          | Slot-less static bodies, no throw on capacity, then `STATIC`/`DISABLED`/`REMOVED` tiers                           | — (cell driving moved to p353 Phase 4)   |
 | 1    | `_DONE_p348_ecs-lod-selection`                 | Screen-size selection with hysteresis; apply to meshes, instanced pools, static cells                             | p347 (for generated chains), p346 (soft) |
-| 2    | `p353_macro-streaming-grid`                    | Cell residency state machine, per-cell asset ownership, build-time manifest, priming                              | p346 Phase 1; p352 for its physics phase |
+| 2    | `p353_macro-streaming-grid`                    | Cell residency state machine, per-cell asset ownership, build-time manifest, priming, per-cell physics tiers      | p346 Phase 1; p352 for its physics phase |
 | 2    | `p351_impostor-billboard-lod`                  | Cross-quads, dithered cross-fade, octahedral impostors                                                            | p348 Phase 3                             |
 | 3    | `p354_gpu-driven-culling` (stub)               | Compute frustum culling, indirect draws, per-instance LOD on the GPU                                              | p348, p346                               |
 | 4    | — (research only)                              | Cluster (meshlet) LOD, §7: a timeboxed spike whose output is a recommendation, only if huge single meshes need it | p354                                     |

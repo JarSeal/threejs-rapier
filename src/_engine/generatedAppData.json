@@ -358,7 +358,7 @@
     },
     "physicsTiers": {
       "name": "Physics simulation tiers demo",
-      "description": "686 crates in 49 piles, with their simulation tiers following a distance policy around a kinematic plough ball (docs/plans/p352_physics-simulation-tiers.md §5). Crates are tinted by tier: orange FULL, blue STATIC, grey DISABLED, ghosted REMOVED. C switches between the overview and chase cameras.",
+      "description": "686 crates in 49 piles, with their simulation tiers following a distance policy around a kinematic plough ball (docs/plans/_DONE_p352_physics-simulation-tiers.md §5). Crates are tinted by tier: orange FULL, blue STATIC, grey DISABLED, ghosted REMOVED. C switches between the overview and chase cameras.",
       "cameras": [
         {
           "camProps": {

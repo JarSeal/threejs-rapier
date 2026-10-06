@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Physics
-Related: p101 scene-load determinism (implemented, see the Physics section of `.claude/CLAUDE.md`: exits must happen on a fixed step, and the determinism probe must stay green), p500_restore-physics-snapshot.md (bounds are configuration, not simulation state, see §8), the line rendering system (`LineManager.ts`, p058, implemented: Phase 3 draws the bounds with it)
+Related: p101 scene-load determinism (implemented, see the Physics section of `.claude/CLAUDE.md`: exits must happen on a fixed step, and the determinism probe must stay green), p500_restore-physics-snapshot.md (bounds are configuration, not simulation state, see §8), the line rendering system (`LineManager.ts`, p058, implemented: Phase 3 draws the bounds with it), \_DONE_p352_physics-simulation-tiers.md (simulation tiers and their distance policy, §8)
 
 # Physics World Bounds (Kill Volume) — Plan
 
@@ -166,6 +166,7 @@ Fix: the probe excludes every body with an exit record whose `step` is ≤ its t
 - **Joints:** deleting a body that has joints goes through the existing body deletion path; nothing new. `'DISABLE'` leaves the joint in place with a disabled body on one end: document it.
 - **Snapshots (p500):** bounds are configuration, not simulation state, so a Rapier snapshot does not contain them. When p500 is implemented, a restore must re-send the current global and per-body bounds (the ECS side is the source of truth). Add a line to p500 when this lands.
 - **`maxBodies` / transform buffer:** deleting exited bodies frees their slots, which is a real benefit in long-running scenes with spawners.
+- **Simulation tiers (`_DONE_p352`):** only `FULL` bodies are in the checked buckets. A `STATIC` or `DISABLED` tier body is in `BODY_STATIC` and a `REMOVED` one has no bucket, and none of them moves, so skipping them is right; the engine-side check must skip a detached body too. The catch is the engine side's own `setEnabled(false)` on exit: the tiers know only `world.setDisabled` ("a tier change keeps a world-disabled body disabled"), so a later round trip through the `DISABLED` tier (from the app or the tier policy, `PhysicsTierPolicy.ts`) would re-enable an exited body on its way back to `FULL`. The exit record's handling must win: `'DISABLE'` goes through `world.setDisabled`, and an exited entity leaves the tier policy (`setPhysicsTierPolicyMember(id, false)`). Between the exit step and the record's delivery, a tier request for the body can still apply; it changes nothing that matters (the body stays out of bounds), but the record's action must not assume the body is still `FULL`.
 
 ---
 

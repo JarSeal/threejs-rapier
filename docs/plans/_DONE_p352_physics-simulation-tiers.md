@@ -1,8 +1,8 @@
-Status: in progress | Phases 1-4 implemented
+Status: implemented (Phases 1-4; Phase 5 moved to p353 Phase 4)
 Category: Physics
 Epic: p350_lod-system-research.md (Tier 1.2, §6)
-Blocks: p353_macro-streaming-grid.md (its physics phase)
-Related: \_DONE_p343_deterministic-physics-tier-policy.md (the policy's `STEPS` / `FRAMES` cadence and the step plumbing it uses), p420_npc-simulation-tiers.md (characters and NPCs: their tiers, kinematic movers and crowds live there, not here), p102_physics-world-bounds.md (its `DISABLE` action is this plan's `DISABLED` tier), p500_restore-physics-snapshot.md (body snapshots share a format), \_DONE_p063_triple-buffered-physics-transform-buffer.md (slot allocation), p101 scene-load determinism (implemented; CLAUDE.md Physics section)
+Blocks: p353_macro-streaming-grid.md (its physics phase, Phase 4, which took over this plan's Phase 5)
+Related: \_DONE_p343_deterministic-physics-tier-policy.md (the policy's `STEPS` / `FRAMES` cadence and the step plumbing it uses), p420_npc-simulation-tiers.md (characters and NPCs: their tiers, kinematic movers and crowds live there, not here), p102_physics-world-bounds.md (its `DISABLE` action disables the body as the `DISABLED` tier does, but also hides the visual; its §8 has how the two meet), p500_restore-physics-snapshot.md (no shared format after all, see open question 3; it has a note on detached bodies), \_DONE_p063_triple-buffered-physics-transform-buffer.md (slot allocation), p101 scene-load determinism (implemented; CLAUDE.md Physics section)
 
 # Physics Simulation Tiers
 
@@ -181,7 +181,8 @@ setPhysicsTierPolicy(world, {
   interval (a thrown object, a vehicle). The policy validates `within` against the ring order
   only; the margin is the author's call, documented with this warning.
 - p353 drives tiers per cell instead: a cell's state sets the tier of every body it owns (its
-  Phase 4). Entities with both a policy and a cell owner follow the cell.
+  Phase 4). Entities with both a policy and a cell owner follow the cell. That rule and the rest
+  of the cell driving moved to p353 Phase 4 (see Phase 5 below).
 
 ## 6. Debug
 
@@ -473,7 +474,13 @@ As built (§5 and §6; differs from them; the policy's cadence as built is in \_
   `tierDisabled` and awake / sleeping colours, and one built while `STATIC` follows its body
   after a return to `FULL` and a move. In flight was never caught above 0 (it lasts one reply).
 
-### Phase 5 — Cell driving (with p353)
+### Phase 5 — Cell driving — moved to p353
+
+Moved to p353_macro-streaming-grid.md Phase 4 (§6 there), where the cells it needs are built.
+Nothing in this plan was left to do for it: the cell side only calls `requestPhysicsTier` and
+the policy API above. The constraints this plan's as-built notes put on it (a cell's tier wins
+over the policy, `FIXED` bodies have no tier, jointed bodies can't be `REMOVED`, a create
+has no initial tier, a `REMOVED` body's state dies with its entity) are listed there.
 
 ## 8. Versioning
 

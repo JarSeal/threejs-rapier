@@ -1,4 +1,4 @@
-// Physics simulation tiers (docs/plans/p352_physics-simulation-tiers.md): a dynamic body can be
+// Physics simulation tiers (docs/plans/_DONE_p352_physics-simulation-tiers.md): a dynamic body can be
 // frozen in place but collidable (STATIC), taken out of the simulation (DISABLED) or out of the
 // physics world (REMOVED), and put back (FULL). Self-registers on import, so an app that never
 // requests a tier pays nothing.

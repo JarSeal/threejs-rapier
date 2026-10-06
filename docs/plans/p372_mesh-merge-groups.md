@@ -3,7 +3,7 @@ Category: Merging, ECS, Rendering
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 1.2)
 Blocked by: p371_geometry-merging.md
 Blocks: p373_merge-debug-and-member-editing.md, p374_multi-material-merging.md, p375_batched-mesh-batches.md, p376_hlod-merged-cluster-proxies.md
-Related: \_DONE_p346_spatial-domains.md (cell maths, DEFAULT domain), \_DONE_p348_ecs-lod-selection.md (`LOD` members are refused until p376), p352_physics-simulation-tiers.md (static body sync), p353_macro-streaming-grid.md (groups stay inside a cell), p301_terrain-texturing-epic.md (the modular kit terrain page, Phase 5), \_DONE_p345_gpu-memory-and-draw-call-debugger.md
+Related: \_DONE_p346_spatial-domains.md (cell maths, DEFAULT domain), \_DONE_p348_ecs-lod-selection.md (`LOD` members are refused until p376), \_DONE_p352_physics-simulation-tiers.md (static body sync), p353_macro-streaming-grid.md (groups stay inside a cell), p301_terrain-texturing-epic.md (the modular kit terrain page, Phase 5), \_DONE_p345_gpu-memory-and-draw-call-debugger.md
 
 # Mesh Merge Groups
 
@@ -39,8 +39,10 @@ overrides?)` sets `.visible` from `DISABLED`, `TAG_FRUSTUM_CULLED` and `TAG_OBJE
   the scene JSON's meshes; then the enter hooks run (scene code creates its meshes there or in its
   init); then `settlePendingPhysicsEntities()` (`:610`) and `releasePhysicsStepping()`, while the
   loader is still shown.
-- **Static bodies** (`PhysicsManager.ts:379-388`): `BODY_STATIC` transforms are synced and marked
-  dirty every frame.
+- **Static bodies** (`_DONE_p352` Phase 1): `BODY_STATIC` isn't synced per frame. A fixed body
+  moved by `world.setTransform` or a direct `setTranslation` / `setRotation` is synced once
+  (`setBodyMovedListener`, `queueStaticBodySync` in `PhysicsManager.ts`), which marks its
+  transform dirty.
 - **Render-sync order** (`AppECSRegistry.ts:101`): `POSE_PRODUCERS` 0, `POSE_CONSUMERS` -0.5,
   `SHADOW_FIT` -0.75, `FRUSTUM_CULLING` -1, `LIGHT_CULLING` -2 (higher runs earlier).
 - **Cell maths** (`core/Spatial/CellKey.ts`): `worldToCell`, `packCellKey`, `cellBounds`.
@@ -86,8 +88,9 @@ getMergeGroupOf(entityId: number, world?): string | undefined;
   attribute and a bounds refresh. No rebuild, no allocation; the vertex count doesn't change.
 - **Remove** collapses the member's index range to degenerate triangles (one index write range)
   and counts the vertices as `wasted`. Past `max(wasted / total, 25%)` the group rebuilds compact.
-- **Remerge is explicit**, never driven by `TRANSFORM` dirty flags: static bodies are marked dirty
-  every frame (§1), so a dirty-flag trigger would rewrite every physics member every frame. A
+- **Remerge is explicit**, never driven by `TRANSFORM` dirty flags: members are static by
+  contract, and a dirty flag is also set by writes that aren't a member move (a moved fixed
+  body's one-off sync, §1; a tier-frozen body's settling sync), so it's no reliable trigger. A
   debug check (debug env only) compares a member's world matrix with its baked one every N frames
   and warns once per member that moved without `updateMergeMember`.
 

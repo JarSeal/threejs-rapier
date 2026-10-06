@@ -1,6 +1,6 @@
 Status: implemented (Phases 1-2)
 Category: Physics
-Blocks: p352_physics-simulation-tiers.md (its Phase 4: §5's policy got this option before the phase was marked done)
+Blocks: \_DONE_p352_physics-simulation-tiers.md (its Phase 4: §5's policy got this option before the phase was marked done)
 Related: p101 scene-load determinism (implemented; CLAUDE.md Physics section), \_DONE_p063_triple-buffered-physics-transform-buffer.md (snapshot stamps), p353_macro-streaming-grid.md (cell-driven tiers, its Phase 4), p500_restore-physics-snapshot.md
 
 # Deterministic Physics Tier Policy
