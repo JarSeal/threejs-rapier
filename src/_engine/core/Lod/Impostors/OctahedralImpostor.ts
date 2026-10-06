@@ -7,6 +7,7 @@
 // scene's lights at runtime. Normals are in the object's space (the blended frames each have their
 // own view space), and depth (along each frame's view direction) is the normal atlas's alpha.
 import * as THREE from 'three/webgpu';
+import { float } from 'three/tsl';
 import { retagAssetOwner } from '../../Assets/AssetOwners';
 import { deleteGeometry, doesGeoExist, getGeometry, saveBufferGeometry } from '../../Geometry';
 import {
@@ -56,6 +57,16 @@ export type OctahedralImpostorOptions = {
   alphaTest?: number;
   /** The shading model (see {@link ImpostorShading}). Default `AUTO`. */
   shading?: ImpostorShading;
+  /** Draw the baked surface's depth in the main and the shadow pass, and receive shadows on that
+   * surface. Default true. false draws the quad's flat depth (it cuts into neighbours and the
+   * ground along a plane through the centre) and receives no shadows, as the flat quad would
+   * shadow half of itself with its own light-facing quad. It still casts its silhouette. Writing
+   * depth from the shader turns off early depth tests (and a tile GPU's hidden-surface removal),
+   * so false costs much less where impostors cover many pixels: 217 rock impostors from
+   * largeWorld's overview camera took 0.34 ms of GPU time a frame with it, 0.09 ms without
+   * (docs/plans/p351_impostor-billboard-lod.md, Phase 3). Keep it on for objects sunk deep in
+   * the ground: a flat quad through a buried centre is mostly underground. */
+  surfaceDepth?: boolean;
 };
 
 /** Where an impostor's frames are and what they show: what its material needs besides the atlases.
@@ -83,10 +94,11 @@ export type OctahedralImpostor = {
    * to face the camera by `material`. */
   geometry: THREE.BufferGeometry;
   /** Registered: alpha-tested and double-sided, drawing the atlases through its `positionNode`,
-   * `colorNode`, `depthNode` (the baked surface's depth, in the main and the shadow pass) and, when
-   * lit, `normalNode` and `receivedShadowPositionNode` (`OctahedralImpostorMaterial.ts`); a lit one
-   * also has `normalDepth` as its `normalMap`, so the asset tooling sees it. Use it on an
-   * InstancedMesh (eg. a LOD pool's level) or a plain mesh. */
+   * `colorNode`, `depthNode` (the baked surface's depth, in the main and the shadow pass; not with
+   * `surfaceDepth: false`) and, when lit, `normalNode` and `receivedShadowPositionNode` (with
+   * `surfaceDepth: false`, a `receivedShadowNode` that ignores shadows instead;
+   * `OctahedralImpostorMaterial.ts`); a lit one also has `normalDepth` as its `normalMap`, so the
+   * asset tooling sees it. Use it on an InstancedMesh (eg. a LOD pool's level) or a plain mesh. */
   material: THREE.Material;
   /** Registered sRGB atlas: albedo and coverage alpha. */
   albedo: THREE.Texture;
@@ -153,6 +165,7 @@ export const generateOctahedralImpostor = (
     gutter = 4,
     alphaTest = 0.5,
     shading = 'AUTO',
+    surfaceDepth = true,
   } = opts;
   const id =
     opts.id ?? `${(geometry.userData.id as string | undefined) ?? geometry.uuid}#octahedral`;
@@ -278,12 +291,18 @@ export const generateOctahedralImpostor = (
   const nodes = createOctahedralImpostorNodes(layout, albedo, normalDepth);
   impostorMaterial.positionNode = nodes.positionNode;
   impostorMaterial.colorNode = nodes.colorNode;
-  impostorMaterial.depthNode = nodes.depthNode;
+  if (surfaceDepth) impostorMaterial.depthNode = nodes.depthNode;
   // An unlit impostor has no use for normals or received shadows
   if (type !== 'BASICNODEMATERIAL') {
     impostorMaterial.normalNode = nodes.normalNode;
-    impostorMaterial.receivedShadowPositionNode = nodes.receivedShadowPositionNode;
     impostorMaterial.normalMap = normalDepth;
+    if (surfaceDepth) {
+      impostorMaterial.receivedShadowPositionNode = nodes.receivedShadowPositionNode;
+    } else {
+      // Lit by every light as if unshadowed: in the material, not `receiveShadow: false` on the
+      // object, so it holds on any mesh (a pool's level meshes share one receiveShadow)
+      impostorMaterial.receivedShadowNode = () => float(1);
+    }
   }
 
   return { id, layout, geometry: quad, material: impostorMaterial, albedo, normalDepth };

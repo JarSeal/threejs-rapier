@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 2.2)
 Related: p299_texture-arrays-and-atlases.md (Phase 4's exported atlases), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
@@ -291,7 +291,7 @@ As built:
 Out of Phase 2: alpha coverage per mip (Phase 1's note) needs a thin asset; p308's leaf cards
 check it.
 
-### Phase 3 — Octahedral impostors
+### Phase 3 — Octahedral impostors — done
 
 Bake, material, three-frame blend with depth parallax, hemi option. The impostor material gets
 `enableLodDither` like any pool level material, so the switch to and from it cross-fades (Phase 2).
@@ -463,11 +463,83 @@ Sections, each reviewed before the next:
      `receiveShadow: false`: loses shadows from neighbours, which under VSM needs per-level
      `receiveShadow` in the pools) and a cheaper shadow-pass blend.
 5. **largeWorld rocks:** a rock pool (toolkit asteroids: the mesh, a lower level, the impostor last),
-   the day-night sky box listed in the scene, the exit measured.
-6. **Close the phase:** As built, CLAUDE.md's Impostors section, versions and CHANGELOG.
+   the day-night sky box listed in the scene, the exit measured. — done: 300 rocks scattered on the
+   terrain (scale 0.6-1.6, a third of each one's height in the ground, by its bounding box), the
+   asteroid (seed 11, shape 1.25 × 0.75 × 1, 500 triangles) at levels 0 (screen size ≥ 0.05, about
+   50 m at scale 1), the same rock at icosphere detail 1 (80 triangles, ≥ 0.025, about 100 m) and a
+   hemi octahedral impostor last (they turn about y only and sit in the ground). From the overview
+   camera: 4 at level 0, 79 at level 1, 217 impostors. The scene lists `dayNight` after `basicSkybox` (still its
+   default). Found in the code: `dayNight` brings its own sun light, so largeWorld's sun and
+   ambient would stay on beside it, all night; the scene now turns both off while the active sky
+   box has a sun light (`onSkyBoxChange` + `getSkyLightIds`) and back on with `basicSkybox`. The
+   scene's JSON lights are created after its scene file runs (`createNextSceneObject3Ds`, after the
+   default sky box), not before as `largeWorld.ts`'s header said, so the first sync runs on enter.
+   Exit, measured (WebGPU, Apple GPU, 1200×800) on the rock nearest (5, 5) (scale 0.87) with only
+   the terrain and the rocks drawn, from 15°, 30°, 60° (each at three azimuths) and straight down,
+   forcing each level (`forceLevel`, fades off), its pixels masked against a render without rocks:
+   - At the impostor's switch distance (where screen size drops below 0.025 × 0.9, 95 m here; the
+     rock 18 px tall), against level 0, the mesh it was baked from: mean luma difference 5.6-8.0,
+     mask IoU 0.80-0.88, area 0.90-0.99; overhead 5.6 / 0.87 / 0.99. At half that distance
+     3.6-5.5 / 0.88-0.92. Against level 1, which it replaces: 12.8-17.6. For scale, level 1 against
+     level 0 at their own switch (47 m): 15.0-19.7. So the impostor switch is the subtler one.
+     One more view (az 0°, 15°: 21.6 / 0.77 / 0.88) is left out: an animated object in front of the
+     rock (also in the no-rock render) moves between renders; the hovering crate did the same at
+     az 120°, 15° until every other object was hidden.
+   - Night (`dayNight` held at 12:00, 18:30 and 0:00, the same rock and distance, 30° and overhead):
+     the impostor's mean luma night / noon 0.074-0.082 against 0.072-0.080 for levels 0 and 1, dusk
+     / noon 0.060-0.065 against 0.058-0.064. It darkens with the meshes. (Midnight is lighter than
+     dusk: the moon's light.)
+   - Cost, the overview camera's frame rendered 150 times per variant, GPU queue timed (no PostFX):
+     4.36 ms without the 217 impostors, 4.70 ms with them (+0.34 ms), 4.45 ms with the impostor
+     material's `depthNode` and `receivedShadowPositionNode` removed (+0.09 ms), 4.39 ms drawing
+     the same instances as level 1's 80-triangle mesh (+0.03 ms). Section 4's surface depth is most
+     of the impostor's cost here (its depth write turns off the tile GPU's hidden-surface removal),
+     and an impostor of this rock costs more than its 80-triangle level: an impostor pays off for
+     heavier meshes, which this rock isn't.
+   - WebGL2: the scene renders the same, no errors.
+   - First measured with the rocks two thirds in the ground (a placement bug: the centre below the
+     surface), which the surface depth drew right; the figures above are with the fix.
+
+   The opt-out (after review): `generateOctahedralImpostor`'s `surfaceDepth: false` draws the quad's
+   flat depth and receives no shadows, through the material (`receivedShadowNode` returning 1), not
+   a per-level `receiveShadow` in the pools: the material holds on any mesh, and the flat quad must
+   never receive (section 4's dark half). It still casts its silhouette. Checked on largeWorld's
+   rock (a second bake swapped onto the impostor level): +0.09 ms from the overview against the
+   surface depth's +0.34 ms; against level 0 at the switch distance from 30°, 60° and overhead,
+   luma difference 5.6-11.0, IoU 0.75-0.88, area 0.83-0.99 (the surface depth: 5.6-7.1,
+   0.83-0.88, 0.90-0.99); night / noon 0.084 against level 0's 0.080. Where it differs: the
+   terrain cuts it along a straight line, and it has no self-shadowing. With the rocks two thirds
+   in the ground, it lost most of each rock (area 0.32 from above: a flat quad through a buried
+   centre is underground), so it's for objects standing on the ground. largeWorld keeps the
+   default.
+6. **Close the phase:** As built, CLAUDE.md's Impostors section, versions and CHANGELOG. — done:
+   the versions stay as Phase 1 set them (engine 4.11.0, app 1.6.1: one bump per branch, as in
+   Phase 2), and the branch's CHANGELOG entry gets Phase 3. `readme.md`'s cross-quad feature became
+   one Impostors feature, and the Roadmap's "octahedral impostor LODs" became Phase 4's exported
+   atlases. CLAUDE.md's Impostors section gets octahedral impostors and the three r186 traps
+   above, its Sky box section largeWorld's sky light handoff.
 
 **Exit:** a rock impostor holds up from any angle (including overhead) at its switch distance, and
 it darkens at night with the rest of the scene.
+
+As built:
+
+- Exit, met (section 5's measurements, largeWorld's rocks, WebGPU): at the switch distance the
+  impostor differs from the mesh it was baked from less than level 1 does from level 0 at its own
+  switch (mean luma difference 5.6-8.0 against 15.0-19.7), from 15° to straight down (overhead
+  5.6, mask IoU 0.87); with the day-night sky box it darkens with the meshes (night / noon
+  0.074-0.082 against 0.072-0.080). WebGL2 agrees.
+- `generateOctahedralImpostor(geometry, material, { id, frames = 12, hemi = false, frameSize = 64,
+  gutter = 4, alphaTest = 0.5, shading = 'AUTO', surfaceDepth = true })` in
+  `core/Lod/Impostors/OctahedralImpostor.ts`, the maps in `Octahedral.ts` (CPU and TSL, which must
+  agree), the nodes in `OctahedralImpostorMaterial.ts`. Sections 1-5's notes have the details.
+- Cost: a 12 × 12 bake 40-115 ms (it scales with the frame count, not the triangles), two 864² atlases of about 4 MB each
+  with mips; 12 texture samples a pixel. With the surface depth, an impostor costs about four times
+  the GPU time of the flat quad (217 rock impostors from largeWorld's overview: 0.34 against
+  0.09 ms), and more than the 80-triangle rock it replaces there (0.03 ms): impostors pay off for
+  heavier meshes. Phase 4 removes the bake at load, not the draw cost.
+- Open question 1 is settled (§5). Left as seen: the blend is softer than one frame up close, and
+  a hemi impostor from well below the horizon is drawn as flat cards.
 
 ### Phase 4 — Exported atlases
 
