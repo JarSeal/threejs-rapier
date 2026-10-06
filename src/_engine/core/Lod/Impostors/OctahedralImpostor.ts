@@ -131,8 +131,8 @@ const deleteLeftovers = (id: string) => {
  * Bakes `geometry` drawn with `material` (a per-group array works as on a mesh) into an octahedral
  * impostor: atlases of `frames × frames` orthographic views of its bounding sphere, from the
  * directions of a full or hemi octahedral map, each into its own atlas cell, and a camera-facing
- * quad with a material that shows the frame nearest to the view direction, lit at runtime with
- * the baked normals. Its geometry, material and atlases are registered (owned by the loading
+ * quad with a material that blends the three frames nearest to the view direction (each moved
+ * onto the object's surface by its baked depth), lit at runtime with the baked normals. Its geometry, material and atlases are registered (owned by the loading
  * scene, released with it), and a later call with the same `id` returns them as they are, without
  * baking (or reading `opts`), while they're registered.
  *

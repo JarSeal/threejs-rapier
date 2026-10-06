@@ -391,7 +391,33 @@ Sections, each reviewed before the next:
 3. **Three-frame blend and depth parallax:** the three nearest frames with barycentric weights, each
    frame's UV from the view ray's intersection with its plane, offset by the sampled depth; hemi
    views from below the horizon. Checked from every angle, overhead included, and at the frame
-   boundaries (no popping as the camera orbits).
+   boundaries (no popping as the camera orbits). — done: the vertex stage passes the corner's
+   offset from the centre, the view ray through it (both linear over the quad, so interpolated
+   exactly; an orthographic camera's is its forward) and the view direction's grid position; the
+   fragment stage takes the grid cell's diagonal triangle (base and far corners, plus the corner
+   on the view's side), weights `1 − max(f)`, `|fx − fy|`, `min(f)` (continuous across cells and the
+   diagonal), and per frame rebuilds its direction and basis, crosses the ray with its image plane
+   and takes two parallax steps (`PARALLAX_STEPS`: each samples the depth where the last landed and
+   moves along the ray to it), then samples albedo and normal-depth there; the colours (alpha
+   included, for the cut) and object-space normals are blended by weight. Every sample uses the
+   plane uv's gradients, as the parallax offset jumps at depth edges. 12 samples a pixel (4 per
+   frame); section 5 measures the cost. The quad's roll no longer matters (the rays pick the
+   texels). Hemi below the horizon: the frames clamp to its edge, and the parallax fades out
+   between about -20° and -45° (`HEMI_PARALLAX_FADE`, by the view direction's y), so from well
+   below the horizon frames are drawn as the flat cards they are: stepping along a steep ray
+   through a side view tore the image apart there. Checked with section 2's harness plus sweeps
+   (the asteroid, its impostor beside it, no ground): orbits in 1° steps at 0°, 30°, 60° and 85°
+   elevation, full -88° to 88° and hemi -60° to 30° in 2° steps, comparing each step's image
+   change. The impostor's largest step is now 0.9-1.3× the mesh's (section 2's nearest frame:
+   up to 18×, the pops), and the mean mesh-vs-impostor difference fell from 3.8-6.8 to 1.4-1.8
+   (one parallax step: 1.7-2.5, with torn silhouettes at depth edges; two clean them up). Hemi:
+   1.4-2.2 from 30° down to -30°, 4.8 at -40° and 12 at -50° (the card; the hemi map has no view of
+   the underside). WebGPU and WebGL2 agree on the impostor as much as on the mesh in every view
+   (76-100 % of the pixels within 16 levels, the rest the ground's shadow acne, the same on both
+   halves). The pool check (forced levels, a moved and a despawned instance) still holds. Seen,
+   not changed: the blend is softer than one frame (three 64-texel frames averaged; sharper at the
+   switch distance than up close), and the quad's flat depth still cuts into neighbours (section
+   4's `depthNode` option).
 4. **Shadows** (open question 1): measure the impostor's own light-facing shadow, its self-shadowing
    on its camera-facing quad, and the options (a depth offset from the depth channel through
    `depthNode`, a cross-quad or lower mesh level through `castShadowPositionNode` / a shadow-only
