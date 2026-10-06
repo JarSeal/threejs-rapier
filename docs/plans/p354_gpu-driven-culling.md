@@ -49,6 +49,11 @@ without meshlets or software rasterization.
 4. **Interaction with three's own culling.** Instanced meshes on the GPU path must have
    `frustumCulled = false` (the whole batch is one object to three).
 5. **Debugging.** A readback of per-level visible counts (async, debug only) for the LOD tab.
+6. **Cross-fades** (p351 Phase 2, no popping). An instance changing level is appended to both
+   levels' visible lists for `fadeSeconds`, each with its signed fade for `lodDither`, and fades
+   out to culled the same way; the fade state per instance moves to the GPU. `fadeSeconds: 0`
+   keeps instant switches. The GPU path must match the CPU path here, or a pool would pop only
+   on one backend.
 
 ## Rough phases (to be refined)
 

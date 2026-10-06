@@ -34,6 +34,9 @@ cheaper mover can be another controller that reads the same intent.
 Each tier needs:
 
 - **Hysteresis**, so an NPC doesn't flicker between tiers (eg. promote at 60 m, demote at 80 m).
+- **No popping** (p350 §3): a tier change that changes the representation (`FULL` / `REDUCED` to
+  `CROWD`, `CROWD` to hidden) cross-fades with p351's dither, both representations drawn for
+  `fadeSeconds` (0 = instant).
 - **A hard budget**: when a tier is full, the least relevant NPC is demoted. Relevance should
   cover more than distance, eg. whether the player is in combat with or talking to the NPC.
 - **Safe promotion**: snap to the ground with one ray, and spawn out of sight where possible.

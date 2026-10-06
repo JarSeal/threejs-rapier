@@ -80,13 +80,18 @@ with a screen-space dither (an interleaved-gradient noise threshold against a pe
 value; the outgoing level uses the complementary threshold, so their pixels never overlap):
 
 - A per-instance `lodFade` attribute on LOD pool meshes; a TSL node `lodDither(fade)` that
-  materials opt into (the engine's own materials via a flag, custom node materials by calling it).
+  materials opt into (`enableLodDither(material)`, which pools call on their level materials;
+  custom node materials can call `lodDither` themselves).
 - p348's apply step keeps the instance in both levels' meshes during the fade and adds
   `TAG_LOD_TRANSITIONING` (runtime-only); `lodFadeSystem` advances the fade and removes the old
   copy when done.
 - Plain mesh entities (p348 §4.1) fade by drawing the outgoing level through a temporary clone
-  for the fade's duration. Phase 2 measures whether that's worth it or whether meshes keep instant
-  switches.
+  for the fade's duration. Phase 2 measures its cost; meshes fade like pools.
+- Culling fades too: an entity fades out to LOD culled and in from it.
+- **No LOD change pops unless asked to.** `fadeSeconds` (default 0.25 s from
+  `AppConfig.lod.fadeSeconds`, per `LodDef`) is the option; 0 switches instantly. Every later LOD
+  or representation switch (p308's cells, p353's cell states, p354's GPU bins, p375's batch
+  members, p376's proxies, p420's NPC tiers) honours it.
 - Without TAA the dither is visible as noise up close. At LOD distances it reads as a soft blend;
   if not, the fade is off per pool (`fadeSeconds: 0`).
 
@@ -150,12 +155,67 @@ As built:
 
 ### Phase 2 — Dithered cross-fade
 
-`lodFade`, `lodDither`, `TAG_LOD_TRANSITIONING`, `lodFadeSystem`, for pools; measure the plain-mesh
-variant.
+`lodFade`, `lodDither`, `TAG_LOD_TRANSITIONING`, `lodFadeSystem`, for pools and plain meshes,
+level changes and culling alike. No LOD change pops unless it's asked to: `fadeSeconds` (default
+0.25 s from `AppConfig.lod.fadeSeconds`, per `LodDef`, `setLodFadeSeconds` at runtime) is the
+option, and 0 switches instantly.
+
+What changed from §2.4 when the code was read:
+
+- Level materials are shared between level meshes (largeWorld's levels 0 and 1 use the same trunk
+  and foliage materials) and can be shared with other meshes, so a material can't read one fixed
+  `lodFade` attribute. three r186 builds every `InstancedMesh` on its own (its uuid is in the render
+  object's cache key, `RenderObject.js:846`), so one shared mask node resolves the drawn object's
+  fade when its shader is built. The material "flag" is `enableLodDither(material)`, which a pool
+  calls on its own level materials; no schema flag.
+- `maskNode` works on classic materials too (`NodeLibrary.fromMaterial` copies every key, and the
+  largeWorld trees are `MeshPhongMaterial`s), and the shadow pass reads it
+  (`Renderer._getShadowNodes`): shadows dither with the complementary pattern, so the two levels'
+  shadows add up to one.
+- Culling fades too (§2.4 didn't cover it): largeWorld's bushes pop out at their cull distance.
+- Plain meshes fade too: not optional (no LOD change pops), only measured.
+
+Sections, each reviewed before the next:
+
+1. **Dither primitive** (`core/Lod/LodFade.ts`): `lodDither(fade)` (interleaved-gradient noise on
+   the pixel position against a signed fade: ≥ 0 shows where noise < v, < 0 where noise > 1 − |v|,
+   so the incoming copy at `t` and the outgoing at `−(1 − t)` never share a pixel; 1 = fully shown),
+   `enableLodDither(material)` (idempotent, combines with an existing `maskNode`), and the mask node
+   resolving the drawn object's fade: a per-instance `lodFade` attribute on pool level meshes, else
+   a per-object value. No behaviour change yet; checked by setting a fade by hand, WebGPU and
+   WebGL2. — done: `createLodFadeAttribute(mesh)` (not on the shared geometry; three frees it with
+   the geometry's buffers, like the instance matrix), `setLodObjectFade` / `clearLodObjectFade` (an
+   object-group uniform, written per draw), `enableLodDither`. Checked in largeWorld on both
+   backends: level 0's tree mesh dithers (shadows too) while level 1, on the same materials without
+   the attribute, stays whole; one rock at 0.3 dithers while the other on its material stays
+   whole. The noise reads as fine diagonal hatching at 0.5 when still.
+2. **Pool fades:** `TAG_LOD_TRANSITIONING` (runtime-only), fade hooks on `LodTarget`, `fadeSeconds`
+   (`LodDef`, `AppConfig.lod.fadeSeconds`, `setLodFadeSeconds`), `lodFadeSystem` (right after
+   `lodApplySystem`, only the transitioning entities). During a fade the instance is in both level
+   meshes (the slot's outgoing copy); the swap-remove, the matrix sync, despawn and LOD removal
+   handle it; a change mid-fade finishes the running fade first. Fading out to culled and in from
+   culled. largeWorld fades with no code change.
+3. **Plain-mesh fades:** the outgoing level drawn by a temporary clone of the mesh for the fade's
+   duration, the per-object fade on both, culling included; also for an `InstancedMesh` entity (a
+   p308 static cell fades as a whole). `fadeSeconds` in `*.mesh.json` / scene mesh overrides
+   (`schemas/lodSchema.ts`). Measure the per-object cost on a scene with many plain LOD meshes.
+4. **Debug:** the LOD tab's fade time scale (slow motion, to judge the fades), the fade seconds
+   override (0 = pop) and the count of entities fading; the LOD window shows an entity's fade.
+5. **Close the phase:** the exit below measured, As built, CLAUDE.md's LOD sections, versions and
+   CHANGELOG.
+
+**Exit:** in largeWorld nothing pops: the trees cross-fade between their levels and the cross-quads,
+the bushes fade out at their cull distance, with `fadeSeconds: 0` everything switches instantly as
+before; draw calls stay one per non-empty level mesh; shadows don't darken during a fade;
+`lodFadeSystem`'s cost per frame and the plain-mesh fade's per-object cost are measured.
+
+Out of Phase 2: alpha coverage per mip (Phase 1's note) needs a thin asset; p308's leaf cards
+check it.
 
 ### Phase 3 — Octahedral impostors
 
-Bake, material, three-frame blend with depth parallax, hemi option.
+Bake, material, three-frame blend with depth parallax, hemi option. The impostor material gets
+`enableLodDither` like any pool level material, so the switch to and from it cross-fades (Phase 2).
 
 **Exit:** a rock impostor holds up from any angle (including overhead) at its switch distance, and
 it darkens at night with the rest of the scene.

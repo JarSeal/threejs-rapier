@@ -209,6 +209,7 @@ outputs     → colorNode, normalNode (world → view once), roughnessNode, meta
     - `AVERAGE_COLOR`: Σ wᵢ · averageColorᵢ, zero layer fetches; each set's `averageColor` comes from p303 D1 (computed by the encode step);
     - or `COLOR_MAP`: 1 fetch.
   - Far terrain then costs the weights plus 0–1 fetches.
+  - **No popping line** (p350 §3): a `farBlend` band (metres past `fade[1]`, default 4) samples both and mixes them, so the switch to the far colour has no visible edge moving with the camera; 0 = a hard switch. Only pixels in the band pay for both.
 - **Colour map + detail** (`colorMap.mode: 'DETAIL'`):
   - A unique per-block colour map (mesh UV) supplies the albedo.
   - Layers supply **detail** only: albedo divided by its set's `averageColor` (≈ 1 on average), normal and roughness.

@@ -65,7 +65,10 @@ Record the numbers here, in p348 §4.4 and in p309's risk row. **Gate:** continu
   batch itself is never hidden for one member.
 - **LOD (with p348):** a member's level is a different geometry id in the same batch (p347 chains
   share one vertex buffer, so `addGeometryLOD`-style index ranges are cheap if the spike's
-  extension works; otherwise a geometry per level).
+  extension works; otherwise a geometry per level). A level change cross-fades instead of popping
+  (p351 Phase 2): for `fadeSeconds` the member has a second batch instance with the outgoing
+  level's geometry, each with its signed fade for `lodDither`, and culling fades the same way;
+  `fadeSeconds: 0` swaps instantly.
 - **Debug:** p373's tab lists batched groups with their member count and visible count.
 
 ## 4. Phases (after the gate)

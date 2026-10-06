@@ -56,6 +56,7 @@ layer applies it (p348). `THREE.LOD` is not used.
 | LOD chains are generated (meshoptimizer), not hand-authored per asset      | p347 |
 | Selection by projected screen size, with hysteresis, in an ECS system      | p348 |
 | Distant vegetation: cross-quads first, octahedral impostors after          | p351 |
+| No LOD or representation switch pops: a dithered cross-fade by default, `fadeSeconds: 0` switches instantly | p351 |
 | Physics bodies have simulation tiers, with explicit transition states      | p352 |
 | Streaming is a cell state machine plus a build-time manifest               | p353 |
 | GPU-driven culling and per-instance LOD selection are the end state        | p354 |
