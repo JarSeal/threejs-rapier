@@ -4,12 +4,14 @@ Category: Bug, Refactor
 
 Fix or tweak these list items:
 - When loading the page the browser console warns: "using deprecated parameters for the initialization function; pass a single object instead". There is an issue for this but it seems to be closed/solved: https://github.com/dimforge/rapier/issues/811 . Maybe updating Rapier could help.
+- For some reason either changing to or having it as the debug start scene, the Space demo scene console warns (twice) about having multiple instance of Three.js being imported: "THREE.WARNING: Multiple instances of Three.js being imported." (x2).
 - If a custom domain Spatial index has wirefame set on and we change a scene the console warns: Calling [RenderPassEncoder (unlabeled)].Draw with a vertex count of 0 is unusual. This should be fixed (probably is trying to draw lines for something that isn't there).
 - When the master loop is turned of (from the on-screen tools or from the Loop controls debugger drawer tab), disable the debug camera transforms. What happens is that panning/dragging is still recorded on the screen even if the master loop is not on. After the master loop is toggled on, all the transforms made are actualized by the debug camera moving to a new position.
+- Make the Top-down test scene's and the GYM (3rd person) scene's key input's be in the scene scope. Now when I open the App key shortcuts dialog, it lists them under the All scenes list. In the Gym scene there is also the phyisc stress test. That should be scene scoped as well. Then in the ECS test scene there are the ECS stress test keys (two keys) and those should be scoped to the scene as well.
 
-If any of these fixes/tweaks are large refactorings/fixes then produce a plan for those.
+If any of these fixes/tweaks are large refactorings/fixes then produce a separate plan for each large one.
 
-If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+If for some reason this plan or some of its features can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
 ************************************
 
@@ -25,7 +27,7 @@ Also all the parameters for the fog should be editable in the debugger drawer. I
 
 Context from the removed sky box plans (p110-p115; full texts in git history): fog coupling with the sky box was an explicit non-goal of the sky box epic, so it is open for this plan. The sky box's `ground` layer already has `useAtmosphereHorizon` (blends toward the atmosphere's horizon colour, a form of aerial perspective), and the day-night cycle changes the horizon colour over time, so consider a fog colour that can follow the active sky box. Screen-space passes belong in the PostFX chain (`core/PostFX.ts`). Headless WebGPU doesn't render under WSL2, so visual checks need a real browser.
 
-If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+If for some reason this plan or some of its features can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
 ************************************
 
@@ -56,7 +58,7 @@ We should also be able to add text decals to meshes. I am not sure if this requi
 
 Debugger wise the decals should be editable from the material editor. There is a plan for the material editor view so these decal feature(s) should be blocked by that. In the material editor we should be able to attach decals, edit the text (if text decal), select the placement, select color, FX, what else? What about normal and other maps for the text, can they be implemented (maybe not as maps but normal map as a value that would make the text look like thick paint or something like that if possible)? I don't yet have the saving feature (I need a backend to handle saving files), but I would love to have the option to bake the decal onto the material if possible, so keep that in mind for future implementations.
 
-If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+If for some reason this plan or some of its features or some features of it can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
 ************************************
 
@@ -74,10 +76,11 @@ We should also add/change some of the features:
 - Could we add a prop to define a limiter for how much the player can move while in the air (0 = real life so that the player cannot move after jumping or starting to fall, only change direction).
 - One bug: When a player jumps on top of a dynamic object (eg. a box) several times in a row, the jump force increases. We should cap the jump force to a constant value.
 
-If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+If for some reason this plan or some of its features can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
 ************************************
 
+TODO: Change the title and description to become a toggle in Runtime view to either run or show the inital states (sort of a play button for debug mode)
 Create "Start editor view" plan in docs/plans/p090_start-editor-view.md
 
 Category: Debugger

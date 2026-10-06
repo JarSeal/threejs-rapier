@@ -356,6 +356,108 @@
       "id": "physicsTest",
       "sceneFile": "./physicsTest.ts"
     },
+    "physicsTiers": {
+      "name": "Physics simulation tiers demo",
+      "description": "686 crates in 49 piles, with their simulation tiers following a distance policy around a kinematic plough ball (docs/plans/_DONE_p352_physics-simulation-tiers.md §5). Crates are tinted by tier: orange FULL, blue STATIC, grey DISABLED, ghosted REMOVED. C switches between the overview and chase cameras.",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.5,
+            "far": 1500,
+            "position": {
+              "x": 0,
+              "y": 330,
+              "z": 390
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 0,
+              "z": 10
+            },
+            "type": "PERSPECTIVE",
+            "fov": 50,
+            "appId": "physicsTiersOverview"
+          },
+          "entityOpts": {
+            "appId": "physicsTiersOverview",
+            "debugData": {
+              "name": "Physics tiers overview camera",
+              "description": "Sees the whole 600 x 600 field, so the tier rings can be watched sweeping over the piles. C switches to the chase camera (created in physicsTiers.ts)."
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#dfe8ff",
+            "intensity": 0.5,
+            "appId": "physicsTiersAmbient"
+          },
+          "entityOpts": {
+            "appId": "physicsTiersAmbient",
+            "debugData": {
+              "name": "Physics tiers ambient fill",
+              "description": "Fill light, so the tier tints read in shadow too."
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 2.5,
+            "position": {
+              "x": 40,
+              "y": 60,
+              "z": 30
+            },
+            "targetPos": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowPreset": "HIGH",
+            "shadowCameraNearFar": [
+              1,
+              160
+            ],
+            "shadowCameraFrustum": [
+              -60,
+              60,
+              60,
+              -60
+            ],
+            "shadowIntensity": 0.7,
+            "appId": "physicsTiersSun"
+          },
+          "entityOpts": {
+            "appId": "physicsTiersSun",
+            "debugData": {
+              "name": "Physics tiers sun",
+              "description": "Only its direction (position → targetPos) is kept: physicsTiers.ts adds a SUN_SHADOW_FIT component on scene enter, which fits its shadow to the main camera's view (the frustum here only applies until then)."
+            }
+          }
+        }
+      ],
+      "skyboxes": [
+        {
+          "id": "basicSkybox",
+          "base": {
+            "type": "EQUIRECTANGULAR",
+            "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
+            "textureId": "equiRectEmptyId",
+            "colorSpace": "srgb",
+            "rotate": 3.141592653589793
+          }
+        }
+      ],
+      "id": "physicsTiers",
+      "sceneFile": "./physicsTiers.ts"
+    },
     "scene01": {
       "name": "Scene 01 (basic physics demo)",
       "description": "Basic FIXED/DYNAMIC physics demo: a ground box, a bouncing box, a falling ball and cylinder, a TRIMESH-collider imported GLB, and a decorative rotating wireframe sphere.",
@@ -1605,6 +1707,34 @@
       },
       "__sourcePath": "src/app/cameras/physicsTestCamera.camera.json"
     },
+    "physicsTiersOverview": {
+      "camProps": {
+        "active": true,
+        "near": 0.5,
+        "far": 1500,
+        "position": {
+          "x": 0,
+          "y": 330,
+          "z": 390
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 0,
+          "z": 10
+        },
+        "type": "PERSPECTIVE",
+        "fov": 50,
+        "appId": "physicsTiersOverview"
+      },
+      "entityOpts": {
+        "appId": "physicsTiersOverview",
+        "debugData": {
+          "name": "Physics tiers overview camera",
+          "description": "Sees the whole 600 x 600 field, so the tier rings can be watched sweeping over the piles. C switches to the chase camera (created in physicsTiers.ts)."
+        }
+      },
+      "__sourcePath": "src/app/cameras/physicsTiersOverview.camera.json"
+    },
     "scene01Camera": {
       "camProps": {
         "active": true,
@@ -1883,6 +2013,61 @@
         }
       },
       "__sourcePath": "src/app/lights/physicsTestSun.light.json"
+    },
+    "physicsTiersAmbient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#dfe8ff",
+        "intensity": 0.5,
+        "appId": "physicsTiersAmbient"
+      },
+      "entityOpts": {
+        "appId": "physicsTiersAmbient",
+        "debugData": {
+          "name": "Physics tiers ambient fill",
+          "description": "Fill light, so the tier tints read in shadow too."
+        }
+      },
+      "__sourcePath": "src/app/lights/physicsTiersAmbient.light.json"
+    },
+    "physicsTiersSun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 2.5,
+        "position": {
+          "x": 40,
+          "y": 60,
+          "z": 30
+        },
+        "targetPos": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowPreset": "HIGH",
+        "shadowCameraNearFar": [
+          1,
+          160
+        ],
+        "shadowCameraFrustum": [
+          -60,
+          60,
+          60,
+          -60
+        ],
+        "shadowIntensity": 0.7,
+        "appId": "physicsTiersSun"
+      },
+      "entityOpts": {
+        "appId": "physicsTiersSun",
+        "debugData": {
+          "name": "Physics tiers sun",
+          "description": "Only its direction (position → targetPos) is kept: physicsTiers.ts adds a SUN_SHADOW_FIT component on scene enter, which fits its shadow to the main camera's view (the frustum here only applies until then)."
+        }
+      },
+      "__sourcePath": "src/app/lights/physicsTiersSun.light.json"
     },
     "scene01Ambient": {
       "lightProps": {

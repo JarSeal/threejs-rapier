@@ -23,13 +23,16 @@ import {
   RayColliderHitAPI,
   RayColliderIntersectionAPI,
   RigidBodyAPI,
+  RigidBodyAttachState,
   RigidBodyParams,
+  RigidBodyPose,
   RigidBodyTypeAPI,
   ShapeCastHitAPI,
   ShapeParams,
   ShapeType,
   TempContactForceEvent,
   WorldAPI,
+  type PhysicsBodyActivity,
   type PhysicsQueryObserver,
 } from './PhysicsAPITypes';
 import type { RayDebugOpts } from '../RayDebugTypes';
@@ -85,6 +88,52 @@ const handleToColliderId = new Map<number, number>(); // { "Collider.handle", "R
 // Reverse of `joints`, needed for the same reason as handleToColliderId — deleteRigidBody
 // reaps attached joint handles via Rapier's own forEachJointHandleAttachedToRigidBody.
 const handleToJointId = new Map<number, number>(); // { "ImpulseJoint.handle", "Running id" }
+
+/** A collider of a detached body, as it was when detached (see detachRigidBody). */
+type DetachedCollider = {
+  api: EngineColliderProxyAPI;
+  /** The shape the collider was created with (Rapier caches it on the collider) */
+  shape: Rapier.Shape;
+  translation: Rapier.Vector;
+  rotation: Rapier.Rotation;
+  friction: number;
+  restitution: number;
+  frictionCombineRule: Rapier.CoefficientCombineRule;
+  restitutionCombineRule: Rapier.CoefficientCombineRule;
+  isSensor: boolean;
+  enabled: boolean;
+  collisionGroups: number;
+  solverGroups: number;
+  activeEvents: Rapier.ActiveEvents;
+  activeHooks: Rapier.ActiveHooks;
+  activeCollisionTypes: Rapier.ActiveCollisionTypes;
+  contactForceEventThreshold: number;
+  contactSkin: number;
+};
+
+/** A body of the REMOVED physics tier (p352) and its colliders: their state, read when detached,
+ * and their proxies, which keep their ids and come back with them (reattachRigidBody). */
+type DetachedBody = {
+  api: EngineRigidBodyProxyAPI;
+  translation: Rapier.Vector;
+  rotation: Rapier.Rotation;
+  linvel: Rapier.Vector;
+  angvel: Rapier.Vector;
+  isSleeping: boolean;
+  gravityScale: number;
+  linearDamping: number;
+  angularDamping: number;
+  dominanceGroup: number;
+  isCcdEnabled: boolean;
+  softCcdPrediction: number;
+  additionalSolverIterations: number;
+  userForce: Rapier.Vector;
+  userTorque: Rapier.Vector;
+  userData: unknown;
+  colliders: DetachedCollider[];
+};
+const detachedBodies = new Map<number, DetachedBody>(); // { "Running id", DetachedBody }
+
 let worldCreated = false;
 let isDebugEnvironment = false;
 let RAPIER: typeof Rapier;
@@ -172,6 +221,47 @@ let queryObserver: PhysicsQueryObserver | null = null;
  * nothing extra. */
 export const setQueryObserver = (observer: PhysicsQueryObserver | null) => {
   queryObserver = observer;
+};
+
+/** Told the id of every body moved by setTranslation/setRotation, MAIN_THREAD only; see
+ * setBodyMovedObserver. */
+let bodyMovedObserver: ((rigidBodyId: number) => void) | null = null;
+
+/** Sets (or clears, with null) the observer told about moved bodies. Only PhysicsAPI.ts sets
+ * it, on the main thread, where it brings the move to the body's entity (p352: BODY_STATIC
+ * bodies aren't synced per frame). The worker's engine never has one. */
+export const setBodyMovedObserver = (observer: ((rigidBodyId: number) => void) | null) => {
+  bodyMovedObserver = observer;
+};
+
+/** Awake and sleeping dynamic bodies right now (step stats, p352), written into `out`. */
+export const countDynamicBodyActivity = (out: PhysicsBodyActivity) => {
+  out.awake = 0;
+  out.sleeping = 0;
+  for (const rbAPI of rigidBodyAPIs.values()) {
+    if (!rbAPI.isDynamicSync()) continue;
+    if (rbAPI.isSleepingSync()) out.sleeping++;
+    else out.awake++;
+  }
+  return out;
+};
+
+/**
+ * Writes each body's translation into `out` (x, y, z per id, in order), also for a detached body
+ * (the REMOVED tier: where it was taken out), NaN for an unknown id. Rapier stores f32, so the
+ * values are exact in a Float32Array (p343: a deterministic tier policy reads them on a step).
+ */
+export const readBodyPositions = (ids: ArrayLike<number>, out: Float32Array) => {
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const o = i * 3;
+    const rb = getRigidBody(id);
+    const pos = rb ? rb.translation() : detachedBodies.get(id)?.translation;
+    out[o] = pos ? pos.x : NaN;
+    out[o + 1] = pos ? pos.y : NaN;
+    out[o + 2] = pos ? pos.z : NaN;
+  }
+  return out;
 };
 
 export const init = (
@@ -315,6 +405,13 @@ export const createRigidBody = (params: RigidBodyParams) => {
   nextRigidBodyId += 1;
   rigidBodies.set(id, rigidBody.handle);
   const rigidBodyAPI = new EngineRigidBodyProxyAPI(id, params.userData);
+  const lt = params.lockTranslations;
+  if (lt) rigidBodyAPI.writeOnly.translationsEnabled = [!lt.x, !lt.y, !lt.z];
+  const lr = params.lockRotations;
+  if (lr) rigidBodyAPI.writeOnly.rotationsEnabled = [!lr.x, !lr.y, !lr.z];
+  if (params.additionalMass !== undefined) {
+    rigidBodyAPI.writeOnly.additionalMass = { mass: params.additionalMass };
+  }
   rigidBodyAPIs.set(id, rigidBodyAPI);
 
   return rigidBodyAPI;
@@ -495,6 +592,9 @@ export const createCollider = (params: ColliderParams, parentId?: number) => {
   colliders.set(id, collider.handle);
   handleToColliderId.set(collider.handle, id);
   const colliderAPI = new EngineColliderProxyAPI(id, params.parentId, params.userData);
+  // ColliderDesc's default density is 1
+  colliderAPI.massMode = { density: params.density ?? 1 };
+  colliderAPI.ownEnabled = params.enabled ?? true;
 
   if (hasCollisionFn) {
     collisionActiveColliderIds.add(id);
@@ -594,6 +694,16 @@ export const createJoints = (paramsArray: JointParams[]) =>
 export const deleteRigidBody = (id: number) => {
   const colliderIds: number[] = [];
   const jointIds: number[] = [];
+  // A detached body (p352 REMOVED tier) is only its kept state: nothing is in the world
+  const detached = detachedBodies.get(id);
+  if (detached) {
+    detachedBodies.delete(id);
+    for (const coll of detached.colliders) {
+      cleanupColliderEventRegistrations(coll.api.id);
+      colliderIds.push(coll.api.id);
+    }
+    return { id, colliderIds, jointIds };
+  }
   const rbHandle = rigidBodies.get(id);
   if (rbHandle === undefined) {
     if (isDebugEnvironment) {
@@ -653,6 +763,197 @@ export const deleteRigidBodies = (ids: number[]) => {
     deletedJointIds.push(...jointIds);
   }
   return { ids: deletedIds, colliderIds: deletedColliderIds, jointIds: deletedJointIds };
+};
+
+/**
+ * The REMOVED physics tier (p352): takes the body and its colliders out of the world. Their
+ * state is read first, so reattachRigidBody can put them back exactly; their ids, proxies and
+ * event callbacks are kept for that, outside the live maps (so nothing iterates or finds them).
+ * Rapier has no getter for some of it (locked axes, additional mass, how a collider's mass was
+ * given): the proxies mirror those writes. Refused (undefined) for a body with joints, which
+ * the removal would delete.
+ */
+export const detachRigidBody = (id: number): RigidBodyPose | undefined => {
+  const handle = rigidBodies.get(id);
+  const api = rigidBodyAPIs.get(id);
+  const rb = handle !== undefined ? physicsWorld.getRigidBody(handle) : undefined;
+  if (!rb || !(api instanceof EngineRigidBodyProxyAPI)) return undefined;
+  let hasJoints = false;
+  physicsWorld.impulseJoints.forEachJointHandleAttachedToRigidBody(rb.handle, () => {
+    hasJoints = true;
+  });
+  if (hasJoints) {
+    if (isDebugEnvironment) lwarn(`detachRigidBody: rigid body ${id} has joints, not detached.`);
+    return undefined;
+  }
+
+  const detachedColliders: DetachedCollider[] = [];
+  const colliderHandles: number[] = [];
+  for (let i = 0; i < rb.numColliders(); i++) {
+    const coll = rb.collider(i);
+    const collId = handleToColliderId.get(coll.handle);
+    const collAPI = collId !== undefined ? colliderAPIs.get(collId) : undefined;
+    if (!(collAPI instanceof EngineColliderProxyAPI)) continue;
+    colliderHandles.push(coll.handle);
+    detachedColliders.push({
+      api: collAPI,
+      shape: coll.shape,
+      translation: coll.translationWrtParent() ?? { x: 0, y: 0, z: 0 },
+      rotation: coll.rotationWrtParent() ?? { x: 0, y: 0, z: 0, w: 1 },
+      friction: coll.friction(),
+      restitution: coll.restitution(),
+      frictionCombineRule: coll.frictionCombineRule(),
+      restitutionCombineRule: coll.restitutionCombineRule(),
+      isSensor: coll.isSensor(),
+      // Not coll.isEnabled(): that's false for every collider of a disabled body (the DISABLED
+      // tier), and a collider re-created disabled stays so when its body is enabled again
+      enabled: collAPI.ownEnabled,
+      collisionGroups: coll.collisionGroups(),
+      solverGroups: coll.solverGroups(),
+      activeEvents: coll.activeEvents(),
+      activeHooks: coll.activeHooks(),
+      activeCollisionTypes: coll.activeCollisionTypes(),
+      contactForceEventThreshold: coll.contactForceEventThreshold(),
+      contactSkin: coll.contactSkin(),
+    });
+  }
+  const translation = rb.translation();
+  const rotation = rb.rotation();
+  detachedBodies.set(id, {
+    api,
+    translation,
+    rotation,
+    linvel: rb.linvel(),
+    angvel: rb.angvel(),
+    isSleeping: rb.isSleeping(),
+    gravityScale: rb.gravityScale(),
+    linearDamping: rb.linearDamping(),
+    angularDamping: rb.angularDamping(),
+    dominanceGroup: rb.dominanceGroup(),
+    isCcdEnabled: rb.isCcdEnabled(),
+    softCcdPrediction: rb.softCcdPrediction(),
+    additionalSolverIterations: rb.additionalSolverIterations(),
+    userForce: rb.userForce(),
+    userTorque: rb.userTorque(),
+    userData: rb.userData,
+    colliders: detachedColliders,
+  });
+
+  // Removes its colliders too
+  physicsWorld.removeRigidBody(rb);
+  rigidBodies.delete(id);
+  rigidBodyAPIs.delete(id);
+  for (let i = 0; i < detachedColliders.length; i++) {
+    const collId = detachedColliders[i].api.id;
+    colliders.delete(collId);
+    colliderAPIs.delete(collId);
+    handleToColliderId.delete(colliderHandles[i]);
+  }
+  return {
+    pos: { x: translation.x, y: translation.y, z: translation.z },
+    rot: { x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w },
+  };
+};
+
+const isZeroVector = (v: PhysVector) => v.x === 0 && v.y === 0 && v.z === 0;
+
+/**
+ * Puts a detached body (detachRigidBody) and its colliders back into the world, with the ids and
+ * proxies they had and the state they were detached with, except for `state`'s body type and
+ * enabled state (the tier it comes back to). A FIXED body comes back at rest, as a body switched
+ * to FIXED does. Undefined when the body isn't detached.
+ */
+export const reattachRigidBody = (
+  id: number,
+  state: RigidBodyAttachState
+): RigidBodyPose | undefined => {
+  const detached = detachedBodies.get(id);
+  if (!detached) return undefined;
+  const { api, translation: t, rotation: r } = detached;
+  const writeOnly = api.writeOnly;
+  const desc = new RAPIER.RigidBodyDesc(state.bodyType as unknown as RigidBodyType)
+    .setTranslation(t.x, t.y, t.z)
+    .setRotation(r)
+    .setGravityScale(detached.gravityScale)
+    .setLinearDamping(detached.linearDamping)
+    .setAngularDamping(detached.angularDamping)
+    .setDominanceGroup(detached.dominanceGroup)
+    .setCcdEnabled(detached.isCcdEnabled)
+    .setSoftCcdPrediction(detached.softCcdPrediction)
+    .setAdditionalSolverIterations(detached.additionalSolverIterations)
+    .setEnabled(state.enabled)
+    .enabledTranslations(...writeOnly.translationsEnabled)
+    .enabledRotations(...writeOnly.rotationsEnabled);
+  if (state.bodyType !== RigidBodyTypeAPI.Fixed) {
+    // The sleep state too: a resting body put back awake would settle again, differently
+    desc
+      .setLinvel(detached.linvel.x, detached.linvel.y, detached.linvel.z)
+      .setAngvel(detached.angvel)
+      .setSleeping(detached.isSleeping);
+  }
+  const additionalMass = writeOnly.additionalMass;
+  if (additionalMass && 'centerOfMass' in additionalMass) {
+    desc.setAdditionalMassProperties(
+      additionalMass.mass,
+      additionalMass.centerOfMass,
+      additionalMass.principalAngularInertia,
+      additionalMass.angularInertiaLocalFrame
+    );
+  } else if (additionalMass) {
+    desc.setAdditionalMass(additionalMass.mass);
+  }
+
+  const rb = physicsWorld.createRigidBody(desc);
+  rb.userData = detached.userData;
+  // Without waking it: a sleeping body keeps its user forces asleep too
+  if (!isZeroVector(detached.userForce)) rb.addForce(detached.userForce, false);
+  if (!isZeroVector(detached.userTorque)) rb.addTorque(detached.userTorque, false);
+  rigidBodies.set(id, rb.handle);
+  api._rebind(rb);
+  rigidBodyAPIs.set(id, api);
+
+  for (const c of detached.colliders) {
+    const collDesc = new RAPIER.ColliderDesc(c.shape)
+      .setTranslation(c.translation.x, c.translation.y, c.translation.z)
+      .setRotation(c.rotation)
+      .setFriction(c.friction)
+      .setRestitution(c.restitution)
+      .setFrictionCombineRule(c.frictionCombineRule)
+      .setRestitutionCombineRule(c.restitutionCombineRule)
+      .setSensor(c.isSensor)
+      .setEnabled(c.enabled)
+      .setCollisionGroups(c.collisionGroups)
+      .setSolverGroups(c.solverGroups)
+      .setActiveEvents(c.activeEvents)
+      .setActiveHooks(c.activeHooks)
+      .setActiveCollisionTypes(c.activeCollisionTypes)
+      .setContactForceEventThreshold(c.contactForceEventThreshold)
+      .setContactSkin(c.contactSkin);
+    const massMode = c.api.massMode;
+    if ('density' in massMode) {
+      collDesc.setDensity(massMode.density);
+    } else if ('centerOfMass' in massMode) {
+      collDesc.setMassProperties(
+        massMode.mass,
+        massMode.centerOfMass,
+        massMode.principalAngularInertia,
+        massMode.angularInertiaLocalFrame
+      );
+    } else {
+      collDesc.setMass(massMode.mass);
+    }
+    const coll = physicsWorld.createCollider(collDesc, rb);
+    const collId = c.api.id;
+    colliders.set(collId, coll.handle);
+    handleToColliderId.set(coll.handle, collId);
+    c.api._rebind(coll);
+    colliderAPIs.set(collId, c.api);
+  }
+  detachedBodies.delete(id);
+  return {
+    pos: { x: t.x, y: t.y, z: t.z },
+    rot: { x: r.x, y: r.y, z: r.z, w: r.w },
+  };
 };
 
 /** Removes id's event callback/counter/registry bookkeeping (does not touch colliders/colliderAPIs). */
@@ -741,6 +1042,7 @@ export const deleteWorld = () => {
   jointAPIs.clear();
   handleToColliderId.clear();
   handleToJointId.clear();
+  detachedBodies.clear();
   collisionEventFns.clear();
   contactForceEventFns.clear();
   collisionActiveColliderIds.clear();
@@ -1357,8 +1659,47 @@ class EngineWorldProxyAPI implements WorldAPI {
   }
 }
 
+/** A body's additional mass, as last set: the mass alone, or full mass properties. */
+type AdditionalMass =
+  | { mass: number }
+  | {
+      mass: number;
+      centerOfMass: PhysVector;
+      principalAngularInertia: PhysVector;
+      angularInertiaLocalFrame: PhysRotation;
+    };
+
+/** A collider's mass, as last given: a density, a mass, or full mass properties. */
+type ColliderMassMode =
+  | { density: number }
+  | { mass: number }
+  | {
+      mass: number;
+      centerOfMass: PhysVector;
+      principalAngularInertia: PhysVector;
+      angularInertiaLocalFrame: PhysRotation;
+    };
+
+const toPlainVec = (v: PhysVector): PhysVector => ({ x: v.x, y: v.y, z: v.z });
+const toPlainRotation = (r: PhysRotation): PhysRotation => ({ x: r.x, y: r.y, z: r.z, w: r.w });
+
 class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   private rb: Rapier.RigidBody;
+  /** Created FIXED (p352): its entity is never synced per frame. A dynamic body switched to
+   * FIXED (the STATIC physics tier) is a different case: its entity goes back to a dynamic
+   * bucket when it's switched back. */
+  private readonly isCreatedFixed: boolean;
+  /** State Rapier has no getter for, mirrored from every write, so a detached body (p352
+   * REMOVED tier) comes back with it (reattachRigidBody). */
+  readonly writeOnly: {
+    translationsEnabled: [boolean, boolean, boolean];
+    rotationsEnabled: [boolean, boolean, boolean];
+    additionalMass: AdditionalMass | null;
+  } = {
+    translationsEnabled: [true, true, true],
+    rotationsEnabled: [true, true, true],
+    additionalMass: null,
+  };
   uData: Record<string, unknown> = {};
 
   isBeingDeleted: boolean = false;
@@ -1412,6 +1753,12 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
       `Could not find rigid body in the engineAPI with id: ${id}`
     );
     this.rb = rb;
+    this.isCreatedFixed = rb.isFixed();
+  }
+
+  /** @internal Points the proxy at its re-created Rapier body (reattachRigidBody, p352). */
+  _rebind(rb: Rapier.RigidBody) {
+    this.rb = rb;
   }
 
   getUserDataSync() {
@@ -1434,18 +1781,22 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
 
   lockTranslations(locked: boolean, wakeUp: boolean) {
     this.rb.lockTranslations(locked, wakeUp);
+    this.writeOnly.translationsEnabled = [!locked, !locked, !locked];
   }
 
   lockRotations(locked: boolean, wakeUp: boolean) {
     this.rb.lockRotations(locked, wakeUp);
+    this.writeOnly.rotationsEnabled = [!locked, !locked, !locked];
   }
 
   setEnabledTranslations(enableX: boolean, enableY: boolean, enableZ: boolean, wakeUp: boolean) {
     this.rb.setEnabledTranslations(enableX, enableY, enableZ, wakeUp);
+    this.writeOnly.translationsEnabled = [enableX, enableY, enableZ];
   }
 
   setEnabledRotations(enableX: boolean, enableY: boolean, enableZ: boolean, wakeUp: boolean) {
     this.rb.setEnabledRotations(enableX, enableY, enableZ, wakeUp);
+    this.writeOnly.rotationsEnabled = [enableX, enableY, enableZ];
   }
 
   dominanceGroupSync() {
@@ -1509,6 +1860,7 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
 
   setTranslation(tra: PhysVector, wakeUp: boolean) {
     this.rb.setTranslation(tra, wakeUp);
+    bodyMovedObserver?.(this.id);
   }
 
   setLinvel(vel: PhysVector, wakeUp: boolean) {
@@ -1528,6 +1880,7 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
 
   setRotation(rot: PhysRotation, wakeUp: boolean) {
     this.rb.setRotation(rot, wakeUp);
+    bodyMovedObserver?.(this.id);
   }
 
   setAngvel(vel: PhysVector, wakeUp: boolean) {
@@ -1669,6 +2022,13 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   }
 
   setBodyType(type: RigidBodyTypeAPI, wakeUp: boolean) {
+    if (isDebugEnvironment && type !== RigidBodyTypeAPI.Fixed && this.isCreatedFixed) {
+      // p352: a body created FIXED has no transform-buffer slot (WORKER_THREAD) and its entity
+      // sits in BODY_STATIC, which isn't synced per frame, so its new motion never reaches it.
+      lwarn(
+        `Rigid body ${this.id} changed from FIXED to another type with setBodyType: a body created FIXED isn't synced to its entity while it moves. Create it with the type it moves as.`
+      );
+    }
     this.rb.setBodyType(type as unknown as RigidBodyType, wakeUp);
   }
 
@@ -1731,6 +2091,7 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
 
   setAdditionalMass(mass: number, wakeUp: boolean) {
     this.rb.setAdditionalMass(mass, wakeUp);
+    this.writeOnly.additionalMass = { mass };
   }
 
   setAdditionalMassProperties(
@@ -1747,6 +2108,12 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
       angularInertiaLocalFrame,
       wakeUp
     );
+    this.writeOnly.additionalMass = {
+      mass,
+      centerOfMass: toPlainVec(centerOfMass),
+      principalAngularInertia: toPlainVec(principalAngularInertia),
+      angularInertiaLocalFrame: toPlainRotation(angularInertiaLocalFrame),
+    };
   }
 
   setAngularDamping(factor: number) {
@@ -1802,6 +2169,12 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
 
 class EngineColliderProxyAPI implements ColliderAPI {
   private coll: Rapier.Collider;
+  /** How its mass was last given, which Rapier can't tell (density() of a collider given a
+   * mass is derived): a detached collider (p352 REMOVED tier) comes back with it. */
+  massMode: ColliderMassMode = { density: 1 };
+  /** Its own enabled flag, which Rapier can't tell apart from its body's (isEnabled() is false
+   * on a disabled body), for a detached collider to come back with (p352 REMOVED tier). */
+  ownEnabled = true;
   uData: Record<string, unknown> = {};
 
   isBeingDeleted: boolean = false;
@@ -1817,6 +2190,11 @@ class EngineColliderProxyAPI implements ColliderAPI {
       getCollider(id),
       `Could not find collider in the engineAPI with id: ${id}`
     );
+  }
+
+  /** @internal Points the proxy at its re-created Rapier collider (reattachRigidBody, p352). */
+  _rebind(coll: Rapier.Collider) {
+    this.coll = coll;
   }
 
   // --- Metadata ---
@@ -1902,6 +2280,7 @@ class EngineColliderProxyAPI implements ColliderAPI {
   }
   setEnabled(enabled: boolean) {
     this.coll.setEnabled(enabled);
+    this.ownEnabled = enabled;
   }
 
   frictionSync() {
@@ -1952,6 +2331,12 @@ class EngineColliderProxyAPI implements ColliderAPI {
         angularInertiaLocalFrame.w
       )
     );
+    this.massMode = {
+      mass,
+      centerOfMass: toPlainVec(centerOfMass),
+      principalAngularInertia: toPlainVec(principalAngularInertia),
+      angularInertiaLocalFrame: toPlainRotation(angularInertiaLocalFrame),
+    };
   }
 
   densitySync() {
@@ -1962,9 +2347,11 @@ class EngineColliderProxyAPI implements ColliderAPI {
   }
   setDensity(density: number) {
     this.coll.setDensity(density);
+    this.massMode = { density };
   }
   setMass(mass: number) {
     this.coll.setMass(mass);
+    this.massMode = { mass };
   }
 
   // --- Geometry Details ---

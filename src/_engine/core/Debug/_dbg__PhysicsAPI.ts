@@ -23,6 +23,9 @@ import {
 } from '../UI/DraggableWindow';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import {
+  getLastPhysicsBodyActivity,
+  getPhysicsBodyCapacity,
+  getPhysicsStepGateStats,
   getPhysicsState,
   getPhysicsWorld,
   getResolvedTransportMode,
@@ -30,7 +33,12 @@ import {
 } from '../PhysicsAPI';
 import { setBootOverride } from './_dbg__PhysicsBootOverrides';
 import { getConfig } from '../Config';
-import { ShapeType, type PhysicsState, type PhysicsWorkerTarget } from '../Physics/PhysicsAPITypes';
+import {
+  ShapeType,
+  type PhysicsState,
+  type PhysicsWorkerTarget,
+  type RigidBodyAPI,
+} from '../Physics/PhysicsAPITypes';
 import {
   getEntityWireframeColor,
   getGlobalWireframeColorOverrides,
@@ -60,7 +68,15 @@ import {
   getPhysicsDeterminismProbeSteps,
 } from './_dbg__PhysicsDeterminism';
 import { getECSWorld, getEntityIdByAppId, getStableAppId } from '../ECS';
-import { getPhysicsInterpolationReadout } from '../PhysicsManager';
+import { getPhysicsBodyOwner, getPhysicsInterpolationReadout } from '../PhysicsManager';
+import {
+  getPhysicsTierPolicy,
+  getPhysicsTierPolicyFreezeSources,
+  getPhysicsTierPolicyStatus,
+  isPhysicsTierPolicyFrozen,
+  setPhysicsTierPolicyFrozen,
+} from '../PhysicsTierPolicy';
+import type { PhysicsTierPolicy } from '../Physics/PhysicsTierTypes';
 import { registerEntityWindowOpener } from '../../debug/Profiler';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import {
@@ -104,6 +120,8 @@ type PersistedWireframeState = {
 
 /** Human-readable labels for the color pickers, phrased as the condition each one paints. */
 const WIREFRAME_STATE_LABELS: Record<WireframeColorState, string> = {
+  tierDisabled: 'Tier DISABLED',
+  tierStatic: 'Tier STATIC',
   disabled: 'Disabled (collider or its body)',
   sensor: 'Sensor',
   sleeping: 'Sleeping',
@@ -735,6 +753,166 @@ const getInterpolationClockFolder = (): DebuggerPaneItem<PhysicsState> => {
   };
 };
 
+/** The "Bodies" folder's values, synced by the tab's onRefresh (readonly bindings poll it). */
+const bodiesReadout = { slots: '', refused: 0, activity: '' };
+
+const refreshBodiesReadout = () => {
+  const capacity = getPhysicsBodyCapacity();
+  bodiesReadout.slots = capacity ? `${capacity.used} / ${capacity.max}` : 'N/A, worker only';
+  bodiesReadout.refused = capacity?.refused ?? 0;
+  const activity = getLastPhysicsBodyActivity();
+  bodiesReadout.activity = activity
+    ? `${activity.awake} awake, ${activity.sleeping} sleeping`
+    : 'Measured with the step time';
+};
+
+/** Transform-buffer slots and refused creates (p352: FIXED bodies take no slot, a full buffer
+ * refuses a create), and how many dynamic bodies sleep (with the step stats on). */
+const getBodiesFolder = (): DebuggerPaneItem<PhysicsState> => ({
+  type: 'folder',
+  id: 'bodies',
+  title: 'Bodies (live)',
+  expanded: false,
+  content: [
+    { key: 'slots', target: bodiesReadout, label: 'Slots used / max bodies', readonly: true },
+    {
+      key: 'refused',
+      target: bodiesReadout,
+      label: 'Refused creates (buffer full)',
+      readonly: true,
+      format: (v: number) => v.toFixed(0),
+    },
+    { key: 'activity', target: bodiesReadout, label: 'Dynamic bodies', readonly: true },
+  ] as DebuggerPaneItem<PhysicsState>[],
+});
+
+/** The tab's own freeze of the tier policy (the determinism probe has another), session only:
+ * a freeze restored by a reload would read as the policy being broken. */
+const TIER_POLICY_FREEZE_SOURCE = 'DEBUG_TAB';
+
+/** The "Simulation tiers" folder's values, synced by the tab's onRefresh. */
+const tiersReadout = {
+  FULL: 0,
+  STATIC: 0,
+  DISABLED: 0,
+  REMOVED: 0,
+  pending: 0,
+  inFlight: 0,
+  policy: '',
+  policyState: '',
+  lastMeasuredStep: '',
+  pendingMeasurements: 0,
+  gateWaits: '',
+};
+const tierPolicyProxy = { frozen: false };
+
+const formatTierPolicy = (policy: Readonly<PhysicsTierPolicy>) =>
+  policy.rings
+    .map(({ tier, within }) => (within === undefined ? `${tier} beyond` : `${tier} ≤ ${within}`))
+    .join(', ');
+
+/** Per-tier counts of the default world's entities that can have a tier: a DYNAMIC
+ * createPhysicsEntity body, not a character. One never given a tier is FULL. */
+const refreshTiersReadout = () => {
+  const world = getECSWorld();
+  tiersReadout.FULL = tiersReadout.STATIC = tiersReadout.DISABLED = tiersReadout.REMOVED = 0;
+  tiersReadout.pending = tiersReadout.inFlight = 0;
+  const tierStorage = world.getStorage(ComponentType.PHYSICS_SIM_TIER);
+  for (const [, data] of tierStorage) {
+    tiersReadout[data.tier]++;
+    if (data.target !== data.tier) tiersReadout.pending++;
+    if (data.inFlight) tiersReadout.inFlight++;
+  }
+  const countNeverTiered = (bodies: Iterable<[number, RigidBodyAPI]>) => {
+    for (const [entityId, rb] of bodies) {
+      if (tierStorage.has(entityId)) continue;
+      if (world.hasComponent(entityId, ComponentType.TAG_IS_CHARACTER)) continue;
+      const owner = getPhysicsBodyOwner(rb.id);
+      if (owner?.entityId === entityId && owner.rigidType === 'DYNAMIC') tiersReadout.FULL++;
+    }
+  };
+  countNeverTiered(world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL));
+  countNeverTiered(world.getStorage(ComponentType.BODY_DYNAMIC_HEADLESS));
+
+  const policy = getPhysicsTierPolicy(world);
+  tiersReadout.policy = policy ? formatTierPolicy(policy) : 'None (setPhysicsTierPolicy)';
+  const status = getPhysicsTierPolicyStatus(world);
+  const freezeSources = getPhysicsTierPolicyFreezeSources(world);
+  const cadence = status
+    ? `${status.cadence}, every ${status.interval} ${status.cadence === 'STEPS' ? 'steps' : 'frames'}`
+    : '';
+  tiersReadout.policyState = !status
+    ? '-'
+    : freezeSources.length
+      ? `${cadence}, frozen by ${freezeSources.join(', ')}`
+      : `${cadence}, running`;
+  const isSteps = status?.cadence === 'STEPS';
+  tiersReadout.lastMeasuredStep = !isSteps
+    ? '-'
+    : status.lastMeasuredStep < 0
+      ? 'None yet'
+      : String(status.lastMeasuredStep);
+  tiersReadout.pendingMeasurements = isSteps ? status.pendingMeasurements : 0;
+  // Stepping held for a measurement's reply (WORKER_THREAD); the policy is the gates' only user
+  const gates = getPhysicsStepGateStats();
+  tiersReadout.gateWaits = `${gates.waits} (${Math.round(gates.heldMs)} ms)`;
+  tierPolicyProxy.frozen = isPhysicsTierPolicyFrozen(world, TIER_POLICY_FREEZE_SOURCE);
+};
+
+/** p352's simulation tiers: per-tier counts, transitions waiting for their step (pending) or
+ * for the worker's reply (in flight, WORKER_THREAD), and the default world's distance policy
+ * with a freeze toggle. */
+const getTiersFolder = (): DebuggerPaneItem<PhysicsState> => {
+  const count = (key: keyof typeof tiersReadout, label: string) => ({
+    key,
+    target: tiersReadout,
+    label,
+    readonly: true,
+    format: (v: number) => v.toFixed(0),
+  });
+  return {
+    type: 'folder',
+    id: 'simulationTiers',
+    title: 'Simulation tiers (live)',
+    expanded: false,
+    content: [
+      count('FULL', 'FULL (incl. never tiered)'),
+      count('STATIC', 'STATIC'),
+      count('DISABLED', 'DISABLED'),
+      count('REMOVED', 'REMOVED'),
+      count('pending', 'Pending (next step)'),
+      count('inFlight', 'In flight (worker reply)'),
+      { type: 'separator' },
+      {
+        key: 'policy',
+        target: tiersReadout,
+        label: 'Tier policy rings',
+        readonly: true,
+        multiline: true,
+        rows: 2,
+      },
+      { key: 'policyState', target: tiersReadout, label: 'Tier policy', readonly: true },
+      {
+        key: 'lastMeasuredStep',
+        target: tiersReadout,
+        label: 'Last measured step (STEPS)',
+        readonly: true,
+      },
+      count('pendingMeasurements', 'Measurements waiting for their step'),
+      { key: 'gateWaits', target: tiersReadout, label: 'Step gate waits', readonly: true },
+      {
+        key: 'frozen',
+        target: tierPolicyProxy,
+        label: 'Freeze tier policy',
+        onChange: (value) => {
+          setPhysicsTierPolicyFrozen(Boolean(value), TIER_POLICY_FREEZE_SOURCE, getECSWorld());
+          refreshTiersReadout();
+        },
+      },
+    ] as DebuggerPaneItem<PhysicsState>[],
+  };
+};
+
 export const _createPhysicsAPIDebugGUI = () => {
   physicsApiUIState = { ...physicsApiUIState, ...lsGetItem(UI_LS_KEY, physicsApiUIState) };
   restoreWireframeState();
@@ -769,6 +947,10 @@ export const _createPhysicsAPIDebugGUI = () => {
     // No entity create/delete hook to subscribe to: poll, same tradeoff as the spatial grid
     // debug panel's live readout (the list only re-renders when its rows changed)
     refreshIntervalMs: 500,
+    onRefresh: () => {
+      refreshBodiesReadout();
+      refreshTiersReadout();
+    },
     content: () => {
       // Read once: createPhysicsWorld() (which resolves this) always runs before this tab is
       // ever built (see InitApp.ts's boot order). The world is recreated on every scene load,
@@ -966,6 +1148,8 @@ export const _createPhysicsAPIDebugGUI = () => {
                 persistWireframeState();
               },
             },
+            getBodiesFolder(),
+            getTiersFolder(),
             getInterpolationClockFolder(),
             { type: 'separator' },
             getDeterminismProbeFolder(),

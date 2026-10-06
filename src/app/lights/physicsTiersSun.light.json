@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "DIRECTIONAL",
+    "color": "#fff2d9",
+    "intensity": 2.5,
+    "position": { "x": 40, "y": 60, "z": 30 },
+    "targetPos": { "x": 0, "y": 0, "z": 0 },
+    "castShadow": true,
+    "shadowPreset": "HIGH",
+    "shadowCameraNearFar": [1, 160],
+    "shadowCameraFrustum": [-60, 60, 60, -60],
+    "shadowIntensity": 0.7
+  },
+  "entityOpts": {
+    "appId": "physicsTiersSun",
+    "debugData": {
+      "name": "Physics tiers sun",
+      "description": "Only its direction (position → targetPos) is kept: physicsTiers.ts adds a SUN_SHADOW_FIT component on scene enter, which fits its shadow to the main camera's view (the frustum here only applies until then)."
+    }
+  }
+}

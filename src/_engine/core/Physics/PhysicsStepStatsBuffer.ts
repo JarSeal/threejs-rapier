@@ -1,14 +1,15 @@
 /** Slot layout for the physics step statistics buffer (p027).
  *
- * A three-`Float64` scratch buffer the worker writes after every STEP message and the main
+ * A five-`Float64` scratch buffer the worker writes after every STEP message and the main
  * thread polls once per frame, written and polled only while `PhysicsState.stepStatsEnabled`
  * is on. Allocated at every CREATE_WORLD that resolves the SHARED_MEMORY transport, whatever
- * the flag, so the flag can be switched at runtime (24 bytes). In MESSAGE_BATCH mode the same
- * three numbers ride along on the existing TRANSFORMS_PUSH message instead, so no buffer is
+ * the flag, so the flag can be switched at runtime (40 bytes). In MESSAGE_BATCH mode the same
+ * numbers ride along on the existing TRANSFORMS_PUSH message instead, so no buffer is
  * allocated at all. A fresh buffer reads STEP_END_AT 0, "no step yet".
  *
- * The three values are kept strictly separate and are never summed: STEP_MS is the pure
- * simulation cost, the other two are messaging overhead around it.
+ * The three timings are kept strictly separate and are never summed: STEP_MS is the pure
+ * simulation cost, the other two are messaging overhead around it. The body counts (p352)
+ * describe the world after the step.
  */
 export const PHYSICS_STEP_STATS_SLOTS = {
   /** Total time spent inside the engine's step() calls for one STEP message (all sub-steps
@@ -23,9 +24,13 @@ export const PHYSICS_STEP_STATS_SLOTS = {
    * main thread subtracts this from its own `performance.now()` to derive the
    * write-back/read-cadence latency. */
   STEP_END_AT: 2,
+  /** Awake dynamic bodies after the last sub-step (p352): a body kept awake shows here. */
+  AWAKE_BODIES: 3,
+  /** Sleeping dynamic bodies after the last sub-step (p352). */
+  SLEEPING_BODIES: 4,
 } as const;
 
-export const PHYSICS_STEP_STATS_FIELD_COUNT = 3;
+export const PHYSICS_STEP_STATS_FIELD_COUNT = 5;
 
 /** Allocates the backing buffer. SAB-only by design: this buffer exists purely as the
  * SHARED_MEMORY transport for the stats, so there is no non-SAB variant to fall back to. */

@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 
 import { ColliderAPI, RigidBodyAPI } from '../Physics/PhysicsAPITypes';
+import type { PhysicsSimTierData, PhysicsTierPolicyMemberData } from '../Physics/PhysicsTierTypes';
 import type { PhysicsWireframeColors } from '../Config';
 import { CoreComponentType as CoreType, EntityDebugData, ManagedByData } from './ECSRegistry';
 import { AppComponentData, AppComponentType as AppType } from '../../../AppECSRegistry';
@@ -54,6 +55,11 @@ export interface CoreComponentData {
   [CoreType.BODY_DYNAMIC_VISUAL]: RigidBodyAPI;
   [CoreType.BODY_DYNAMIC_HEADLESS]: RigidBodyAPI;
   [CoreType.BODY_STATIC]: RigidBodyAPI;
+  /** Set by requestPhysicsTier (PhysicsTiers.ts): don't add it directly. */
+  [CoreType.PHYSICS_SIM_TIER]: PhysicsSimTierData;
+  /** Added by createPhysicsEntity's `tierPolicy` option or setPhysicsTierPolicyMember
+   * (PhysicsTierPolicy.ts). */
+  [CoreType.PHYSICS_TIER_POLICY]: PhysicsTierPolicyMemberData;
   // Tags
   [CoreType.TAG_IS_MESH]: boolean;
   [CoreType.TAG_IS_GROUP]: boolean;

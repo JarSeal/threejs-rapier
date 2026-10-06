@@ -145,14 +145,17 @@ import {
   CreateJointResponse,
   DeleteJointResponse,
   JointIsValidResponse,
-  JointBody1IdResponse,
-  JointBody2IdResponse,
   JointAnchor1Response,
   JointAnchor2Response,
   JointContactsEnabledResponse,
   JointLimitsEnabledResponse,
   JointGetUserDataResponse,
   RigidBodyPose,
+  RigidDetachResponse,
+  RigidReadPositionsResponse,
+  RigidReattachResponse,
+  type PhysicsBodyActivity,
+  type RigidBodyAttachState,
 } from './Physics/PhysicsAPITypes';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 import {
@@ -218,6 +221,50 @@ let stepStatsFloats: Float64Array | undefined;
  * DEBUG_STATE_PUSH. */
 let debugStateBuffer: PhysicsDebugStateBuffer | undefined;
 
+/** Dynamic bodies awake and asleep after the last measured step (p352), mutated in place. Only
+ * meaningful while hasBodyActivity is set (a measured step has reported it). */
+const bodyActivity: PhysicsBodyActivity = { awake: 0, sleeping: 0 };
+let hasBodyActivity = false;
+
+/** Rigid body creates refused because the transform buffer was full (WORKER_THREAD), since boot. */
+let refusedBodyCount = 0;
+
+/**
+ * Rejection reason of a rigid body create that found every transform-buffer slot taken
+ * (`WORKER_THREAD` mode, p352): nothing of it was created. Raise `AppConfig.physics.maxBodies`,
+ * or create the bodies that never move as `FIXED` (they take no slot).
+ */
+export class PhysicsCapacityError extends Error {
+  constructor(public readonly maxBodies: number) {
+    super(
+      `Physics transform buffer full: all ${maxBodies} slots are taken (AppConfig.physics.maxBodies). FIXED bodies take no slot.`
+    );
+    this.name = 'PhysicsCapacityError';
+  }
+}
+
+/** Counts a refused create and throws its PhysicsCapacityError, if the worker refused it. */
+const throwIfCapacityExceeded = (capacityExceeded: number | undefined) => {
+  if (capacityExceeded === undefined) return;
+  refusedBodyCount++;
+  throw new PhysicsCapacityError(capacityExceeded);
+};
+
+/** Told the id of every rigid body moved by setTranslation/setRotation (p352). */
+let bodyMovedListener: ((rigidBodyId: number) => void) | null = null;
+
+/**
+ * Sets (or clears, with null) the one listener told the id of every rigid body moved by
+ * `setTranslation` / `setRotation`, in both worker targets. `BODY_STATIC` entities (bodies
+ * created `FIXED`, and dynamic ones in the `STATIC` or `DISABLED` physics tier) aren't synced to
+ * their entities every frame (p352), so PhysicsManager.ts uses this to bring such a move to the
+ * mesh. It's called for every move, so it must be cheap.
+ */
+export const setBodyMovedListener = (listener: ((rigidBodyId: number) => void) | null) => {
+  bodyMovedListener = listener;
+  engAPI?.setBodyMovedObserver(listener);
+};
+
 const rigidBodies = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
 const colliders = new Map<number, ColliderAPI>(); // { "Running id", ColliderAPI }
 const joints = new Map<number, JointAPI>(); // { "Running id", JointAPI }
@@ -249,6 +296,7 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
     engineInitiated = Boolean(engine);
     engAPI = engineAPI;
     engAPI.setQueryObserver(queryObserver);
+    engAPI.setBodyMovedObserver(bodyMovedListener);
     const worldOrUndefined = engAPI.init(
       physicsState,
       isDebugEnvironment(),
@@ -370,27 +418,41 @@ export const stepPhysics = (
     accDelta = 0;
     return 0;
   }
+  // Step gates (addPhysicsStepGate): unlike the limit, time keeps banking while one holds.
+  const stepsToGate = getLowestStepGate() - stepsIssued;
 
   const scaledDelta = dt * loopState.playSpeedMultiplier;
   accDelta +=
     physicsState.maxDeltaTime > 0 ? Math.min(scaledDelta, physicsState.maxDeltaTime) : scaledDelta;
 
+  const maxSteps = physicsState.maxSubSteps > 0 ? physicsState.maxSubSteps : Infinity;
   let stepsTaken = 0;
   while (
     accDelta >= physicsState.timestepRatio &&
-    (physicsState.maxSubSteps === 0 || stepsTaken < physicsState.maxSubSteps)
+    stepsTaken < maxSteps &&
+    stepsTaken < stepsToGate
   ) {
     accDelta -= physicsState.timestepRatio;
     stepsTaken++;
   }
-  // Hit the sub-step ceiling with backlog still left over: drop it instead of deferring it,
-  // so a sustained slowdown can't make the accumulator (and next frame's catch-up cost) grow
-  // without bound — the actual "prevent the spiral of death" behavior.
-  if (physicsState.maxSubSteps > 0 && stepsTaken >= physicsState.maxSubSteps) {
+  if (stepsTaken >= maxSteps) {
+    // Hit the sub-step ceiling with backlog still left over: drop it instead of deferring it,
+    // so a sustained slowdown can't make the accumulator (and next frame's catch-up cost) grow
+    // without bound — the actual "prevent the spiral of death" behavior.
     // Only a discontinuity if there was backlog to drop (sitting exactly at the ceiling isn't).
     if (accDelta >= physicsState.timestepRatio) simClockEpoch++;
     accDelta = 0;
+  } else if (accDelta >= physicsState.timestepRatio && stepsTaken >= stepsToGate) {
+    // Held at a gate with steps due: they wait in the accumulator and run once it's released,
+    // but never more of them than one frame could catch up (the ceiling above drops the rest).
+    const maxBacklog = maxSteps * physicsState.timestepRatio;
+    if (accDelta > maxBacklog) {
+      accDelta = maxBacklog;
+      simClockEpoch++;
+    }
+    noteStepGateHeld(true);
   }
+  if (stepsTaken > 0 && stepsTaken < stepsToGate) noteStepGateHeld(false);
   if (stepsTaken >= stepsToLimit) {
     stepsTaken = stepsToLimit;
     accDelta = 0;
@@ -402,21 +464,34 @@ export const stepPhysics = (
   const trackStats = physicsState.stepStatsEnabled;
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     let stepMs = 0;
-    for (let i = 0; i < stepsTaken; i++) {
-      if (onBeforeStep) onBeforeStep(stepDelta);
-      else flushPhysicsEvents();
-      if (!trackStats) {
+    try {
+      for (let i = 0; i < stepsTaken; i++) {
+        if (isSubStepGated(i, stepsTaken)) {
+          stepsTaken = i;
+          break;
+        }
+        subStepIndex = stepsIssued + i;
+        if (onBeforeStep) onBeforeStep(stepDelta);
+        else flushPhysicsEvents();
+        if (!trackStats) {
+          engAPI?.step();
+          continue;
+        }
+        // Timed around step() alone: onBeforeStep above runs app/ECS work, and including it
+        // would reproduce exactly the contamination that made the legacy PHY panel misleading.
+        const subStepStart = performance.now();
         engAPI?.step();
-        continue;
+        stepMs += performance.now() - subStepStart;
       }
-      // Timed around step() alone: onBeforeStep above runs app/ECS work, and including it
-      // would reproduce exactly the contamination that made the legacy PHY panel misleading.
-      const subStepStart = performance.now();
-      engAPI?.step();
-      stepMs += performance.now() - subStepStart;
+    } finally {
+      subStepIndex = -1;
     }
     if (trackStats) {
       lastPhysicsStepDurationMs = stepMs;
+      if (engAPI) {
+        engAPI.countDynamicBodyActivity(bodyActivity);
+        hasBodyActivity = true;
+      }
       // No thread boundary is crossed here, so there is no messaging overhead to report.
       lastPhysicsMessagingLatency = undefined;
       updatePhysicsPanel(stepMs);
@@ -427,12 +502,18 @@ export const stepPhysics = (
     if (onBeforeStep) {
       substepCommands = [];
       for (let i = 0; i < stepsTaken; i++) {
+        if (isSubStepGated(i, stepsTaken)) {
+          stepsTaken = i;
+          break;
+        }
         substepCommandCapture = [];
+        subStepIndex = stepsIssued + i;
         try {
           onBeforeStep(stepDelta);
         } finally {
           substepCommands.push(substepCommandCapture);
           substepCommandCapture = null;
+          subStepIndex = -1;
         }
       }
     }
@@ -473,6 +554,9 @@ const readSharedStepStats = () => {
     dispatchMs: stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.DISPATCH_MS],
     writeBackMs: performance.now() - stepEndAt,
   };
+  bodyActivity.awake = stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.AWAKE_BODIES];
+  bodyActivity.sleeping = stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.SLEEPING_BODIES];
+  hasBodyActivity = true;
   updatePhysicsPanel(lastPhysicsStepDurationMs);
 };
 
@@ -510,6 +594,30 @@ export const getLastPhysicsStepDuration = () => lastPhysicsStepDurationMs;
 export const getLastPhysicsStepMessagingLatency = () => lastPhysicsMessagingLatency;
 
 /**
+ * Dynamic bodies awake and asleep after the last measured physics step (p352): a body that
+ * should be resting but stays awake shows here. Measured with the step stats, so `undefined`
+ * while they are off and until a measured step has happened, like
+ * {@link getLastPhysicsStepDuration}. The returned object is reused: read it, don't keep it.
+ */
+export const getLastPhysicsBodyActivity = (): Readonly<PhysicsBodyActivity> | undefined =>
+  hasBodyActivity ? bodyActivity : undefined;
+
+/**
+ * The transform buffer's capacity (`WORKER_THREAD` mode, p352): slots taken by live non-fixed
+ * bodies, `AppConfig.physics.maxBodies`, and the creates refused since boot because it was
+ * full ({@link PhysicsCapacityError}). `undefined` in `MAIN_THREAD` mode, which has no buffer
+ * and no cap. Walks every body: for debug readouts, not per frame.
+ */
+export const getPhysicsBodyCapacity = () => {
+  if (physicsState.workerTarget !== 'WORKER_THREAD') return undefined;
+  let used = 0;
+  for (const rb of rigidBodies.values()) {
+    if (rb instanceof RigidBodyProxyAPI && rb.hasSlot) used++;
+  }
+  return { used, max: physicsState.maxBodies, refused: refusedBodyCount };
+};
+
+/**
  * Switches the physics step measurement ({@link getLastPhysicsStepDuration},
  * {@link getLastPhysicsStepMessagingLatency}) on or off at runtime. Its initial value is
  * `AppConfig.physics.stepStatsEnabled`. The debug "PHY" stats panel exists only when that boot
@@ -526,6 +634,7 @@ export const setPhysicsStepStatsEnabled = (enabled: boolean) => {
   if (enabled) {
     lastPhysicsStepDurationMs = undefined;
     lastPhysicsMessagingLatency = undefined;
+    hasBodyActivity = false;
     // The worker writes it only while measuring, which it isn't yet, so this can't race
     if (stepStatsFloats) stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.STEP_END_AT] = 0;
   }
@@ -737,6 +846,18 @@ const messageWorkerAsync = async <T>(message: PhysicsUpProtocol) =>
     worker.postMessage({ ...message, requestId });
   });
 
+/** A request that runs where a one-way command would (messageWorker): inside an APP_PHYSICS_STEP
+ * sub-step it's captured and replayed right before that sub-step, and the worker replies from
+ * the replay. So what it does lands on a fixed step, not on the frame's first one (p352). */
+const messageWorkerAtStep = async <T>(message: PhysicsUpProtocol) => {
+  if (!substepCommandCapture) return messageWorkerAsync<T>(message);
+  const capture = substepCommandCapture;
+  return new Promise<T>((resolve) => {
+    const requestId = createNewResolver(resolve);
+    capture.push(structuredClone({ ...message, requestId }));
+  });
+};
+
 const onWorkerError = (err: ErrorEvent) => {
   lerror(`Physics worker error: ${err.message}`);
 };
@@ -763,6 +884,11 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
         dispatchMs: data.dispatchMs ?? 0,
         writeBackMs: data.stepEndAt !== undefined ? performance.now() - data.stepEndAt : 0,
       };
+      if (data.awakeBodies !== undefined && data.sleepingBodies !== undefined) {
+        bodyActivity.awake = data.awakeBodies;
+        bodyActivity.sleeping = data.sleepingBodies;
+        hasBodyActivity = true;
+      }
       // The panel shows the pure step time only — never step + messaging overhead.
       updatePhysicsPanel(data.stepDuration);
     }
@@ -965,6 +1091,9 @@ const stampStepBatch = (stepsTaken: number) => {
  * worker's own count does at CREATE_WORLD). */
 const resetSimClock = () => {
   stepsIssued = 0;
+  // A gate's step is the old world's: it would hold the new one at a step it has nothing for
+  stepGates.clear();
+  noteStepGateHeld(false);
   snapshotPhaseStep.fill(-1);
   simClockEpoch++;
   simHistoryEpoch++;
@@ -1034,6 +1163,89 @@ export const setPhysicsStepLimit = (steps: number | null) => {
   stepLimit = steps === null ? null : stepsIssued + Math.max(0, Math.floor(steps));
   return stepLimit;
 };
+
+/** The sub-step stepPhysics() is in (see getPhysicsSubStepIndex), -1 outside of one. */
+let subStepIndex = -1;
+
+/**
+ * Inside a sub-step's `APP_PHYSICS_STEP` systems (stepPhysics' onBeforeStep), the index of the
+ * fixed step about to run: the steps run on the current world before it, the same in both worker
+ * targets. The first step of a world is 0, and a write made in step `k` is in the snapshot
+ * stamped `k + 1` (getPhysicsSnapshotStepIndex) and after. -1 outside a sub-step. A step clock
+ * for systems that must decide on fixed steps (p343: the deterministic tier policy).
+ */
+export const getPhysicsSubStepIndex = () => subStepIndex;
+
+/** Held step gates (addPhysicsStepGate): gate id → the step index they hold stepping before. */
+const stepGates = new Map<number, number>();
+let nextStepGateId = 1;
+
+const getLowestStepGate = () => {
+  if (!stepGates.size) return Infinity;
+  let lowest = Infinity;
+  for (const step of stepGates.values()) if (step < lowest) lowest = step;
+  return lowest;
+};
+
+/** How often and how long gates held stepping back (getPhysicsStepGateStats). */
+const stepGateStats = { waits: 0, heldMs: 0 };
+let stepGateHeldSince: number | null = null;
+
+/** Called by stepPhysics: `held` when a gate cut a frame's steps, false once a frame wasn't. */
+const noteStepGateHeld = (held: boolean) => {
+  if (held) {
+    if (stepGateHeldSince !== null) return;
+    stepGateHeldSince = performance.now();
+    stepGateStats.waits++;
+    return;
+  }
+  if (stepGateHeldSince === null) return;
+  stepGateStats.heldMs += performance.now() - stepGateHeldSince;
+  stepGateHeldSince = null;
+};
+
+/**
+ * Whether sub-step `i` of a batch of `stepsTaken` is held by a gate an earlier sub-step of the
+ * same batch added (p343: a measurement whose reply its decision step needs). The batch then ends
+ * before it, and its remaining steps go back to the accumulator, to run once the gate opens.
+ */
+const isSubStepGated = (i: number, stepsTaken: number) => {
+  if (!stepGates.size || stepsIssued + i < getLowestStepGate()) return false;
+  accDelta += (stepsTaken - i) * physicsState.timestepRatio;
+  noteStepGateHeld(true);
+  return true;
+};
+
+/**
+ * Holds stepping before the fixed step `step` (a getPhysicsSubStepIndex index): stepPhysics()
+ * issues no sub-step with an index of `step` or more until the returned function is called. With
+ * several gates the lowest holds. For work that must finish before a given step runs, eg. a worker
+ * reply a decision on that step needs (p343). A gate at a step already issued holds from the next.
+ * One added by an `APP_PHYSICS_STEP` system also cuts the frame's batch it was added in.
+ *
+ * Unlike the debug step limit, time keeps accumulating while a gate holds, so a short hold is
+ * caught up on the next frames (at most `maxSubSteps` steps of it; more is dropped as a frame over
+ * the ceiling would). A new physics world (a scene load) drops every gate, and their release
+ * functions do nothing then.
+ */
+export const addPhysicsStepGate = (step: number): (() => void) => {
+  const id = nextStepGateId++;
+  stepGates.set(id, step);
+  return () => {
+    stepGates.delete(id);
+  };
+};
+
+/**
+ * Since boot: `waits`, how many times a gate held back steps that were due, and `heldMs`, for how
+ * long in total (wall clock, until a frame stepped without being cut). A hold still going counts
+ * up to now.
+ */
+export const getPhysicsStepGateStats = () => ({
+  waits: stepGateStats.waits,
+  heldMs:
+    stepGateStats.heldMs + (stepGateHeldSince === null ? 0 : performance.now() - stepGateHeldSince),
+});
 
 /**
  * Fixed physics sub-steps issued since boot, over every world (WORKER_THREAD: sent, possibly not
@@ -1266,6 +1478,7 @@ export const createRigidBody = async (params: RigidBodyParams) => {
       type: PhysicsProtocolType.CREATE_RIGID_BODY,
       params,
     });
+    throwIfCapacityExceeded(res.capacityExceeded);
     const rbAPI = new RigidBodyProxyAPI(
       res.id,
       res.slot,
@@ -1321,6 +1534,7 @@ export const createRigidBodies = async (params: RigidBodyParams[]) => {
       type: PhysicsProtocolType.CREATE_RIGID_BODIES,
       params,
     });
+    throwIfCapacityExceeded(res.capacityExceeded);
     existsOrThrow(
       res.ids.length,
       `Could not create a rigid bodies ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
@@ -1545,6 +1759,103 @@ export const deleteRigidBodiesSync = (ids: number[]) => {
   return deletedIds;
 };
 
+/**
+ * Engine internal, for the REMOVED physics tier (p352, PhysicsTiers.ts): takes a body and its
+ * colliders out of the world with their state, ids and proxies kept (engine side), and frees
+ * its transform-buffer slot. Resolves with its pose, or undefined when nothing was detached or
+ * a later detach/reattach of the body has overtaken this one. In WORKER_THREAD mode, called
+ * from an APP_PHYSICS_STEP system, it runs right before that sub-step.
+ */
+export const detachRigidBody = async (id: number): Promise<RigidBodyPose | undefined> => {
+  if (!physicsWorldEnabled) return undefined;
+  if (physicsState.workerTarget === 'MAIN_THREAD') return detachRigidBodySync(id);
+  const rb = rigidBodies.get(id);
+  if (!(rb instanceof RigidBodyProxyAPI)) return undefined;
+  const generation = rb._detach();
+  const res = await messageWorkerAtStep<RigidDetachResponse>({
+    type: PhysicsProtocolType.RIGID_DETACH,
+    id,
+  });
+  return rb._isAttachGeneration(generation) ? res.pose : undefined;
+};
+
+/** detachRigidBody (sync). Only for main thread mode. */
+export const detachRigidBodySync = (id: number) => {
+  if (physicsState.workerTarget !== 'MAIN_THREAD') {
+    throw new Error('Cannot use detachRigidBodySync in worker mode. Use detachRigidBody instead.');
+  }
+  return physicsWorldEnabled ? engAPI?.detachRigidBody(id) : undefined;
+};
+
+/**
+ * Engine internal (p352): puts a detached body (detachRigidBody) back, as it was detached
+ * except for `state`. Resolves with its pose, or undefined when it wasn't detached or a later
+ * detach/reattach has overtaken this one. Rejects with a PhysicsCapacityError when a
+ * WORKER_THREAD world's transform buffer is full: the body stays detached. Runs at the sub-step
+ * like detachRigidBody.
+ */
+export const reattachRigidBody = async (
+  id: number,
+  state: RigidBodyAttachState
+): Promise<RigidBodyPose | undefined> => {
+  if (!physicsWorldEnabled) return undefined;
+  if (physicsState.workerTarget === 'MAIN_THREAD') return reattachRigidBodySync(id, state);
+  const rb = rigidBodies.get(id);
+  if (!(rb instanceof RigidBodyProxyAPI)) return undefined;
+  const generation = rb._beginReattach();
+  const res = await messageWorkerAtStep<RigidReattachResponse>({
+    type: PhysicsProtocolType.RIGID_REATTACH,
+    id,
+    state,
+  });
+  if (!rb._isAttachGeneration(generation)) return undefined;
+  throwIfCapacityExceeded(res.capacityExceeded);
+  if (!res.pose) return undefined;
+  rb._attach(res.slot, res.pose);
+  return res.pose;
+};
+
+/** reattachRigidBody (sync). Only for main thread mode, which has no capacity limit. */
+export const reattachRigidBodySync = (id: number, state: RigidBodyAttachState) => {
+  if (physicsState.workerTarget !== 'MAIN_THREAD') {
+    throw new Error(
+      'Cannot use reattachRigidBodySync in worker mode. Use reattachRigidBody instead.'
+    );
+  }
+  return physicsWorldEnabled ? engAPI?.reattachRigidBody(id, state) : undefined;
+};
+
+/**
+ * The bodies' translations (x, y, z per id, in order; NaN for an unknown id; a REMOVED-tier body
+ * where it was taken out), read on a fixed step: called from an APP_PHYSICS_STEP system, they
+ * are read right before that sub-step runs, in both worker targets, so both get the same values
+ * (Rapier's own f32). MAIN_THREAD reads at the call; WORKER_THREAD resolves with the worker's
+ * reply, a frame or more later. Outside a sub-step the worker reads before the frame's first
+ * step. Without a world it resolves with NaNs. For p343's deterministic tier policy.
+ */
+export const readBodyPositionsAtStep = async (ids: number[]): Promise<Float32Array> => {
+  if (!physicsWorldEnabled) return new Float32Array(ids.length * 3).fill(NaN);
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    return readBodyPositionsSync(ids, new Float32Array(ids.length * 3));
+  }
+  const res = await messageWorkerAtStep<RigidReadPositionsResponse>({
+    type: PhysicsProtocolType.RIGID_READ_POSITIONS,
+    ids,
+  });
+  return res.positions;
+};
+
+/** readBodyPositionsAtStep (sync), into `out` (3 floats per id). Only for main thread mode. */
+export const readBodyPositionsSync = (ids: ArrayLike<number>, out: Float32Array) => {
+  if (physicsState.workerTarget !== 'MAIN_THREAD') {
+    throw new Error(
+      'Cannot use readBodyPositionsSync in worker mode. Use readBodyPositionsAtStep instead.'
+    );
+  }
+  if (!physicsWorldEnabled || !engAPI) return out.fill(NaN);
+  return engAPI.readBodyPositions(ids, out);
+};
+
 /** Strips collisionEventFn/contactForceEventFn from a ColliderParams before it crosses
  * the postMessage boundary (functions can't be structured-cloned — this is what would
  * otherwise throw DataCloneError), replacing them with the boolean flags EngineRapier.ts
@@ -1608,6 +1919,7 @@ export const createRigidBodyWithColliders = async (
       rigidBody: rigidBodyParams,
       colliders: colliderParams.map(toWireColliderParams),
     });
+    throwIfCapacityExceeded(res.capacityExceeded);
     let rigidBody: RigidBodyAPI | undefined;
     if (rigidBodyParams && res.id !== undefined) {
       rigidBody = new RigidBodyProxyAPI(
@@ -1912,7 +2224,12 @@ export const createJoint = async (params: JointParams) => {
       type: PhysicsProtocolType.CREATE_JOINT,
       params,
     });
-    const jointProxy = new JointProxyAPI(res.id, params.userData) as JointAPI;
+    const jointProxy = new JointProxyAPI(
+      res.id,
+      params.body1Id,
+      params.body2Id,
+      params.userData
+    ) as JointAPI;
     joints.set(res.id, jointProxy);
     return jointProxy;
   }
@@ -1992,6 +2309,15 @@ export const deleteJointSync = (id: number, wakeUp?: boolean) => {
   }
   return deletedId;
 };
+
+/** Calls `fn` with the two body ids of every live impulse joint, synchronously in both worker
+ * targets (p352's joint groups). */
+export const forEachJointBodyPair = (fn: (body1Id: number, body2Id: number) => void) => {
+  for (const joint of joints.values()) fn(joint.body1IdSync(), joint.body2IdSync());
+};
+
+/** Whether any impulse joint exists, so a joint walk can be skipped. */
+export const hasJoints = () => joints.size > 0;
 
 export const getRigidBody = (id: number) => rigidBodies.get(id);
 export const getCollider = (id: number) => colliders.get(id);
@@ -2598,6 +2924,9 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   private pendingAvel?: PendingWrite<PhysVector>;
   /** Last known mass, for reflecting applyImpulse locally (refreshed by every mass() call) */
   private cachedMass?: number;
+  /** A body without a slot (created FIXED, p352) is never written back: it keeps its pose here
+   * instead, its creation pose updated by every setTranslation/setRotation, for good. */
+  private staticPose?: RigidBodyPose;
 
   constructor(
     public id: number,
@@ -2609,16 +2938,58 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     initialPose?: RigidBodyPose
   ) {
     if (userData) this.uData = userData;
-    if (initialPose) {
+    if (initialPose && slot === -1) {
+      this.staticPose = { pos: { ...initialPose.pos }, rot: { ...initialPose.rot } };
+    } else if (initialPose) {
       const visibleAt = getWriteVisibleStep();
       this.pendingPos = { value: { ...initialPose.pos }, visibleAt };
       this.pendingRot = { value: { ...initialPose.rot }, visibleAt };
     }
   }
 
+  /** Whether the body holds a transform-buffer slot (every body not created FIXED, unless it's
+   * detached by the REMOVED physics tier). */
+  get hasSlot() {
+    return this.slot !== -1;
+  }
+
+  /** Bumped by every detach and reattach (p352), so a reply to an older one is ignored. */
+  private attachGeneration = 0;
+
+  /** @internal detachRigidBody: the slot is the worker's to reuse from now on. Returns the
+   * detach's generation. */
+  _detach() {
+    this.slot = -1;
+    this.pendingPos = undefined;
+    this.pendingRot = undefined;
+    this.pendingLvel = undefined;
+    this.pendingAvel = undefined;
+    return ++this.attachGeneration;
+  }
+
+  /** @internal reattachRigidBody, before its request. Returns the reattach's generation. */
+  _beginReattach() {
+    return ++this.attachGeneration;
+  }
+
+  /** @internal Whether no detach/reattach has been requested since `generation`'s. */
+  _isAttachGeneration(generation: number) {
+    return this.attachGeneration === generation;
+  }
+
+  /** @internal reattachRigidBody's reply: the new slot, and its pose read until a transform
+   * write-back includes it (as at creation). */
+  _attach(slot: number, pose: RigidBodyPose) {
+    this.slot = slot;
+    const visibleAt = getWriteVisibleStep();
+    this.pendingPos = { value: { ...pose.pos }, visibleAt };
+    this.pendingRot = { value: { ...pose.rot }, visibleAt };
+  }
+
   // Hot path — reads straight from the shared/latest-pushed transform buffer by slot.
   // Returns zeroed defaults if no buffer has arrived yet (before the first step/push).
   get pos(): PhysVector {
+    if (this.staticPose) return { ...this.staticPose.pos };
     if (this.pendingPos) {
       if (isWritePending(this.pendingPos.visibleAt)) return { ...this.pendingPos.value };
       this.pendingPos = undefined;
@@ -2627,6 +2998,7 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     return transformBuffer.getPosition(this.slot);
   }
   get rot(): PhysRotation {
+    if (this.staticPose) return { ...this.staticPose.rot };
     if (this.pendingRot) {
       if (isWritePending(this.pendingRot.visibleAt)) return { ...this.pendingRot.value };
       this.pendingRot = undefined;
@@ -2635,6 +3007,17 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     return transformBuffer.getRotation(this.slot);
   }
   readPoseInto(out: PoseArray, offset = 0): void {
+    const staticPose = this.staticPose;
+    if (staticPose) {
+      out[offset] = staticPose.pos.x;
+      out[offset + 1] = staticPose.pos.y;
+      out[offset + 2] = staticPose.pos.z;
+      out[offset + 3] = staticPose.rot.x;
+      out[offset + 4] = staticPose.rot.y;
+      out[offset + 5] = staticPose.rot.z;
+      out[offset + 6] = staticPose.rot.w;
+      return;
+    }
     if (this.pendingPos && !isWritePending(this.pendingPos.visibleAt)) this.pendingPos = undefined;
     if (this.pendingRot && !isWritePending(this.pendingRot.visibleAt)) this.pendingRot = undefined;
     if (transformBuffer && this.slot !== -1) {
@@ -2903,10 +3286,18 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   }
 
   setTranslation(tra: PhysVector, wakeUp: boolean): void {
-    this.pendingPos = {
-      value: { x: tra.x, y: tra.y, z: tra.z },
-      visibleAt: getWriteVisibleStep(),
-    };
+    if (this.staticPose) {
+      const pos = this.staticPose.pos;
+      pos.x = tra.x;
+      pos.y = tra.y;
+      pos.z = tra.z;
+    } else {
+      this.pendingPos = {
+        value: { x: tra.x, y: tra.y, z: tra.z },
+        visibleAt: getWriteVisibleStep(),
+      };
+    }
+    bodyMovedListener?.(this.id);
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_TRANSLATION,
       rigidBodyId: this.id,
@@ -2952,7 +3343,12 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   }
 
   setRotation(rot: PhysRotation, wakeUp: boolean): void {
-    this.pendingRot = { value: toPlainRot(rot), visibleAt: getWriteVisibleStep() };
+    if (this.staticPose) {
+      this.staticPose.rot = toPlainRot(rot);
+    } else {
+      this.pendingRot = { value: toPlainRot(rot), visibleAt: getWriteVisibleStep() };
+    }
+    bodyMovedListener?.(this.id);
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_ROTATION,
       rigidBodyId: this.id,
@@ -3905,6 +4301,8 @@ class JointProxyAPI implements JointAPI {
 
   constructor(
     public id: number,
+    private _body1Id: number,
+    private _body2Id: number,
     userData?: Record<string, unknown>
   ) {
     if (userData) this.uData = userData;
@@ -3945,27 +4343,19 @@ class JointProxyAPI implements JointAPI {
     throw new Error('Sync isValid not supported on Proxy');
   }
 
+  // A joint's bodies never change, so they're known here from its creation params (p352: joint
+  // groups are resolved on the main thread) and need no round trip.
   async body1Id(): Promise<number> {
-    return (
-      await messageWorkerAsync<JointBody1IdResponse>({
-        type: PhysicsProtocolType.JOINT_BODY1_ID,
-        jointId: this.id,
-      })
-    ).body1Id;
+    return this._body1Id;
   }
   body1IdSync(): number {
-    throw new Error('Sync body1Id not supported on Proxy');
+    return this._body1Id;
   }
   async body2Id(): Promise<number> {
-    return (
-      await messageWorkerAsync<JointBody2IdResponse>({
-        type: PhysicsProtocolType.JOINT_BODY2_ID,
-        jointId: this.id,
-      })
-    ).body2Id;
+    return this._body2Id;
   }
   body2IdSync(): number {
-    throw new Error('Sync body2Id not supported on Proxy');
+    return this._body2Id;
   }
 
   async anchor1(): Promise<PhysVector> {

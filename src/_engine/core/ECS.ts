@@ -664,7 +664,7 @@ export class ECSWorld {
     const { pos, rot, resetVelocity, resetForces, doNotWakeUp } = tra;
 
     const transform = this.getComponent(entityId, ComponentType.TRANSFORM);
-    const rb = this.getRigidBody(entityId);
+    const rb = this._getWritableBody(entityId);
 
     // Update Physics (Worker or Main thread)
     if (rb) {
@@ -674,7 +674,7 @@ export class ECSWorld {
       if (pos) rb.setTranslation(pos, wakeUp);
       if (rot) rb.setRotation(rot, wakeUp);
 
-      if (this.isEntityDynamic(entityId)) {
+      if (this._hasDynamicBody(entityId)) {
         this._resetBodyState(rb, Boolean(resetVelocity), Boolean(resetForces), wakeUp);
       }
     }
@@ -711,10 +711,10 @@ export class ECSWorld {
     linvel?: { x: number; y: number; z: number },
     angvel?: { x: number; y: number; z: number }
   ): void {
-    const rb = this.getRigidBody(entityId);
+    const rb = this._getWritableBody(entityId);
 
     // Static bodies cannot have velocity; we only act if it's dynamic
-    if (rb && this.isEntityDynamic(entityId)) {
+    if (rb && this._hasDynamicBody(entityId)) {
       if (linvel) rb.setLinvel(linvel, true);
       if (angvel) rb.setAngvel(angvel, true);
     }
@@ -768,16 +768,18 @@ export class ECSWorld {
       wakeUp?: boolean;
     }
   ): void {
-    // Handle Physics
-    const rb = this.getRigidBody(entityId);
+    // Handle Physics (a REMOVED physics tier body comes back with the entity's enabled state)
+    const rb = this._getWritableBody(entityId);
     if (rb) {
       const resetVelocity = opts?.resetVelocity === undefined ? true : opts.resetVelocity;
       const resetForces = opts?.resetForces === undefined ? true : opts.resetForces;
       const wakeUp = opts?.wakeUp === undefined ? true : opts.wakeUp;
 
-      rb.setEnabled(!disabled);
+      // A body in the DISABLED physics tier stays disabled (PhysicsTiers.ts applies the same rule)
+      const tier = this.getComponent(entityId, ComponentType.PHYSICS_SIM_TIER)?.tier;
+      rb.setEnabled(!disabled && tier !== 'DISABLED');
 
-      if (this.isEntityDynamic(entityId)) {
+      if (this._hasDynamicBody(entityId)) {
         this._resetBodyState(rb, Boolean(resetVelocity), Boolean(resetForces), wakeUp);
       }
     }
@@ -808,6 +810,24 @@ export class ECSWorld {
     return (
       this.hasComponent(entityId, ComponentType.BODY_DYNAMIC_VISUAL) ||
       this.hasComponent(entityId, ComponentType.BODY_DYNAMIC_HEADLESS)
+    );
+  }
+
+  /** The body to write to: the entity's, and also one that is back in the world from the
+   * REMOVED physics tier but whose bucket component isn't yet (WORKER_THREAD, in flight; the
+   * worker applies writes in order). None while REMOVED: there's no body in the world. */
+  private _getWritableBody(entityId: number): RigidBodyAPI | undefined {
+    const rb = this.getRigidBody(entityId);
+    if (rb) return rb;
+    const tier = this.getComponent(entityId, ComponentType.PHYSICS_SIM_TIER);
+    return tier && tier.tier !== 'REMOVED' ? tier.body : undefined;
+  }
+
+  /** A dynamic body, also while a STATIC or DISABLED physics tier has it in BODY_STATIC (only
+   * dynamic bodies get tiers): its velocities are its own, so resets apply to it. */
+  private _hasDynamicBody(entityId: number): boolean {
+    return (
+      this.isEntityDynamic(entityId) || this.hasComponent(entityId, ComponentType.PHYSICS_SIM_TIER)
     );
   }
 

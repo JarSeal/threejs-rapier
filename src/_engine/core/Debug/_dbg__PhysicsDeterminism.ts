@@ -3,7 +3,9 @@
 // same scene and N, so a fresh load and a revisit (or two worker targets) can be compared.
 //
 // Arm with `?physicsProbe=N` (armed from the first scene on) or from the Physics API debug tab.
-// Once armed, it re-runs on every scene enter until disarmed.
+// Once armed, it re-runs on every scene enter until disarmed. While armed, a FRAMES physics tier
+// policy (PhysicsTierPolicy.ts) is frozen: it runs on frames and often follows the camera. A STEPS
+// one isn't: it's deterministic, so the probe tests it (p343).
 
 import { getECSWorld, getStableAppId } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
@@ -15,6 +17,8 @@ import {
   setPhysicsStepLimit,
 } from '../PhysicsAPI';
 import type { RigidBodyAPI } from '../Physics/PhysicsAPITypes';
+import type { PhysicsTier } from '../Physics/PhysicsTierTypes';
+import { DETERMINISM_PROBE_FREEZE_SOURCE, setPhysicsTierPolicyFrozen } from '../PhysicsTierPolicy';
 import { getCurrentSceneId, registerOnAllSceneEnterings, registerOnAllSceneExits } from '../Scene';
 import { getCharacters } from '../Character';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
@@ -28,7 +32,8 @@ type ProbeBody = {
   key: string;
   name: string;
   entityId: number;
-  /** Float32-rounded [pos xyz, rot xyzw, linvel xyz, angvel xyz] */
+  /** Float32-rounded [pos xyz, rot xyzw, linvel xyz, angvel xyz], plus the physics tier's index
+   * (TIER_INDEX) for an entity that has one, so scenes without tiers keep their hashes */
   values: number[];
 };
 
@@ -97,7 +102,19 @@ const readBodyValues = (rb: RigidBodyAPI) => {
   ].map(Math.fround);
 };
 
-/** Dynamic bodies (characters split out), keyed by appId or by creation order. */
+const TIER_INDEX: Record<PhysicsTier, number> = { FULL: 0, STATIC: 1, DISABLED: 2, REMOVED: 3 };
+
+/** A REMOVED entity's values: its kept pose (shown by its transform) and no velocities, which
+ * the engine keeps for it but the main thread can't read. */
+const readRemovedValues = (entityId: number) => {
+  const transform = getECSWorld().getComponent(entityId, ComponentType.TRANSFORM);
+  if (!transform) return [];
+  const { position: p, quaternion: q } = transform;
+  return [p.x, p.y, p.z, q.x, q.y, q.z, q.w].map(Math.fround);
+};
+
+/** Dynamic bodies (characters split out), keyed by appId or by creation order. Bodies a physics
+ * tier froze into BODY_STATIC or took out of the world (REMOVED) count too. */
 const collectBodies = () => {
   const world = getECSWorld();
   const characterEntityIds = new Set(getCharacters(world).map((c) => c.entityId));
@@ -105,19 +122,35 @@ const collectBodies = () => {
   const keyless: { body: ProbeBody; rbId: number }[] = [];
   const characters: ProbeBody[] = [];
 
-  const collect = (storage: IComponentStorage<RigidBodyAPI>) => {
+  const add = (entityId: number, rbId: number, values: number[]) => {
+    const appId = getStableAppId(entityId, world);
+    const name = world.getComponent(entityId, ComponentType.OBJECT3D)?.value.name ?? '';
+    const body = { key: appId ?? '', name, entityId, values };
+    if (characterEntityIds.has(entityId)) characters.push({ ...body, key: appId ?? name });
+    else if (appId) keyed.push(body);
+    else keyless.push({ body, rbId });
+  };
+  const collect = (storage: IComponentStorage<RigidBodyAPI>, tieredOnly?: boolean) => {
     for (const entityId of storage.keys()) {
+      const tier = world.getComponent(entityId, ComponentType.PHYSICS_SIM_TIER)?.tier;
+      if (tieredOnly && !tier) continue;
       const rb = storage.get(entityId)!;
-      const appId = getStableAppId(entityId, world);
-      const name = world.getComponent(entityId, ComponentType.OBJECT3D)?.value.name ?? '';
-      const body = { key: appId ?? '', name, entityId, values: readBodyValues(rb) };
-      if (characterEntityIds.has(entityId)) characters.push({ ...body, key: appId ?? name });
-      else if (appId) keyed.push(body);
-      else keyless.push({ body, rbId: rb.id });
+      const values = readBodyValues(rb);
+      // Not for FULL: a body back from another tier hashes like one that never left
+      if (tier && tier !== 'FULL') values.push(TIER_INDEX[tier]);
+      add(entityId, rb.id, values);
     }
   };
   collect(world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL));
   collect(world.getStorage(ComponentType.BODY_DYNAMIC_HEADLESS));
+  collect(world.getStorage(ComponentType.BODY_STATIC), true);
+  // REMOVED, and in flight back from it (no bucket yet: hashed as removed)
+  const tiers = world.getStorage(ComponentType.PHYSICS_SIM_TIER);
+  for (const entityId of tiers.keys()) {
+    if (world.getRigidBody(entityId)) continue;
+    const data = tiers.get(entityId)!;
+    add(entityId, data.body.id, [...readRemovedValues(entityId), TIER_INDEX.REMOVED]);
+  }
 
   keyed.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   keyless.sort((a, b) => a.rbId - b.rbId);
@@ -255,12 +288,14 @@ const startRun = (steps: number) => {
  * on every scene enter. */
 export const armPhysicsDeterminismProbe = (steps: number) => {
   armedSteps = steps;
+  setPhysicsTierPolicyFrozen(true, DETERMINISM_PROBE_FREEZE_SOURCE, getECSWorld());
   startRun(steps);
 };
 
 /** Disarms the probe and releases the step freeze. */
 export const disarmPhysicsDeterminismProbe = () => {
   armedSteps = null;
+  setPhysicsTierPolicyFrozen(false, DETERMINISM_PROBE_FREEZE_SOURCE, getECSWorld());
   stopRun();
 };
 
@@ -269,7 +304,10 @@ export const getPhysicsDeterminismProbeSteps = () => armedSteps;
 export const _initPhysicsDeterminismProbe = () => {
   const param = new URLSearchParams(window.location.search).get(URL_PARAM);
   const steps = param ? parseInt(param, 10) : NaN;
-  if (Number.isFinite(steps) && steps > 0) armedSteps = steps;
+  if (Number.isFinite(steps) && steps > 0) {
+    armedSteps = steps;
+    setPhysicsTierPolicyFrozen(true, DETERMINISM_PROBE_FREEZE_SOURCE, getECSWorld());
+  }
 
   registerOnAllSceneEnterings('physicsDeterminismProbe', () => {
     if (armedSteps !== null) startRun(armedSteps);

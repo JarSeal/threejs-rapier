@@ -30,6 +30,7 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 - **Physics API**: an engine-agnostic facade with Rapier as the backend. It covers rigid bodies, colliders (including heightfields and imported mesh colliders), impulse joints, ray casts and shape casts, contact and collision events, and fixed-timestep stepping with render interpolation.
 - **Threaded physics**: `WORKER_THREAD` or `MAIN_THREAD` mode. The worker syncs every body's transform through one shared buffer per frame, never one message per body. The buffer is a lock-free triple buffer, so every system in a frame reads the same complete physics step.
 - **Deterministic scene loads**: physics is held during a scene load, the world is recreated fresh, and stepping resumes only after every body exists.
+- **Physics simulation tiers**: a large world doesn't keep every body simulated. A dynamic body can be frozen in place but still collidable, disabled, or taken out of the physics world with its state kept, and comes back where it left off. A distance policy picks each body's tier from rings around a focus (the camera, an entity or a point), on fixed physics steps, so a scene driven by it stays deterministic in both thread modes.
 - **Scene system**: JSON scenes with per-scene overrides (`__saveData`), a customizable scene loader with progress callbacks, and persistent or scene-scoped entities.
 - **Assets**: glTF/GLB import (with meshopt and Draco), textures (including KTX2), HDR environment maps, per-scene asset ownership and release, and optional worker-thread loading.
 - **LOD chains**: `generateLodChain` simplifies a registered geometry into a chain of lighter levels with meshoptimizer, in the asset worker. Each level records its triangle count and error, and shares the base's vertex buffer (only its index differs) unless asked for its own. Material groups are kept, and the chain is released with its base geometry. An imported asset asks for chains with `"lodChain": true` in its JSON: the asset pipeline builds them into the optimized GLB, so the client loads them instead of simplifying (and generates them after the load when the mesh isn't optimized). A mesh with `lod: "AUTO"` uses its chain's levels.
@@ -62,7 +63,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 - A **debug fly camera** (`F1`), an axes gizmo (`F10`), an environment ball (`F9`) and a debug scene loader.
 - **Editor views**, switched from the top on-screen tools: an editor takes over the whole canvas with its own scene, orbit camera and drawers, while the game scene is suspended and resumes exactly where it was. The first is the **material editor**: every project material on a preview ball in a studio stage, picked from a filterable list. Its params and TSL inputs are edited live with undo/redo, and each material's edits, stage settings and camera pose, and the editor's layout, are kept over reloads.
 - **Undo/redo** for changes made in the debugger.
-- **Physics visualizers**: collider wireframes colored by body state, ray helpers, and query statistics.
+- **Physics visualizers**: collider wireframes colored by body state and simulation tier, ray helpers, query statistics, and live body, slot and tier counts.
 - **Edit windows per entity** (lights, cameras, ECS worlds, PostFX passes, physics entities, assets, characters), several open at a time, kept over reloads and scene changes. Double-clicking a window's header (or the Debug tools tab's "Center and fit all windows") brings windows back to the top of the screen, fitted to it.
 - **Ray tester windows** for firing Three.js or physics rays at the scene.
 - A **character state window** per character, showing its live data grouped and formatted, with freeze and copy. Its configuration values can be **edited live** (with undo, reset, copy-out as code and saving across reloads). It also toggles in-world **character gizmos** for the vectors and probes its controller decides from (velocity, facing, ground normal, floor ray and sensor, wall cast, trail), which can be pinned to stay after the window closes.
@@ -347,7 +348,7 @@ const config: AppConfig = {
 };
 ```
 
-The example scenes in [`src/app/`](src/app/) cover more: a physics and joints test, a large procedural world with instancing and culling, a third-person character gym, a top-down character scene (world-fixed controls, hills, and sun shadows fitted to the view), and an ECS stress test.
+The example scenes in [`src/app/`](src/app/) cover more: a physics and joints test, a physics simulation tiers demo (686 crates and a plough), a large procedural world with instancing and culling, a third-person character gym, a top-down character scene (world-fixed controls, hills, and sun shadows fitted to the view), and an ECS stress test.
 
 ---
 

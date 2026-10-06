@@ -43,7 +43,8 @@ export function createPhysicsTransformArrayBuffer(
 /**
  * Physics-owned per-frame transform hot path. Interleaved layout
  * ([posX, posY, posZ, rotX, rotY, rotZ, rotW, linvelXYZ, angvelXYZ] x maxBodies), one slot per
- * live rigid body, in one or more banks laid out as [slots][header].
+ * live rigid body that isn't created `FIXED` (a fixed body never moves under simulation, so its
+ * proxy keeps its own pose instead, p352), in one or more banks laid out as [slots][header].
  *
  * The worker is the allocation authority (allocateSlot/freeSlot tie to rigid
  * body creation/deletion there) and writes into it after every step(). The
@@ -171,7 +172,8 @@ export class PhysicsTransformBuffer {
     return Atomics.load(this.readHeader, HEADER_STEP_INDEX);
   }
 
-  /** Allocates (or returns the existing) slot for a rigid body id. Worker-side only. */
+  /** Allocates (or returns the existing) slot for a rigid body id, or returns -1 when all
+   * `maxBodies` slots are taken (the caller refuses the body). Worker-side only. */
   allocateSlot(id: number): number {
     const existing = this.slotById.get(id);
     if (existing !== undefined) return existing;
@@ -186,11 +188,7 @@ export class PhysicsTransformBuffer {
     } else {
       slot = this.liveCount;
     }
-    if (slot >= this.maxBodies) {
-      throw new Error(
-        `PhysicsTransformBuffer capacity (${this.maxBodies}) exceeded — raise AppConfig.physics.maxBodies`
-      );
-    }
+    if (slot >= this.maxBodies) return -1;
     if (slot === this.liveCount) this.liveCount++;
     this.slotById.set(id, slot);
     return slot;

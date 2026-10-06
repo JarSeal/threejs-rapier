@@ -58,6 +58,8 @@ export type WireframeColorState = keyof Required<PhysicsWireframeColors>;
  * live here rather than in Config.ts's default config object so no color table ships in
  * a production bundle. */
 export const DEFAULT_WIREFRAME_COLORS: Required<PhysicsWireframeColors> = {
+  tierDisabled: 0x9955ff,
+  tierStatic: 0x00c8c8,
   disabled: 0x555555,
   sensor: 0xb8a000,
   sleeping: 0x8b0000,
@@ -70,6 +72,8 @@ export const DEFAULT_WIREFRAME_LINE_THICKNESS = 1;
 /** Every color state, in the order they're resolved (and the order the debugger tab
  * lists them). */
 export const WIREFRAME_COLOR_STATES = [
+  'tierDisabled',
+  'tierStatic',
   'disabled',
   'sensor',
   'sleeping',
@@ -300,6 +304,8 @@ type ColliderWireframe = {
 
 type EntityWireframes = {
   entityId: number;
+  /** The entity's world, for its physics tier (PHYSICS_SIM_TIER). */
+  world: ECSWorld;
   rb?: RigidBodyAPI;
   /** The entity's Object3D, when the wireframes hang off it and the scene graph keeps
    * them positioned for free (static bodies only). Undefined when they live under `host`. */
@@ -309,8 +315,9 @@ type EntityWireframes = {
   /** A moving body's own Object3D (BODY_DYNAMIC_VISUAL only), followed instead of the raw
    * physics pose while the pose source is 'RENDERED'. */
   renderObject?: THREE.Object3D;
-  /** True for every moving body (BODY_DYNAMIC_VISUAL and BODY_DYNAMIC_HEADLESS): its host
-   * is synced from the raw physics pose every frame by this module. */
+  /** True for every body that can move (BODY_DYNAMIC_VISUAL, BODY_DYNAMIC_HEADLESS, and one a
+   * physics tier froze into BODY_STATIC): its host is synced from the raw physics pose every
+   * frame by this module. */
   needsTransformSync: boolean;
   colliders: ColliderWireframe[];
 };
@@ -690,10 +697,13 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
     // Every moving body gets its own host synced from the raw physics pose, even one with an
     // Object3D: render interpolation writes a blended pose into that Object3D, and this is
     // the tool for inspecting the offset between the two — riding the mesh would hide it.
-    // Only static bodies (which never move, so never interpolate) hang off their Object3D.
+    // Only static bodies (which never move, so never interpolate) hang off their Object3D. A
+    // body a physics tier froze (p352) is in BODY_STATIC but moves again when it's FULL, so it
+    // gets a host too.
     const needsTransformSync =
       world.hasComponent(entityId, ComponentType.BODY_DYNAMIC_VISUAL) ||
-      world.hasComponent(entityId, ComponentType.BODY_DYNAMIC_HEADLESS);
+      world.hasComponent(entityId, ComponentType.BODY_DYNAMIC_HEADLESS) ||
+      world.hasComponent(entityId, ComponentType.PHYSICS_SIM_TIER);
     const object3D = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
     const parent = needsTransformSync ? undefined : object3D;
     const renderObject = needsTransformSync ? object3D : undefined;
@@ -722,9 +732,13 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
       built.push({ collider, line, localPos, localQuat, lastState: null });
     }
 
-    // The component may have been removed (or the entity deleted) while the awaits above
-    // were in flight — throw the work away rather than leaking orphaned lines.
-    if (!world.hasComponent(entityId, ComponentType.DEBUG_PHYSICS_WIREFRAME)) {
+    // The component may have been removed (or the entity deleted, or its colliders taken out
+    // of the world) while the awaits above were in flight — throw the work away rather than
+    // leaking orphaned lines.
+    if (
+      !world.hasComponent(entityId, ComponentType.DEBUG_PHYSICS_WIREFRAME) ||
+      !world.hasComponent(entityId, ComponentType.COLLIDER)
+    ) {
       for (const cw of built) disposeColliderWireframe(cw);
       return;
     }
@@ -744,6 +758,7 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
 
     const entry: EntityWireframes = {
       entityId,
+      world,
       rb,
       parent,
       host,
@@ -803,18 +818,25 @@ const applyLocalTransforms = (entry: EntityWireframes) => {
 // ----------------------------------------------------------------------------
 
 /**
- * Resolves the one state that wins for a collider, highest priority first: disabled
- * beats sensor beats sleeping beats kinematic beats fixed, with awake as the fallback.
+ * Resolves the one state that wins for a collider, highest priority first: a physics tier
+ * (DISABLED, then STATIC: the reason the body is disabled or fixed) beats disabled beats sensor
+ * beats sleeping beats kinematic beats fixed, with awake as the fallback.
  *
- * On MAIN_THREAD the *Sync getters are free, so they're read directly. In WORKER_THREAD
- * mode they throw by design, so state comes from the debug-state buffer the worker fills
- * once per step — an O(1) typed-array read per collider, no RPC.
+ * The tier is the entity's PHYSICS_SIM_TIER component, read on the main thread in both modes.
+ * For the rest, on MAIN_THREAD the *Sync getters are free, so they're read directly. In
+ * WORKER_THREAD mode they throw by design, so state comes from the debug-state buffer the worker
+ * fills once per step — an O(1) typed-array read per collider, no RPC.
  */
 const resolveColorState = (
   entry: EntityWireframes,
   cw: ColliderWireframe,
   worker: boolean
 ): WireframeColorState | null => {
+  // FULL has no state of its own, and a REMOVED body has no wireframe (its COLLIDER is gone)
+  const tier = entry.world.getComponent(entry.entityId, ComponentType.PHYSICS_SIM_TIER)?.tier;
+  if (tier === 'DISABLED') return 'tierDisabled';
+  if (tier === 'STATIC') return 'tierStatic';
+
   let collEnabled: boolean;
   let collSensor: boolean;
   let bodyEnabled = true;
@@ -1005,9 +1027,22 @@ ECSWorld.registerComponentHooks(ComponentType.DEBUG_PHYSICS_WIREFRAME, {
 // rather than TAG_IS_PHYSICS_OBJECT because the tag is added first, before there is
 // anything to draw; the microtask defers past the rest of createPhysicsEntity's
 // synchronous tail so the rigid-body bucket component is in place too.
+// The REMOVED physics tier (p352) takes COLLIDER away while the colliders are out of the world
+// (the lines would read a body that isn't there), and puts it back with them: a shown
+// wireframe is built again then.
 ECSWorld.registerComponentHooks(ComponentType.COLLIDER, {
   onAddComponent: (entityId, world) =>
-    queueMicrotask(() => restoreEntityWireframe(entityId, world)),
+    queueMicrotask(() => {
+      if (!world.hasComponent(entityId, ComponentType.COLLIDER)) return;
+      if (isWireframeVisible(entityId, world)) {
+        buildEntityWireframes(entityId, world).catch((err) =>
+          lwarn(`Physics debug wireframe: failed to build for entity ${entityId}.`, err)
+        );
+        return;
+      }
+      restoreEntityWireframe(entityId, world);
+    }),
+  onRemoveComponent: (entityId) => disposeEntityWireframes(entityId),
 });
 
 ECSWorld.registerPlugin((world) => {

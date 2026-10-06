@@ -3,6 +3,7 @@
 import { LoopState } from '../core/MainLoop';
 import {
   EngineAPIType,
+  PhysicsBodyActivity,
   PhysicsState,
   PhysicsProtocolType,
   PhysicsUpProtocol,
@@ -68,7 +69,13 @@ type StepStats = {
   /** Worker clock at the instant the last sub-step returned, for the main thread to derive
    * the return-leg latency from. */
   stepEndAt: number;
+  /** Dynamic bodies awake and asleep after the last sub-step (p352). */
+  awake: number;
+  sleeping: number;
 };
+
+/** Reused by every measured STEP (countDynamicBodyActivity writes into it). */
+const bodyActivity: PhysicsBodyActivity = { awake: 0, sleeping: 0 };
 
 const handleMessage = async (data: PhysicsUpProtocol) => {
   const type = data.type;
@@ -138,9 +145,15 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
             stepMs += subStepEnd - subStepStart;
             stepEndAt = subStepEnd + mainClockOffset;
           }
+          if (trackStats) engAPI.countDynamicBodyActivity(bodyActivity);
           writeBackTransforms(
             trackStats
-              ? { stepMs, dispatchMs: receivedAt - (data.sentAt ?? receivedAt), stepEndAt }
+              ? {
+                  stepMs,
+                  dispatchMs: receivedAt - (data.sentAt ?? receivedAt),
+                  stepEndAt,
+                  ...bodyActivity,
+                }
               : undefined
           );
         }
@@ -322,15 +335,11 @@ const sendMessage = (
 const sendMessageSimple = (message: any, transfer?: Transferable[]) =>
   transfer ? self.postMessage(message, transfer) : self.postMessage(message);
 
-/** Writes every live rigid body's transform into the hot-path buffer after a step, then
+/** Writes every slotted rigid body's transform into the hot-path buffer after a step, then
  * (MESSAGE_BATCH fallback only) pushes a fresh copy to the main thread as one Transferable
- * message — never one message per body. This includes FIXED bodies too, not just dynamic/
- * kinematic ones: although FIXED bodies never move under simulation, they can still be
- * explicitly repositioned after creation via setTranslation/setRotation (e.g. an obstacle-course
- * piece created at the origin and moved into place once) — the hot-path buffer is the only path
- * that reaches the main thread's ECS transform sync, so a body excluded here would never show
- * that reposition. The per-step cost of re-writing a handful of unchanging static transforms is
- * negligible next to the physics step itself, so there's no reason to special-case it out. */
+ * message — never one message per body. Bodies created FIXED have no slot (p352): they never
+ * move under simulation, and an explicit reposition (setTranslation/setRotation) reaches the
+ * main thread through the body's proxy, which keeps the pose it was given. */
 const writeBackTransforms = (stats?: StepStats) => {
   // Stats go out first, and outside the transformBuffer guard, so the measurement doesn't
   // silently depend on a world having a transform buffer.
@@ -338,13 +347,15 @@ const writeBackTransforms = (stats?: StepStats) => {
     stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.STEP_MS] = stats.stepMs;
     stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.DISPATCH_MS] = stats.dispatchMs;
     stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.STEP_END_AT] = stats.stepEndAt;
+    stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.AWAKE_BODIES] = stats.awake;
+    stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.SLEEPING_BODIES] = stats.sleeping;
   }
   if (!transformBuffer) return;
   for (const id of engAPI.getAllRigidBodyIds()) {
-    const rb = engAPI.getRigidBodyAPIWithId(id);
-    if (!rb) continue;
     const slot = transformBuffer.getSlot(id);
     if (slot === -1) continue;
+    const rb = engAPI.getRigidBodyAPIWithId(id);
+    if (!rb) continue;
     transformBuffer.setTransform(slot, rb.pos, rb.rot);
     transformBuffer.setVelocity(slot, rb.linvel(), rb.angvel());
   }
@@ -360,6 +371,8 @@ const writeBackTransforms = (stats?: StepStats) => {
         stepDuration: stats?.stepMs,
         dispatchMs: stats?.dispatchMs,
         stepEndAt: stats?.stepEndAt,
+        awakeBodies: stats?.awake,
+        sleepingBodies: stats?.sleeping,
       },
       [copy]
     );

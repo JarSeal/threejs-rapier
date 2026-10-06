@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../.schemas/camera.schema.json",
+  "camProps": {
+    "type": "PERSPECTIVE",
+    "fov": 50,
+    "near": 0.5,
+    "far": 1500,
+    "position": { "x": 0, "y": 330, "z": 390 },
+    "lookAtPoint": { "x": 0, "y": 0, "z": 10 },
+    "active": true
+  },
+  "entityOpts": {
+    "appId": "physicsTiersOverview",
+    "debugData": {
+      "name": "Physics tiers overview camera",
+      "description": "Sees the whole 600 x 600 field, so the tier rings can be watched sweeping over the piles. C switches to the chase camera (created in physicsTiers.ts)."
+    }
+  }
+}

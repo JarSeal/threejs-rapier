@@ -14,7 +14,7 @@ EPIC: TODO_NAME_OF_EPIC_OR_REMOVE
 
 TODO_DESCRIPTION_OF_THE_PLAN_AND_REQUIREMENTS
 
-If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+If for some reason this plan or some of its features can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 *****************************
 
 

@@ -17,16 +17,21 @@ const toPlainPose = (pos: PhysVector, rot: PhysRotation): RigidBodyPose => ({
   rot: { x: rot.x, y: rot.y, z: rot.z, w: rot.w },
 });
 
-/** A new body's transform buffer slot (-1 without a buffer), seeded with its pose. */
+/** A new body's transform buffer slot, seeded with its pose. -1 without a buffer and for a FIXED
+ * body, which never moves under simulation: its proxy keeps its pose instead (p352). `refused`
+ * when the buffer is full. */
 const allocateBodySlot = (rb: RigidBodyAPI, transformBuffer?: PhysicsTransformBuffer) => {
   const pose = toPlainPose(rb.pos, rb.rot);
   let slot = -1;
-  if (transformBuffer) {
+  if (transformBuffer && !rb.isFixedSync()) {
     slot = transformBuffer.allocateSlot(rb.id);
+    if (slot === -1) return { slot, pose, refused: true };
     transformBuffer.setTransform(slot, pose.pos, pose.rot);
   }
-  return { slot, pose };
+  return { slot, pose, refused: false };
 };
+
+const NO_POSE: RigidBodyPose = { pos: { x: 0, y: 0, z: 0 }, rot: { x: 0, y: 0, z: 0, w: 1 } };
 
 const sendNoRigidBodyErrorMessage = (
   sendMessage: (message: any, data: PhysicsUpProtocol) => void,
@@ -44,7 +49,12 @@ export const physicsSwitchRigid = async (
   data: PhysicsUpProtocol,
   physicsWorldAPI: WorldAPI,
   engAPI: EngineAPIType,
-  sendMessage: (message: any, data: PhysicsUpProtocol) => void,
+  sendMessage: (
+    message: any,
+    data: PhysicsUpProtocol,
+    isError?: boolean,
+    transfer?: Transferable[]
+  ) => void,
   transformBuffer?: PhysicsTransformBuffer
 ) => {
   const type = data.type;
@@ -56,7 +66,12 @@ export const physicsSwitchRigid = async (
     case PhysicsProtocolType.CREATE_RIGID_BODY: {
       // CREATE_RIGID_BODY
       const rb = await physicsWorldAPI.createRigidBody(data.params);
-      const { slot, pose } = allocateBodySlot(rb, transformBuffer);
+      const { slot, pose, refused } = allocateBodySlot(rb, transformBuffer);
+      if (refused) {
+        engAPI.deleteRigidBody(rb.id);
+        const capacityExceeded = transformBuffer?.maxBodies;
+        return sendMessage({ type, id: -1, slot, pose: NO_POSE, capacityExceeded }, data);
+      }
       return sendMessage({ type, id: rb.id, slot, pose }, data);
     }
     case PhysicsProtocolType.CREATE_PHYSICS_ENTITY: {
@@ -67,7 +82,13 @@ export const physicsSwitchRigid = async (
         return sendMessage({ type, slot: -1, colliderIds }, data);
       }
       const rb = await physicsWorldAPI.createRigidBody(data.rigidBody);
-      const { slot, pose } = allocateBodySlot(rb, transformBuffer);
+      const { slot, pose, refused } = allocateBodySlot(rb, transformBuffer);
+      if (refused) {
+        // Before the colliders, so nothing of the entity is left behind
+        engAPI.deleteRigidBody(rb.id);
+        const capacityExceeded = transformBuffer?.maxBodies;
+        return sendMessage({ type, slot, colliderIds: [], capacityExceeded }, data);
+      }
       const colliderIds = engAPI
         .createColliders(data.colliders.map((params) => ({ ...params, parentId: rb.id })))
         .map((c) => c.id);
@@ -78,6 +99,13 @@ export const physicsSwitchRigid = async (
       const rbAPIs = engAPI.createRigidBodies(data.params);
       const ids = rbAPIs.map((api) => api.id);
       const allocated = rbAPIs.map((api) => allocateBodySlot(api, transformBuffer));
+      if (allocated.some((a) => a.refused)) {
+        // All or nothing: the bodies that did get a slot give it back
+        for (const id of ids) transformBuffer?.freeSlot(id);
+        engAPI.deleteRigidBodies(ids);
+        const capacityExceeded = transformBuffer?.maxBodies;
+        return sendMessage({ type, ids: [], slots: [], poses: [], capacityExceeded }, data);
+      }
       const slots = allocated.map((a) => a.slot);
       const poses = allocated.map((a) => a.pose);
       return sendMessage({ type, ids, slots, poses }, data);
@@ -90,6 +118,36 @@ export const physicsSwitchRigid = async (
       // DELETE_RIGID_BODIES
       for (const id of data.ids) transformBuffer?.freeSlot(id);
       return sendMessage({ type, ...engAPI.deleteRigidBodies(data.ids) }, data);
+    case PhysicsProtocolType.RIGID_DETACH: {
+      // RIGID_DETACH (p352 REMOVED tier): the slot goes with the body
+      const pose = engAPI.detachRigidBody(data.id);
+      if (pose) transformBuffer?.freeSlot(data.id);
+      return sendMessage({ type, pose }, data);
+    }
+    case PhysicsProtocolType.RIGID_REATTACH: {
+      // RIGID_REATTACH (p352): a slot first, so a full buffer leaves the body detached. Tier
+      // bodies are created DYNAMIC, so a STATIC one keeps a slot like an in-place STATIC does.
+      let slot = -1;
+      if (transformBuffer) {
+        slot = transformBuffer.allocateSlot(data.id);
+        if (slot === -1) {
+          const capacityExceeded = transformBuffer.maxBodies;
+          return sendMessage({ type, slot, capacityExceeded }, data);
+        }
+      }
+      const pose = engAPI.reattachRigidBody(data.id, data.state);
+      if (!pose) {
+        transformBuffer?.freeSlot(data.id);
+        return sendMessage({ type, slot: -1 }, data);
+      }
+      if (slot !== -1) transformBuffer?.setTransform(slot, pose.pos, pose.rot);
+      return sendMessage({ type, slot, pose }, data);
+    }
+    case PhysicsProtocolType.RIGID_READ_POSITIONS: {
+      // RIGID_READ_POSITIONS (p343): replayed before its sub-step, so read before that step runs
+      const positions = engAPI.readBodyPositions(data.ids, new Float32Array(data.ids.length * 3));
+      return sendMessage({ type, positions }, data, false, [positions.buffer]);
+    }
     case PhysicsProtocolType.RIGID_GET_USERDATA: {
       // RIGID_GET_USERDATA
       if (!rigidBodyAPI) return sendNoRigidBodyErrorMessage(sendMessage, data);
