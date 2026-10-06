@@ -25,7 +25,7 @@ import { getCurrentSceneId, registerOnAllSceneExits } from './Scene';
 export type { PhysicsTierPolicy, PhysicsTierRing } from './Physics/PhysicsTierTypes';
 
 const DEFAULT_HYSTERESIS = 0.15;
-const DEFAULT_EVERY_N_FRAMES = 10;
+export const DEFAULT_EVERY_N_FRAMES = 10;
 
 type ResolvedPolicy = {
   def: Readonly<PhysicsTierPolicy>;
@@ -191,6 +191,11 @@ export const isPhysicsTierPolicyFrozen = (ecsWorld?: ECSWorld, source?: string) 
   if (!sources) return false;
   return source === undefined ? sources.size > 0 : sources.has(source);
 };
+
+/** The sources that froze `world`'s policy, in the order they froze it (empty when it runs). */
+export const getPhysicsTierPolicyFreezeSources = (ecsWorld?: ECSWorld): string[] => [
+  ...(freezeSources.get(getWorld(ecsWorld, 'getPhysicsTierPolicyFreezeSources')) ?? []),
+];
 
 /** The entity's body, also while REMOVED (no bucket component then). */
 const getEntityBody = (world: ECSWorld, entityId: number) =>

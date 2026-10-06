@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented, Phase 4 §5 built
+Status: in progress | Phases 1-3 implemented, Phase 4 §5-6 built
 Category: Physics
 Epic: p350_lod-system-research.md (Tier 1.2, §6)
 Blocked by: p343_deterministic-physics-tier-policy.md (Phase 4: the policy's `cadence` option)
@@ -368,7 +368,7 @@ As built (differs from §4.1-4.4, decided in review):
 §5 and §6. §5's policy gets a `cadence` option (deterministic `STEPS` or frame-driven `FRAMES`)
 from p343_deterministic-physics-tier-policy.md before this phase is marked done.
 
-As built so far (§5; §6 not started; differs from §5):
+As built so far (§5 and §6; differs from them):
 
 - **Module:** `core/PhysicsTierPolicy.ts` registers itself on import (an `APP_LOGIC` system per
   world, a scene-exit hook, a world-registry hook), like `PhysicsTiers.ts`. Types in
@@ -437,6 +437,38 @@ As built so far (§5; §6 not started; differs from §5):
   (`36d80379`); with it running, it isn't (p343). The plough's rendered position never reverses
   along its row with the policy running or frozen (except one snap right after the scene load,
   the interpolation clock starting, also frozen).
+
+§6 (debug):
+
+- **Slots, refused creates and awake / sleeping** were already in the Physics API tab's
+  "Bodies (live)" folder (Phase 1). The rest is a new "Simulation tiers (live)" folder beside it
+  (`_dbg__PhysicsAPI.ts`, refreshed with the tab every 500 ms, default world): a count per tier
+  (`FULL` includes the never-tiered `DYNAMIC` `createPhysicsEntity` bodies, characters left
+  out), pending (target ≠ tier, waiting for the next step) and in flight (`WORKER_THREAD`
+  returns waiting for their reply), the policy's rings, its state ("Running, every N frames" or
+  "Frozen by" its sources: `getPhysicsTierPolicyFreezeSources`, new in `PhysicsTierPolicy.ts`)
+  and the "Freeze tier policy" toggle.
+- **The freeze toggle** is its own freeze source (`DEBUG_TAB`), so it never lifts the
+  determinism probe's or the app's freeze. It is session only (a freeze restored by a reload
+  would read as the policy being broken), and it holds across scene switches (the default world
+  keeps it). No undo: it's runtime state, like the sky box's day-night transport.
+- **No tier "column":** the wireframe colouring is one priority list of states, not columns.
+  Two states lead it: `tierDisabled`, then `tierStatic` (before `disabled`: the tier is the
+  reason the body is disabled or fixed), read from `PHYSICS_SIM_TIER` on the main thread in both
+  targets. They are `PhysicsWireframeColors` keys (`Config.ts`), so `CONFIG.ts`, the tab's
+  palette and the per-entity overrides cover them. A `REMOVED` entity has no wireframe (Phase
+  3: its COLLIDER is gone), and a `FULL` one shows its body state as before.
+- **Wireframe fix:** a wireframe built while the body was tier-frozen (in `BODY_STATIC`) hung
+  off its Object3D, or for a headless body baked its pose in once, so it stopped following the
+  body once it was `FULL` again. An entity with `PHYSICS_SIM_TIER` now gets a host synced from
+  the raw pose, like a dynamic body.
+- Verified headless (WebGPU, macOS Chrome), `MAIN_THREAD` and `WORKER_THREAD` with SAB, on
+  `physicsTiers`: the folder's counts equal the ECS counts with the policy frozen (686 crates in
+  all), the state reads "Frozen by" another source with the toggle off, then "Running", the
+  toggle freezes the policy (no new requests in 4 s while the plough moves) and lifts only its
+  own freeze; wireframes of `STATIC`, `DISABLED` and never-tiered crates get the `tierStatic`,
+  `tierDisabled` and awake / sleeping colours, and one built while `STATIC` follows its body
+  after a return to `FULL` and a move. In flight was never caught above 0 (it lasts one reply).
 
 ### Phase 5 — Cell driving (with p353)
 

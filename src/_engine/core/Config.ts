@@ -48,6 +48,11 @@ export type Environments = 'development' | 'test' | 'unitTest' | 'production';
  * a sensor, and `awake` is the fallback when nothing else applies.
  */
 export type PhysicsWireframeColors = {
+  /** The body's physics simulation tier (p352) is `DISABLED`: the reason it's disabled. */
+  tierDisabled?: number;
+  /** The body's physics simulation tier (p352) is `STATIC`: a dynamic body frozen as `FIXED`,
+   * told apart from a body created fixed. */
+  tierStatic?: number;
   /** The collider, or its owning rigid body, is disabled. */
   disabled?: number;
   /** The collider is a sensor (reports overlaps, generates no contact response). */
