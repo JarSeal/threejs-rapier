@@ -45,19 +45,42 @@ export type PhysicsTierRing = {
   within?: number;
 };
 
+/**
+ * When a tier policy decides (p343):
+ * - `STEPS` (default): it measures on a fixed physics step `k` and applies on step
+ *   `k + interval`, so with a deterministic focus a scene plays out the same on every load and
+ *   in both worker targets. In WORKER_THREAD mode stepping waits at `k + interval` for the
+ *   measurement's reply when it's late (a catch-up frame, a slow worker): a hitch, never a
+ *   different result.
+ * - `FRAMES`: every `interval` frames at APP_LOGIC, from the members' TRANSFORM positions; its
+ *   requests apply on the next physics step, which depends on frame timing.
+ */
+export type PhysicsTierPolicyCadence = 'STEPS' | 'FRAMES';
+
 /** A world's distance policy (PhysicsTierPolicy.ts's setPhysicsTierPolicy). */
 export type PhysicsTierPolicy = {
-  /** Where distances are measured from: a position, or an entity id (its TRANSFORM position).
-   * Null or undefined skips the pass. Default: the world's main camera (TAG_IS_MAIN_CAMERA, so
-   * not the debug camera). */
-  focus?: () => PhysVector | number | null | undefined;
+  /**
+   * Where distances are measured from: a position, or an entity id. Null or undefined skips the
+   * pass. Default: the world's main camera (TAG_IS_MAIN_CAMERA, so not the debug camera).
+   *
+   * With the `STEPS` cadence it's called on the measured step, with that step's index
+   * (getPhysicsSubStepIndex): a position computed from `step` is deterministic. An entity with a
+   * rigid body is measured with the members (deterministic); one without, by its TRANSFORM
+   * (deterministic only if it's moved on physics steps), and so is the camera. With `FRAMES`,
+   * `step` is undefined and an entity is measured by its TRANSFORM.
+   */
+  focus?: (step?: number) => PhysVector | number | null | undefined;
   /** Nearest first, `within` strictly ascending, each tier at most once. */
   rings: PhysicsTierRing[];
   /** An entity moves out to a coarser ring only beyond `within × (1 + hysteresis)` of the ring
    * it's in. Default 0.15. */
   hysteresis?: number;
-  /** Frames between passes. Default 10. */
-  everyNFrames?: number;
+  /** Default `STEPS`. */
+  cadence?: PhysicsTierPolicyCadence;
+  /** Physics steps (`STEPS`) or frames (`FRAMES`) between passes. Default 10. With `STEPS` in
+   * WORKER_THREAD mode, keep it above the worker's reply time in steps (a few): below that,
+   * every pass holds stepping until its reply arrives. */
+  interval?: number;
   /** When set, the policy is removed when that scene is exited. Otherwise it stays (no physics
    * entity survives a scene switch, but the next scene's members follow it). */
   sceneId?: string;

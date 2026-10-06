@@ -1,31 +1,73 @@
-// Physics tier distance policy (docs/plans/p352_physics-simulation-tiers.md §5): every N frames,
-// each member entity (PHYSICS_TIER_POLICY) gets the tier of the ring around the focus it's in,
-// through requestPhysicsTier. Self-registers on import, so an app that never sets a policy pays
-// nothing (createPhysicsEntity's `tierPolicy` option only adds the component).
+// Physics tier distance policy (docs/plans/p352_physics-simulation-tiers.md §5,
+// _DONE_p343_deterministic-physics-tier-policy.md): each member entity (PHYSICS_TIER_POLICY)
+// gets the tier of the ring around the focus it's in, through requestPhysicsTier. With the STEPS
+// cadence (default) it measures on a fixed physics step and applies `interval` steps later, so
+// it's deterministic; with FRAMES it runs every N frames at APP_LOGIC. Self-registers on import,
+// so an app that never sets a policy pays nothing (createPhysicsEntity's `tierPolicy` option only
+// adds the component).
 
 import * as THREE from 'three/webgpu';
 
 import { ECSSystemStage } from '../../AppECSRegistry';
 import { existsOrThrow } from '../utils/assert';
-import { lwarn } from '../utils/Logger';
+import { lerror, lwarn } from '../utils/Logger';
 import { IS_DEBUG_ENV } from './Config';
 import { ECSWorld, getAllECSWorlds, getECSWorld, onECSWorldRegistryChange } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import type { IComponentStorage } from './ECS/ECSComponentStorage';
-import { forEachJointBodyPair, hasJoints } from './PhysicsAPI';
+import {
+  addPhysicsStepGate,
+  forEachJointBodyPair,
+  getPhysicsSimHistoryEpoch,
+  getPhysicsState,
+  getPhysicsSubStepIndex,
+  hasJoints,
+  readBodyPositionsAtStep,
+  readBodyPositionsSync,
+} from './PhysicsAPI';
 import type {
   PhysicsSimTierData,
   PhysicsTier,
   PhysicsTierPolicy,
+  PhysicsTierPolicyCadence,
 } from './Physics/PhysicsTierTypes';
 import { getPhysicsBodyOwner } from './PhysicsManager';
 import { requestPhysicsTier } from './PhysicsTiers';
 import { getCurrentSceneId, registerOnAllSceneExits } from './Scene';
 
-export type { PhysicsTierPolicy, PhysicsTierRing } from './Physics/PhysicsTierTypes';
+export type {
+  PhysicsTierPolicy,
+  PhysicsTierPolicyCadence,
+  PhysicsTierRing,
+} from './Physics/PhysicsTierTypes';
 
 const DEFAULT_HYSTERESIS = 0.15;
-export const DEFAULT_EVERY_N_FRAMES = 10;
+export const DEFAULT_TIER_POLICY_CADENCE: PhysicsTierPolicyCadence = 'STEPS';
+export const DEFAULT_TIER_POLICY_INTERVAL = 10;
+/** The determinism probe's freeze source. A STEPS policy ignores it: it's deterministic, so the
+ * probe tests it instead of freezing it. */
+export const DETERMINISM_PROBE_FREEZE_SOURCE = 'DETERMINISM_PROBE';
+/** STEPS: in APP_PHYSICS_STEP before physicsTierSystem (100; higher runs first), so a decision's
+ * requests apply in the sub-step it's made in. */
+const POLICY_STEP_SYSTEM_ORDER = 110;
+
+/** STEPS: the positions measured on step `step`, decided on step `applyAt`. */
+type Measurement = {
+  step: number;
+  applyAt: number;
+  /** The members measured, in entity id order, and their bodies; with a focus entity that has a
+   * body, its body is the last id of `bodyIds`. */
+  entityIds: number[];
+  bodyIds: number[];
+  /** The focus when it isn't a body read with the members. */
+  focus: THREE.Vector3 | null;
+  /** x, y, z per body id; null until the worker's reply (WORKER_THREAD). */
+  positions: Float32Array | null;
+  /** WORKER_THREAD: holds stepping before `applyAt` until the reply is in. */
+  releaseGate: (() => void) | null;
+  /** Dropped (new world, policy replaced): a late reply is ignored. */
+  dropped: boolean;
+};
 
 type ResolvedPolicy = {
   def: Readonly<PhysicsTierPolicy>;
@@ -35,8 +77,16 @@ type ResolvedPolicy = {
   withinSq: number[];
   /** Each ring's squared radius an entity in it moves out past: within × (1 + hysteresis). */
   leaveSq: number[];
-  everyNFrames: number;
+  cadence: PhysicsTierPolicyCadence;
+  interval: number;
+  /** FRAMES: frames until the next pass. */
   framesUntilPass: number;
+  /** STEPS: measurements waiting for their step, oldest first. */
+  pending: Measurement[];
+  /** STEPS: the physics world (getPhysicsSimHistoryEpoch) the pending measurements belong to. */
+  simEpoch: number;
+  /** STEPS: the step of the latest measurement, -1 before the first. */
+  lastMeasuredStep: number;
 };
 
 const policies = new Map<ECSWorld, ResolvedPolicy>();
@@ -72,21 +122,49 @@ const validatePolicy = (policy: PhysicsTierPolicy) => {
   });
   const hysteresis = policy.hysteresis ?? DEFAULT_HYSTERESIS;
   if (!Number.isFinite(hysteresis) || hysteresis < 0) fail('hysteresis must be 0 or more');
-  const everyNFrames = policy.everyNFrames ?? DEFAULT_EVERY_N_FRAMES;
-  if (!Number.isInteger(everyNFrames) || everyNFrames < 1) {
-    fail('everyNFrames must be a whole number of 1 or more');
+  const interval = policy.interval ?? DEFAULT_TIER_POLICY_INTERVAL;
+  if (!Number.isInteger(interval) || interval < 1) {
+    fail('interval must be a whole number of 1 or more');
   }
+  const cadence = policy.cadence ?? DEFAULT_TIER_POLICY_CADENCE;
+  if (cadence !== 'STEPS' && cadence !== 'FRAMES') fail(`unknown cadence ${cadence}`);
+};
+
+/** Drops a policy's pending measurements and releases their gates. */
+const dropMeasurements = (policy: ResolvedPolicy) => {
+  for (const measurement of policy.pending) {
+    measurement.dropped = true;
+    measurement.releaseGate?.();
+    measurement.releaseGate = null;
+  }
+  policy.pending.length = 0;
+};
+
+const deletePolicy = (world: ECSWorld) => {
+  const policy = policies.get(world);
+  if (!policy) return;
+  dropMeasurements(policy);
+  policies.delete(world);
 };
 
 /**
- * Sets `world`'s physics tier distance policy (p352), or removes it with `null`. Every
- * `everyNFrames` frames (at `APP_LOGIC`, the first pass on the next frame), each entity with the
- * PHYSICS_TIER_POLICY component (createPhysicsEntity's `tierPolicy` option, or
- * setPhysicsTierPolicyMember) gets the tier of the first ring whose `within` its TRANSFORM
- * position is in, measured from the focus. After its first pass, it moves out to a coarser ring
- * only beyond `within × (1 + hysteresis)`. The policy only calls `requestPhysicsTier`, so the change applies
- * on the next fixed step; a request it refuses (eg. `REMOVED` for a body with joints) isn't
- * repeated until the entity's ring changes.
+ * Sets `world`'s physics tier distance policy (p352), or removes it with `null`. On each pass,
+ * each entity with the PHYSICS_TIER_POLICY component (createPhysicsEntity's `tierPolicy` option,
+ * or setPhysicsTierPolicyMember) gets the tier of the first ring whose `within` its position is
+ * in, measured from the focus. After its first pass, it moves out to a coarser ring only beyond
+ * `within × (1 + hysteresis)`. The policy only calls `requestPhysicsTier`; a request it refuses
+ * (eg. `REMOVED` for a body with joints) isn't repeated until the entity's ring changes.
+ *
+ * `cadence` (p343) says when a pass runs:
+ * - `STEPS` (default): it measures the members' and the focus' positions on every fixed physics
+ *   step whose index is a multiple of `interval` (the world's steps: the phase restarts with
+ *   every scene load), and decides `interval` steps later, where its requests apply. With a
+ *   deterministic focus every decision lands on the same step on every load and in both worker
+ *   targets. In WORKER_THREAD mode the positions are read by the worker; when the reply is late,
+ *   stepping waits for it at the decision's step (getPhysicsStepGateStats counts it).
+ * - `FRAMES`: every `interval` frames at `APP_LOGIC` (the first pass on the next frame), from
+ *   the members' TRANSFORM positions; the requests apply on the next physics step, so where
+ *   depends on frame timing.
  *
  * Bodies connected by joints change tier together (requestPhysicsTier), so a joint group gets
  * the tier of its member nearest to the focus.
@@ -95,8 +173,8 @@ const validatePolicy = (policy: PhysicsTierPolicy) => {
  * (a thrown object, a vehicle): a disabled body is invisible to everything else, and the policy
  * only checks the ring order, not that margin.
  *
- * Removing the policy, or an entity from it, leaves its tier as it is. Not deterministic (it
- * runs on frames, and follows the camera by default): the determinism probe freezes it.
+ * Removing the policy, or an entity from it, leaves its tier as it is. The determinism probe
+ * freezes a `FRAMES` policy, and tests a `STEPS` one.
  *
  * @example
  * setPhysicsTierPolicy({
@@ -111,10 +189,11 @@ const validatePolicy = (policy: PhysicsTierPolicy) => {
 export const setPhysicsTierPolicy = (policy: PhysicsTierPolicy | null, ecsWorld?: ECSWorld) => {
   const world = getWorld(ecsWorld, 'setPhysicsTierPolicy');
   if (!policy) {
-    policies.delete(world);
+    deletePolicy(world);
     return;
   }
   validatePolicy(policy);
+  deletePolicy(world);
   const def = { ...policy, rings: policy.rings.map((ring) => ({ ...ring })) };
   const leaveFactor = (1 + (policy.hysteresis ?? DEFAULT_HYSTERESIS)) ** 2;
   const withinSq = def.rings.map(({ within }) => (within === undefined ? Infinity : within ** 2));
@@ -123,14 +202,34 @@ export const setPhysicsTierPolicy = (policy: PhysicsTierPolicy | null, ecsWorld?
     tiers: def.rings.map(({ tier }) => tier),
     withinSq,
     leaveSq: withinSq.map((sq) => sq * leaveFactor),
-    everyNFrames: policy.everyNFrames ?? DEFAULT_EVERY_N_FRAMES,
+    cadence: policy.cadence ?? DEFAULT_TIER_POLICY_CADENCE,
+    interval: policy.interval ?? DEFAULT_TIER_POLICY_INTERVAL,
     framesUntilPass: 1,
+    pending: [],
+    simEpoch: getPhysicsSimHistoryEpoch(),
+    lastMeasuredStep: -1,
   });
 };
 
 /** `world`'s physics tier policy as it was set, or null. */
 export const getPhysicsTierPolicy = (ecsWorld?: ECSWorld): Readonly<PhysicsTierPolicy> | null =>
   policies.get(getWorld(ecsWorld, 'getPhysicsTierPolicy'))?.def ?? null;
+
+/**
+ * `world`'s policy as it runs, or null without one: its cadence and interval (defaults applied),
+ * and with `STEPS` the step of its latest measurement (-1 before the first) and how many
+ * measurements wait for their decision step. For debug readouts.
+ */
+export const getPhysicsTierPolicyStatus = (ecsWorld?: ECSWorld) => {
+  const policy = policies.get(getWorld(ecsWorld, 'getPhysicsTierPolicyStatus'));
+  if (!policy) return null;
+  return {
+    cadence: policy.cadence,
+    interval: policy.interval,
+    lastMeasuredStep: policy.lastMeasuredStep,
+    pendingMeasurements: policy.pending.length,
+  };
+};
 
 /**
  * Makes `entityId`'s tier follow its world's policy, or stops it (its tier stays as it is). For
@@ -168,7 +267,8 @@ export const setPhysicsTierPolicyMember = (
 /**
  * Freezes `world`'s policy (no passes, every tier stays as it is) or unfreezes it. Each `source`
  * freezes on its own, and the policy runs again once no source holds it (the determinism probe
- * and the debug tab use their own).
+ * and the debug tab use their own). A frozen `STEPS` policy measures nothing, but decides what it
+ * measured before. The probe's source (DETERMINISM_PROBE_FREEZE_SOURCE) doesn't freeze `STEPS`.
  */
 export const setPhysicsTierPolicyFrozen = (
   frozen: boolean,
@@ -185,17 +285,27 @@ export const setPhysicsTierPolicyFrozen = (
   else sources.delete(source);
 };
 
-/** Whether any source froze `world`'s policy, or only `source` when given. */
-export const isPhysicsTierPolicyFrozen = (ecsWorld?: ECSWorld, source?: string) => {
-  const sources = freezeSources.get(getWorld(ecsWorld, 'isPhysicsTierPolicyFrozen'));
-  if (!sources) return false;
-  return source === undefined ? sources.size > 0 : sources.has(source);
+/** The sources a freeze of `world` holds its policy with, in the order they froze it: a `STEPS`
+ * policy leaves the determinism probe's out. */
+const getHoldingSources = (world: ECSWorld): string[] => {
+  const sources = freezeSources.get(world);
+  if (!sources?.size) return [];
+  const isSteps = policies.get(world)?.cadence === 'STEPS';
+  return [...sources].filter((s) => !isSteps || s !== DETERMINISM_PROBE_FREEZE_SOURCE);
 };
 
-/** The sources that froze `world`'s policy, in the order they froze it (empty when it runs). */
-export const getPhysicsTierPolicyFreezeSources = (ecsWorld?: ECSWorld): string[] => [
-  ...(freezeSources.get(getWorld(ecsWorld, 'getPhysicsTierPolicyFreezeSources')) ?? []),
-];
+/** Whether `world`'s policy is frozen (a `STEPS` policy isn't by the determinism probe), or with
+ * `source`, whether that source froze it. */
+export const isPhysicsTierPolicyFrozen = (ecsWorld?: ECSWorld, source?: string) => {
+  const world = getWorld(ecsWorld, 'isPhysicsTierPolicyFrozen');
+  if (source !== undefined) return freezeSources.get(world)?.has(source) ?? false;
+  return getHoldingSources(world).length > 0;
+};
+
+/** The sources that freeze `world`'s policy, in the order they froze it (empty when it runs; a
+ * `STEPS` policy leaves the determinism probe's out). */
+export const getPhysicsTierPolicyFreezeSources = (ecsWorld?: ECSWorld): string[] =>
+  getHoldingSources(getWorld(ecsWorld, 'getPhysicsTierPolicyFreezeSources'));
 
 /** The entity's body, also while REMOVED (no bucket component then). */
 const getEntityBody = (world: ECSWorld, entityId: number) =>
@@ -204,16 +314,19 @@ const getEntityBody = (world: ECSWorld, entityId: number) =>
 
 const _focus = new THREE.Vector3();
 
-/** The focus position for this pass, or null to skip it. */
-const resolveFocus = (world: ECSWorld, policy: ResolvedPolicy): THREE.Vector3 | null => {
+/** The main camera's position, the default focus (getMainCamera() reads the default world; a
+ * policy reads its own world's). */
+const readCameraFocus = (world: ECSWorld, out: THREE.Vector3): THREE.Vector3 | null => {
+  const cameraId = world.getEntitiesWith(ComponentType.TAG_IS_MAIN_CAMERA).next().value;
+  if (cameraId === undefined) return null;
+  const camera = world.getComponent(cameraId, ComponentType.OBJECT3D)?.value;
+  return camera ? camera.getWorldPosition(out) : null;
+};
+
+/** FRAMES: the focus position for this pass, or null to skip it. */
+const resolveFrameFocus = (world: ECSWorld, policy: ResolvedPolicy): THREE.Vector3 | null => {
   const { focus } = policy.def;
-  if (!focus) {
-    // getMainCamera() reads the default world; a policy reads its own world's main camera
-    const cameraId = world.getEntitiesWith(ComponentType.TAG_IS_MAIN_CAMERA).next().value;
-    if (cameraId === undefined) return null;
-    const camera = world.getComponent(cameraId, ComponentType.OBJECT3D)?.value;
-    return camera ? camera.getWorldPosition(_focus) : null;
-  }
+  if (!focus) return readCameraFocus(world, _focus);
   const at = focus();
   if (at === null || at === undefined) return null;
   if (typeof at === 'number') {
@@ -298,21 +411,33 @@ const unifyJointGroups = (
   }
 };
 
-const runPolicyPass = (world: ECSWorld, policy: ResolvedPolicy) => {
+/**
+ * One pass, from the members' positions (x, y, z per entity in `positions`; an entity id of -1 or
+ * a NaN position is skipped) and the focus: picks each member's ring and requests its tier. The
+ * members' tier state (hysteresis, refusals) is read now, at the decision.
+ */
+const decide = (
+  world: ECSWorld,
+  policy: ResolvedPolicy,
+  focus: THREE.Vector3,
+  entityIds: ArrayLike<number>,
+  positions: ArrayLike<number>
+) => {
   const members = world.getStorage(ComponentType.PHYSICS_TIER_POLICY);
-  if (!members.size) return;
-  const focus = resolveFocus(world, policy);
-  if (!focus) return;
-  const transforms = world.getStorage(ComponentType.TRANSFORM);
   const tierStorage = world.getStorage(ComponentType.PHYSICS_SIM_TIER);
   const { tiers, withinSq, leaveSq } = policy;
 
   desiredRings.clear();
   jointGroups.clear();
-  for (const [entityId, member] of members) {
-    const position = transforms.get(entityId)?.position;
-    if (!position) continue;
-    const distSq = position.distanceToSquared(focus);
+  for (let i = 0; i < entityIds.length; i++) {
+    const entityId = entityIds[i];
+    const member = entityId >= 0 ? members.get(entityId) : undefined;
+    if (!member) continue;
+    const dx = positions[i * 3] - focus.x;
+    const dy = positions[i * 3 + 1] - focus.y;
+    const dz = positions[i * 3 + 2] - focus.z;
+    const distSq = dx * dx + dy * dy + dz * dz;
+    if (Number.isNaN(distSq)) continue;
     // The latest request (an entity with no component is FULL)
     const currentRing = tiers.indexOf(tierStorage.get(entityId)?.target ?? 'FULL');
     let ring = ringIndexFor(distSq, withinSq);
@@ -350,16 +475,173 @@ const runPolicyPass = (world: ECSWorld, policy: ResolvedPolicy) => {
   refusedGroups.clear();
 };
 
-const physicsTierPolicySystem = (world: ECSWorld) => {
+// --- FRAMES ---------------------------------------------------------------------------------
+
+/** FRAMES: the members and their TRANSFORM positions, refilled every pass. */
+const frameEntityIds: number[] = [];
+const framePositions: number[] = [];
+
+const runFramePass = (world: ECSWorld, policy: ResolvedPolicy) => {
+  const members = world.getStorage(ComponentType.PHYSICS_TIER_POLICY);
+  if (!members.size) return;
+  const focus = resolveFrameFocus(world, policy);
+  if (!focus) return;
+  const transforms = world.getStorage(ComponentType.TRANSFORM);
+  frameEntityIds.length = 0;
+  framePositions.length = 0;
+  for (const entityId of members.keys()) {
+    const position = transforms.get(entityId)?.position;
+    if (!position) continue;
+    frameEntityIds.push(entityId);
+    framePositions.push(position.x, position.y, position.z);
+  }
+  decide(world, policy, focus, frameEntityIds, framePositions);
+};
+
+const physicsTierPolicyFrameSystem = (world: ECSWorld) => {
   const policy = policies.get(world);
-  if (!policy || freezeSources.get(world)?.size) return;
+  if (!policy || policy.cadence !== 'FRAMES' || isPhysicsTierPolicyFrozen(world)) return;
   if (--policy.framesUntilPass > 0) return;
-  policy.framesUntilPass = policy.everyNFrames;
-  runPolicyPass(world, policy);
+  policy.framesUntilPass = policy.interval;
+  runFramePass(world, policy);
+};
+
+// --- STEPS ----------------------------------------------------------------------------------
+
+const isMainThread = () => getPhysicsState().workerTarget === 'MAIN_THREAD';
+
+/** STEPS, on step `step`: reads the members' bodies and the focus, and keeps them for the
+ * decision `interval` steps later. MAIN_THREAD reads now; WORKER_THREAD asks the worker to read
+ * right before this step, and holds stepping before the decision step until it has the reply. */
+const measure = (world: ECSWorld, policy: ResolvedPolicy, step: number) => {
+  const members = world.getStorage(ComponentType.PHYSICS_TIER_POLICY);
+  if (!members.size) return;
+
+  // The focus, called with the step: a body is read with the members
+  let focus: THREE.Vector3 | null = null;
+  let focusBodyId: number | undefined;
+  const at = policy.def.focus ? policy.def.focus(step) : undefined;
+  if (!policy.def.focus) {
+    focus = readCameraFocus(world, new THREE.Vector3());
+  } else if (typeof at === 'number') {
+    focusBodyId = getEntityBody(world, at)?.id;
+    if (focusBodyId === undefined) {
+      const position = world.getComponent(at, ComponentType.TRANSFORM)?.position;
+      focus = position ? position.clone() : null;
+    }
+  } else if (at) {
+    focus = new THREE.Vector3(at.x, at.y, at.z);
+  }
+  if (!focus && focusBodyId === undefined) return;
+
+  // In entity id order: the requests of a decision then go out in the same order on every load
+  const entityIds = [...members.keys()].sort((a, b) => a - b);
+  const bodyIds: number[] = [];
+  for (let i = 0; i < entityIds.length; i++) {
+    const body = getEntityBody(world, entityIds[i]);
+    if (body) bodyIds.push(body.id);
+    else entityIds[i] = -1;
+  }
+  const measuredIds = entityIds.filter((id) => id >= 0);
+  if (!measuredIds.length) return;
+  if (focusBodyId !== undefined) bodyIds.push(focusBodyId);
+
+  const measurement: Measurement = {
+    step,
+    applyAt: step + policy.interval,
+    entityIds: measuredIds,
+    bodyIds,
+    focus,
+    positions: null,
+    releaseGate: null,
+    dropped: false,
+  };
+  policy.pending.push(measurement);
+  policy.lastMeasuredStep = step;
+
+  if (isMainThread()) {
+    measurement.positions = readBodyPositionsSync(bodyIds, new Float32Array(bodyIds.length * 3));
+    return;
+  }
+  measurement.releaseGate = addPhysicsStepGate(measurement.applyAt);
+  readBodyPositionsAtStep(bodyIds).then(
+    (positions) => {
+      if (measurement.dropped) return;
+      measurement.positions = positions;
+      measurement.releaseGate?.();
+      measurement.releaseGate = null;
+    },
+    (err) => {
+      lerror(`Physics tier policy: the positions measured on step ${step} didn't arrive.`, err);
+      measurement.releaseGate?.();
+      measurement.releaseGate = null;
+    }
+  );
+};
+
+/** Members whose body changed since their measurement are skipped. */
+const _decisionEntityIds: number[] = [];
+
+/** STEPS: the decision on a measurement's `applyAt` step. */
+const applyMeasurement = (world: ECSWorld, policy: ResolvedPolicy, measurement: Measurement) => {
+  const { entityIds, bodyIds, positions } = measurement;
+  if (!positions) return;
+  let focus = measurement.focus;
+  if (!focus) {
+    const o = entityIds.length * 3;
+    focus = _focus.set(positions[o], positions[o + 1], positions[o + 2]);
+    if (Number.isNaN(focus.x)) return;
+  }
+  // One taken out of the policy or given another body since the measurement isn't decided
+  _decisionEntityIds.length = entityIds.length;
+  for (let i = 0; i < entityIds.length; i++) {
+    const entityId = entityIds[i];
+    _decisionEntityIds[i] = getEntityBody(world, entityId)?.id === bodyIds[i] ? entityId : -1;
+  }
+  decide(world, policy, focus, _decisionEntityIds, positions);
+};
+
+const physicsTierPolicyStepSystem = (world: ECSWorld) => {
+  const policy = policies.get(world);
+  if (!policy || policy.cadence !== 'STEPS') return;
+  const step = getPhysicsSubStepIndex();
+  if (step < 0) return;
+  // A new physics world (a scene load) restarts the step count: what was measured is gone
+  const simEpoch = getPhysicsSimHistoryEpoch();
+  if (policy.simEpoch !== simEpoch) {
+    dropMeasurements(policy);
+    policy.simEpoch = simEpoch;
+  }
+
+  while (policy.pending.length && policy.pending[0].applyAt <= step) {
+    const measurement = policy.pending.shift()!;
+    measurement.releaseGate?.();
+    measurement.releaseGate = null;
+    if (measurement.applyAt === step && measurement.positions) {
+      applyMeasurement(world, policy, measurement);
+    } else if (IS_DEBUG_ENV) {
+      lwarn(
+        `Physics tier policy: the measurement of step ${measurement.step} missed its decision step ${measurement.applyAt} (now ${step}).`
+      );
+    }
+  }
+  if (step % policy.interval === 0 && !isPhysicsTierPolicyFrozen(world)) {
+    measure(world, policy, step);
+  }
 };
 
 ECSWorld.registerPlugin((world) => {
-  world.addSystem(ECSSystemStage.APP_LOGIC, 'physicsTierPolicySystem', physicsTierPolicySystem);
+  world.addSystem(
+    ECSSystemStage.APP_LOGIC,
+    'physicsTierPolicyFrameSystem',
+    physicsTierPolicyFrameSystem
+  );
+  world.addSystem(
+    ECSSystemStage.APP_PHYSICS_STEP,
+    'physicsTierPolicyStepSystem',
+    physicsTierPolicyStepSystem,
+    POLICY_STEP_SYSTEM_ORDER
+  );
 });
 
 // A scene-scoped policy goes with its scene (the current one while the exit hooks run)
@@ -367,7 +649,7 @@ registerOnAllSceneExits('physicsTierPolicy', () => {
   const sceneId = getCurrentSceneId();
   if (!sceneId) return;
   for (const [world, policy] of policies) {
-    if (policy.def.sceneId === sceneId) policies.delete(world);
+    if (policy.def.sceneId === sceneId) deletePolicy(world);
   }
 });
 
@@ -376,6 +658,6 @@ onECSWorldRegistryChange(() => {
   if (!policies.size) return;
   const alive = new Set(getAllECSWorlds());
   for (const world of policies.keys()) {
-    if (!alive.has(world)) policies.delete(world);
+    if (!alive.has(world)) deletePolicy(world);
   }
 });

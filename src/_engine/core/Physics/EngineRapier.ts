@@ -246,6 +246,24 @@ export const countDynamicBodyActivity = (out: PhysicsBodyActivity) => {
   return out;
 };
 
+/**
+ * Writes each body's translation into `out` (x, y, z per id, in order), also for a detached body
+ * (the REMOVED tier: where it was taken out), NaN for an unknown id. Rapier stores f32, so the
+ * values are exact in a Float32Array (p343: a deterministic tier policy reads them on a step).
+ */
+export const readBodyPositions = (ids: ArrayLike<number>, out: Float32Array) => {
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const o = i * 3;
+    const rb = getRigidBody(id);
+    const pos = rb ? rb.translation() : detachedBodies.get(id)?.translation;
+    out[o] = pos ? pos.x : NaN;
+    out[o + 1] = pos ? pos.y : NaN;
+    out[o + 2] = pos ? pos.z : NaN;
+  }
+  return out;
+};
+
 export const init = (
   physicsSt: PhysicsState,
   isDebugEnv: boolean,

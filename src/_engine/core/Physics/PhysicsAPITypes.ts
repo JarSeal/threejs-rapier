@@ -99,6 +99,9 @@ export type EngineAPIType = {
   setBodyMovedObserver: (observer: ((rigidBodyId: number) => void) | null) => void;
   /** Counts the awake and sleeping dynamic bodies into `out` and returns it (step stats). */
   countDynamicBodyActivity: (out: PhysicsBodyActivity) => PhysicsBodyActivity;
+  /** Writes each body's translation into `out` (x, y, z per id), also for a detached body (the
+   * REMOVED tier), NaN for an unknown id; returns `out`. Exact: Rapier stores f32 (p343). */
+  readBodyPositions: (ids: ArrayLike<number>, out: Float32Array) => Float32Array;
   /** The REMOVED physics tier (p352): takes a body and its colliders out of the world, keeping
    * their state and their ids. Returns the body's pose, or undefined when it has no body to
    * detach (unknown, already detached, or held by a joint). */
@@ -2293,6 +2296,7 @@ export type PhysicsUpProtocol =
     | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; ids: number[] }
     | { type: PhysicsProtocolType.RIGID_DETACH; id: number }
     | { type: PhysicsProtocolType.RIGID_REATTACH; id: number; state: RigidBodyAttachState }
+    | { type: PhysicsProtocolType.RIGID_READ_POSITIONS; ids: number[] }
     | { type: PhysicsProtocolType.RIGID_GET_USERDATA; rigidBodyId: number }
     | {
         type: PhysicsProtocolType.RIGID_SET_USERDATA;
@@ -2730,6 +2734,11 @@ export type PhysicsDownProtocol =
         capacityExceeded?: number;
       }
     | {
+        type: PhysicsProtocolType.RIGID_READ_POSITIONS;
+        /** x, y, z per requested id (readBodyPositions), transferred */
+        positions: Float32Array;
+      }
+    | {
         type: PhysicsProtocolType.DELETE_RIGID_BODIES;
         ids: number[];
         colliderIds: number[];
@@ -2906,6 +2915,7 @@ export type DeleteRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.DELETE
 export type DeleteRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODIES>;
 export type RigidDetachResponse = PhysicsResponse<PhysicsProtocolType.RIGID_DETACH>;
 export type RigidReattachResponse = PhysicsResponse<PhysicsProtocolType.RIGID_REATTACH>;
+export type RigidReadPositionsResponse = PhysicsResponse<PhysicsProtocolType.RIGID_READ_POSITIONS>;
 export type RigidGetUserDataResponse = PhysicsResponse<PhysicsProtocolType.RIGID_GET_USERDATA>;
 export type RigidIsValidResponse = PhysicsResponse<PhysicsProtocolType.RIGID_IS_VALID>;
 export type RigidDominanceGroupResponse =
@@ -3132,6 +3142,8 @@ export enum PhysicsProtocolType {
   RIGID_DETACH = 473,
   /** Back from the REMOVED physics tier (p352) */
   RIGID_REATTACH = 474,
+  /** Body positions read on a fixed step (p343's deterministic tier policy) */
+  RIGID_READ_POSITIONS = 475,
 
   // COLLIDER >= 600 && COLLIDER < 800
   CREATE_COLLIDER = 600,

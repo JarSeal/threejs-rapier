@@ -26,7 +26,9 @@ import { lwarn } from '../_engine/utils/Logger';
  * whose tiers follow a distance policy around a kinematic plough ball. The plough mows a
  * serpentine through the piles, so the crates it scatters freeze (STATIC), drop out of the
  * simulation (DISABLED) and out of the physics world (REMOVED) as it moves on, and come back where
- * they were left when it returns. Each crate is tinted by its tier.
+ * they were left when it returns. Each crate is tinted by its tier. The policy runs on fixed
+ * steps (the default STEPS cadence, p343) and the plough moves on them, so a visit plays out the
+ * same way every time, in both worker targets.
  */
 
 export const PHYSICS_TIERS_SCENE_ID = 'physicsTiers';
@@ -256,7 +258,8 @@ export const scene = async () => {
     {
       focus: () => ploughId,
       rings: RINGS,
-      everyNFrames: 10,
+      interval: 10,
+      cadence: 'STEPS', // Optional (default is 'STEPS')
       sceneId: PHYSICS_TIERS_SCENE_ID,
     },
     world

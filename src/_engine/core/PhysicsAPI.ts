@@ -152,6 +152,7 @@ import {
   JointGetUserDataResponse,
   RigidBodyPose,
   RigidDetachResponse,
+  RigidReadPositionsResponse,
   RigidReattachResponse,
   type PhysicsBodyActivity,
   type RigidBodyAttachState,
@@ -417,27 +418,41 @@ export const stepPhysics = (
     accDelta = 0;
     return 0;
   }
+  // Step gates (addPhysicsStepGate): unlike the limit, time keeps banking while one holds.
+  const stepsToGate = getLowestStepGate() - stepsIssued;
 
   const scaledDelta = dt * loopState.playSpeedMultiplier;
   accDelta +=
     physicsState.maxDeltaTime > 0 ? Math.min(scaledDelta, physicsState.maxDeltaTime) : scaledDelta;
 
+  const maxSteps = physicsState.maxSubSteps > 0 ? physicsState.maxSubSteps : Infinity;
   let stepsTaken = 0;
   while (
     accDelta >= physicsState.timestepRatio &&
-    (physicsState.maxSubSteps === 0 || stepsTaken < physicsState.maxSubSteps)
+    stepsTaken < maxSteps &&
+    stepsTaken < stepsToGate
   ) {
     accDelta -= physicsState.timestepRatio;
     stepsTaken++;
   }
-  // Hit the sub-step ceiling with backlog still left over: drop it instead of deferring it,
-  // so a sustained slowdown can't make the accumulator (and next frame's catch-up cost) grow
-  // without bound — the actual "prevent the spiral of death" behavior.
-  if (physicsState.maxSubSteps > 0 && stepsTaken >= physicsState.maxSubSteps) {
+  if (stepsTaken >= maxSteps) {
+    // Hit the sub-step ceiling with backlog still left over: drop it instead of deferring it,
+    // so a sustained slowdown can't make the accumulator (and next frame's catch-up cost) grow
+    // without bound — the actual "prevent the spiral of death" behavior.
     // Only a discontinuity if there was backlog to drop (sitting exactly at the ceiling isn't).
     if (accDelta >= physicsState.timestepRatio) simClockEpoch++;
     accDelta = 0;
+  } else if (accDelta >= physicsState.timestepRatio && stepsTaken >= stepsToGate) {
+    // Held at a gate with steps due: they wait in the accumulator and run once it's released,
+    // but never more of them than one frame could catch up (the ceiling above drops the rest).
+    const maxBacklog = maxSteps * physicsState.timestepRatio;
+    if (accDelta > maxBacklog) {
+      accDelta = maxBacklog;
+      simClockEpoch++;
+    }
+    noteStepGateHeld(true);
   }
+  if (stepsTaken > 0 && stepsTaken < stepsToGate) noteStepGateHeld(false);
   if (stepsTaken >= stepsToLimit) {
     stepsTaken = stepsToLimit;
     accDelta = 0;
@@ -449,18 +464,27 @@ export const stepPhysics = (
   const trackStats = physicsState.stepStatsEnabled;
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     let stepMs = 0;
-    for (let i = 0; i < stepsTaken; i++) {
-      if (onBeforeStep) onBeforeStep(stepDelta);
-      else flushPhysicsEvents();
-      if (!trackStats) {
+    try {
+      for (let i = 0; i < stepsTaken; i++) {
+        if (isSubStepGated(i, stepsTaken)) {
+          stepsTaken = i;
+          break;
+        }
+        subStepIndex = stepsIssued + i;
+        if (onBeforeStep) onBeforeStep(stepDelta);
+        else flushPhysicsEvents();
+        if (!trackStats) {
+          engAPI?.step();
+          continue;
+        }
+        // Timed around step() alone: onBeforeStep above runs app/ECS work, and including it
+        // would reproduce exactly the contamination that made the legacy PHY panel misleading.
+        const subStepStart = performance.now();
         engAPI?.step();
-        continue;
+        stepMs += performance.now() - subStepStart;
       }
-      // Timed around step() alone: onBeforeStep above runs app/ECS work, and including it
-      // would reproduce exactly the contamination that made the legacy PHY panel misleading.
-      const subStepStart = performance.now();
-      engAPI?.step();
-      stepMs += performance.now() - subStepStart;
+    } finally {
+      subStepIndex = -1;
     }
     if (trackStats) {
       lastPhysicsStepDurationMs = stepMs;
@@ -478,12 +502,18 @@ export const stepPhysics = (
     if (onBeforeStep) {
       substepCommands = [];
       for (let i = 0; i < stepsTaken; i++) {
+        if (isSubStepGated(i, stepsTaken)) {
+          stepsTaken = i;
+          break;
+        }
         substepCommandCapture = [];
+        subStepIndex = stepsIssued + i;
         try {
           onBeforeStep(stepDelta);
         } finally {
           substepCommands.push(substepCommandCapture);
           substepCommandCapture = null;
+          subStepIndex = -1;
         }
       }
     }
@@ -1061,6 +1091,9 @@ const stampStepBatch = (stepsTaken: number) => {
  * worker's own count does at CREATE_WORLD). */
 const resetSimClock = () => {
   stepsIssued = 0;
+  // A gate's step is the old world's: it would hold the new one at a step it has nothing for
+  stepGates.clear();
+  noteStepGateHeld(false);
   snapshotPhaseStep.fill(-1);
   simClockEpoch++;
   simHistoryEpoch++;
@@ -1130,6 +1163,89 @@ export const setPhysicsStepLimit = (steps: number | null) => {
   stepLimit = steps === null ? null : stepsIssued + Math.max(0, Math.floor(steps));
   return stepLimit;
 };
+
+/** The sub-step stepPhysics() is in (see getPhysicsSubStepIndex), -1 outside of one. */
+let subStepIndex = -1;
+
+/**
+ * Inside a sub-step's `APP_PHYSICS_STEP` systems (stepPhysics' onBeforeStep), the index of the
+ * fixed step about to run: the steps run on the current world before it, the same in both worker
+ * targets. The first step of a world is 0, and a write made in step `k` is in the snapshot
+ * stamped `k + 1` (getPhysicsSnapshotStepIndex) and after. -1 outside a sub-step. A step clock
+ * for systems that must decide on fixed steps (p343: the deterministic tier policy).
+ */
+export const getPhysicsSubStepIndex = () => subStepIndex;
+
+/** Held step gates (addPhysicsStepGate): gate id → the step index they hold stepping before. */
+const stepGates = new Map<number, number>();
+let nextStepGateId = 1;
+
+const getLowestStepGate = () => {
+  if (!stepGates.size) return Infinity;
+  let lowest = Infinity;
+  for (const step of stepGates.values()) if (step < lowest) lowest = step;
+  return lowest;
+};
+
+/** How often and how long gates held stepping back (getPhysicsStepGateStats). */
+const stepGateStats = { waits: 0, heldMs: 0 };
+let stepGateHeldSince: number | null = null;
+
+/** Called by stepPhysics: `held` when a gate cut a frame's steps, false once a frame wasn't. */
+const noteStepGateHeld = (held: boolean) => {
+  if (held) {
+    if (stepGateHeldSince !== null) return;
+    stepGateHeldSince = performance.now();
+    stepGateStats.waits++;
+    return;
+  }
+  if (stepGateHeldSince === null) return;
+  stepGateStats.heldMs += performance.now() - stepGateHeldSince;
+  stepGateHeldSince = null;
+};
+
+/**
+ * Whether sub-step `i` of a batch of `stepsTaken` is held by a gate an earlier sub-step of the
+ * same batch added (p343: a measurement whose reply its decision step needs). The batch then ends
+ * before it, and its remaining steps go back to the accumulator, to run once the gate opens.
+ */
+const isSubStepGated = (i: number, stepsTaken: number) => {
+  if (!stepGates.size || stepsIssued + i < getLowestStepGate()) return false;
+  accDelta += (stepsTaken - i) * physicsState.timestepRatio;
+  noteStepGateHeld(true);
+  return true;
+};
+
+/**
+ * Holds stepping before the fixed step `step` (a getPhysicsSubStepIndex index): stepPhysics()
+ * issues no sub-step with an index of `step` or more until the returned function is called. With
+ * several gates the lowest holds. For work that must finish before a given step runs, eg. a worker
+ * reply a decision on that step needs (p343). A gate at a step already issued holds from the next.
+ * One added by an `APP_PHYSICS_STEP` system also cuts the frame's batch it was added in.
+ *
+ * Unlike the debug step limit, time keeps accumulating while a gate holds, so a short hold is
+ * caught up on the next frames (at most `maxSubSteps` steps of it; more is dropped as a frame over
+ * the ceiling would). A new physics world (a scene load) drops every gate, and their release
+ * functions do nothing then.
+ */
+export const addPhysicsStepGate = (step: number): (() => void) => {
+  const id = nextStepGateId++;
+  stepGates.set(id, step);
+  return () => {
+    stepGates.delete(id);
+  };
+};
+
+/**
+ * Since boot: `waits`, how many times a gate held back steps that were due, and `heldMs`, for how
+ * long in total (wall clock, until a frame stepped without being cut). A hold still going counts
+ * up to now.
+ */
+export const getPhysicsStepGateStats = () => ({
+  waits: stepGateStats.waits,
+  heldMs:
+    stepGateStats.heldMs + (stepGateHeldSince === null ? 0 : performance.now() - stepGateHeldSince),
+});
 
 /**
  * Fixed physics sub-steps issued since boot, over every world (WORKER_THREAD: sent, possibly not
@@ -1707,6 +1823,37 @@ export const reattachRigidBodySync = (id: number, state: RigidBodyAttachState) =
     );
   }
   return physicsWorldEnabled ? engAPI?.reattachRigidBody(id, state) : undefined;
+};
+
+/**
+ * The bodies' translations (x, y, z per id, in order; NaN for an unknown id; a REMOVED-tier body
+ * where it was taken out), read on a fixed step: called from an APP_PHYSICS_STEP system, they
+ * are read right before that sub-step runs, in both worker targets, so both get the same values
+ * (Rapier's own f32). MAIN_THREAD reads at the call; WORKER_THREAD resolves with the worker's
+ * reply, a frame or more later. Outside a sub-step the worker reads before the frame's first
+ * step. Without a world it resolves with NaNs. For p343's deterministic tier policy.
+ */
+export const readBodyPositionsAtStep = async (ids: number[]): Promise<Float32Array> => {
+  if (!physicsWorldEnabled) return new Float32Array(ids.length * 3).fill(NaN);
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    return readBodyPositionsSync(ids, new Float32Array(ids.length * 3));
+  }
+  const res = await messageWorkerAtStep<RigidReadPositionsResponse>({
+    type: PhysicsProtocolType.RIGID_READ_POSITIONS,
+    ids,
+  });
+  return res.positions;
+};
+
+/** readBodyPositionsAtStep (sync), into `out` (3 floats per id). Only for main thread mode. */
+export const readBodyPositionsSync = (ids: ArrayLike<number>, out: Float32Array) => {
+  if (physicsState.workerTarget !== 'MAIN_THREAD') {
+    throw new Error(
+      'Cannot use readBodyPositionsSync in worker mode. Use readBodyPositionsAtStep instead.'
+    );
+  }
+  if (!physicsWorldEnabled || !engAPI) return out.fill(NaN);
+  return engAPI.readBodyPositions(ids, out);
 };
 
 /** Strips collisionEventFn/contactForceEventFn from a ColliderParams before it crosses

@@ -25,6 +25,7 @@ import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import {
   getLastPhysicsBodyActivity,
   getPhysicsBodyCapacity,
+  getPhysicsStepGateStats,
   getPhysicsState,
   getPhysicsWorld,
   getResolvedTransportMode,
@@ -69,9 +70,10 @@ import {
 import { getECSWorld, getEntityIdByAppId, getStableAppId } from '../ECS';
 import { getPhysicsBodyOwner, getPhysicsInterpolationReadout } from '../PhysicsManager';
 import {
-  DEFAULT_EVERY_N_FRAMES,
   getPhysicsTierPolicy,
   getPhysicsTierPolicyFreezeSources,
+  getPhysicsTierPolicyStatus,
+  isPhysicsTierPolicyFrozen,
   setPhysicsTierPolicyFrozen,
 } from '../PhysicsTierPolicy';
 import type { PhysicsTierPolicy } from '../Physics/PhysicsTierTypes';
@@ -798,6 +800,9 @@ const tiersReadout = {
   inFlight: 0,
   policy: '',
   policyState: '',
+  lastMeasuredStep: '',
+  pendingMeasurements: 0,
+  gateWaits: '',
 };
 const tierPolicyProxy = { frozen: false };
 
@@ -831,13 +836,27 @@ const refreshTiersReadout = () => {
 
   const policy = getPhysicsTierPolicy(world);
   tiersReadout.policy = policy ? formatTierPolicy(policy) : 'None (setPhysicsTierPolicy)';
+  const status = getPhysicsTierPolicyStatus(world);
   const freezeSources = getPhysicsTierPolicyFreezeSources(world);
-  tiersReadout.policyState = freezeSources.length
-    ? `Frozen by ${freezeSources.join(', ')}`
-    : policy
-      ? `Running, every ${policy.everyNFrames ?? DEFAULT_EVERY_N_FRAMES} frames`
-      : '-';
-  tierPolicyProxy.frozen = freezeSources.includes(TIER_POLICY_FREEZE_SOURCE);
+  const cadence = status
+    ? `${status.cadence}, every ${status.interval} ${status.cadence === 'STEPS' ? 'steps' : 'frames'}`
+    : '';
+  tiersReadout.policyState = !status
+    ? '-'
+    : freezeSources.length
+      ? `${cadence}, frozen by ${freezeSources.join(', ')}`
+      : `${cadence}, running`;
+  const isSteps = status?.cadence === 'STEPS';
+  tiersReadout.lastMeasuredStep = !isSteps
+    ? '-'
+    : status.lastMeasuredStep < 0
+      ? 'None yet'
+      : String(status.lastMeasuredStep);
+  tiersReadout.pendingMeasurements = isSteps ? status.pendingMeasurements : 0;
+  // Stepping held for a measurement's reply (WORKER_THREAD); the policy is the gates' only user
+  const gates = getPhysicsStepGateStats();
+  tiersReadout.gateWaits = `${gates.waits} (${Math.round(gates.heldMs)} ms)`;
+  tierPolicyProxy.frozen = isPhysicsTierPolicyFrozen(world, TIER_POLICY_FREEZE_SOURCE);
 };
 
 /** p352's simulation tiers: per-tier counts, transitions waiting for their step (pending) or
@@ -873,6 +892,14 @@ const getTiersFolder = (): DebuggerPaneItem<PhysicsState> => {
         rows: 2,
       },
       { key: 'policyState', target: tiersReadout, label: 'Tier policy', readonly: true },
+      {
+        key: 'lastMeasuredStep',
+        target: tiersReadout,
+        label: 'Last measured step (STEPS)',
+        readonly: true,
+      },
+      count('pendingMeasurements', 'Measurements waiting for their step'),
+      { key: 'gateWaits', target: tiersReadout, label: 'Step gate waits', readonly: true },
       {
         key: 'frozen',
         target: tierPolicyProxy,

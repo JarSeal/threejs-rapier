@@ -4,6 +4,51 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-06 — physics-simulation-tiers
+
+### Engine 4.10.0 (Afternoon)
+
+**Added**
+
+- Physics simulation tiers (`core/PhysicsTiers.ts`, types in `Physics/PhysicsTierTypes.ts`): a dynamic body made by `createPhysicsEntity` can be `FULL` (simulated as created), `STATIC` (switched to `FIXED`: it still collides, but nothing moves or wakes it), `DISABLED` (out of the broad phase, contacts and queries; pose and velocities kept exactly) or `REMOVED` (the body and its colliders leave the physics world and free their transform-buffer slot; the entity and its visual stay).
+  - `requestPhysicsTier(entityId, tier, world?)` applies at the start of the next `APP_PHYSICS_STEP` sub-step, so a request from a step system or scene-load code is deterministic; requests made before then collapse into the latest. It returns `false` (with a debug-env warning) for a character, a body not yet created, or one not created `DYNAMIC` by `createPhysicsEntity`. `getPhysicsTier(entityId, world?)` returns `{ tier, pending, inFlight }`.
+  - `STATIC` and `DISABLED` move the entity to `BODY_STATIC` (no per-frame sync or interpolation). `REMOVED` takes its bucket and `COLLIDER` components away, and `world.setTransform` moves only its visual until it's back.
+  - Bodies connected by impulse joints change tier together; `REMOVED` is refused for a body with joints.
+  - A `REMOVED` body keeps its ids and proxies, so app references to it and its colliders, collider event callbacks and later collider changes survive. A body at rest comes back exactly as if it had never left. A moving one keeps its pose, velocities and sleep state, but Rapier's contact and solver state starts over. In `WORKER_THREAD` mode a full transform buffer refuses the return: the entity stays `REMOVED` and a `PhysicsCapacityError` is logged.
+  - Engine side: `detachRigidBody` / `reattachRigidBody` (plus `*Sync`, `PhysicsAPI.ts` and `EngineRapier.ts`) and the worker requests `RIGID_DETACH` / `RIGID_REATTACH`.
+- The physics tier distance policy (`core/PhysicsTierPolicy.ts`): `setPhysicsTierPolicy({ rings, focus?, hysteresis?, cadence?, interval?, sceneId? } | null, world?)`. Each member gets the tier of the ring around the focus it's in (default focus: the world's main camera; or a position, or an entity id), with hysteresis moving out (default 0.15) and a joint group taking its nearest member's tier. A refused tier isn't requested again until the entity's ring changes.
+  - `cadence: 'STEPS'` (default) measures the members and the focus on fixed steps that are multiples of `interval` (default 10) and decides `interval` steps later, so with a deterministic focus a scene plays out the same on every load and in both worker targets. `focus` gets the step index. `'FRAMES'` runs every `interval` frames at `APP_LOGIC` from the members' `TRANSFORM` positions.
+  - Members: `createPhysicsEntity`'s `tierPolicy` option (the new `PhysicsEntityOpts`), or `setPhysicsTierPolicyMember(entityId, member, world?)`.
+  - `getPhysicsTierPolicy`, `getPhysicsTierPolicyStatus` (cadence, interval, last measured step, pending measurements), `setPhysicsTierPolicyFrozen(frozen, source?, world?)` (each source freezes on its own), `isPhysicsTierPolicyFrozen` and `getPhysicsTierPolicyFreezeSources`. A policy with `sceneId` is removed when that scene exits.
+- Step plumbing (`PhysicsAPI.ts`):
+  - `getPhysicsSubStepIndex()`: inside an `APP_PHYSICS_STEP` system, the index of the fixed step about to run (a write made in step `k` shows in the snapshot stamped `k + 1`), else -1.
+  - `addPhysicsStepGate(step)` returns a release function: no sub-step at or past `step` runs while it's held (several gates: the lowest holds). It also cuts the frame's batch it was added in. Time keeps accumulating while it holds (at most `maxSubSteps` steps of it) and is caught up after. A new physics world drops every gate. `getPhysicsStepGateStats()` counts the holds and their time.
+  - `readBodyPositionsAtStep(ids)` / `readBodyPositionsSync(ids, out)`: body positions read right before the current step runs, the same values in both worker targets (also for a `REMOVED` body; NaN for an unknown id). Engine side `readBodyPositions` and the worker request `RIGID_READ_POSITIONS`.
+- `getPhysicsBodyCapacity()` (`WORKER_THREAD`: transform-buffer slots used, max and refused creates) and `getLastPhysicsBodyActivity()` (awake and sleeping dynamic bodies, measured with the step stats, in the worker too).
+- `getPhysicsBodyOwner(rigidBodyId)` (`PhysicsManager.ts`): the entity, world and created rigid type of a `createPhysicsEntity` body. `hasJoints()` and `forEachJointBodyPair(fn)` (`PhysicsAPI.ts`).
+- `setBodyMovedListener` / `setBodyMovedObserver`: told about every `setTranslation` / `setRotation`, so a body moved directly reaches its entity's transform when it isn't synced every frame.
+- Physics API debug tab:
+  - "Bodies (live)": slots used / max, refused creates, awake and sleeping dynamic bodies.
+  - "Simulation tiers (live)": counts per tier, pending and in-flight transitions, the policy's rings, cadence and state, its last measured step, measurements waiting for their step, step gate waits, and a "Freeze tier policy" toggle (its own freeze source, session only).
+- Collider wireframes have two more colour states, `tierDisabled` and `tierStatic`, which lead the priority list (`PhysicsWireframeColors` in `AppConfig.debugPhysicsWireframe`, the tab's palette and the per-entity overrides).
+
+**Changed**
+
+- Fixed bodies take no transform-buffer slot in `WORKER_THREAD` mode, and `physicsToTransformSystem` no longer syncs `BODY_STATIC` every frame: a fixed body moved by `world.setTransform` or a direct `setTranslation` / `setRotation` is synced when it moves. A body whose pose didn't change no longer marks its transform dirty, so a sleeping body costs one pose read and compare per frame.
+- `ECSWorld.setTransform`, `setVelocity` and `setDisabled` treat an entity with a physics tier as dynamic, and `setDisabled` keeps a `DISABLED`-tier body disabled.
+- Determinism probe: an entity in a tier other than `FULL` hashes its tier too (scenes without tiers keep their hashes), and a `REMOVED` one its transform. While armed it freezes `FRAMES` tier policies; a `STEPS` policy keeps running, so the probe tests it.
+- The `runtime` view icon is redrawn.
+
+**Fixed**
+
+- A full transform buffer (`maxBodies`) threw in the worker, the create never settled and a scene load hung. A create is now refused: `createPhysicsEntity` removes what it made and rejects with a `PhysicsCapacityError`, and `CREATE_RIGID_BODIES` is all or nothing.
+
+### App 1.6.0 (Preschooler)
+
+**Added**
+
+- The `physicsTiers` demo scene (`physicsTiers.ts`): 686 crates in 49 piles on a 600 m ground, every crate in a `STEPS` tier policy (rings `FULL` 40, `STATIC` 90, `DISABLED` 160, `REMOVED` beyond) around a kinematic plough ball that mows a serpentine through the piles on fixed steps. Crates are tinted by tier and the rings are drawn around the plough. `C` switches between the overview and a chase camera. A visit plays out the same every time, in both worker targets.
+
 ## 2026-10-06 — editor-creator-view
 
 ### Engine 4.9.0 (Afternoon)

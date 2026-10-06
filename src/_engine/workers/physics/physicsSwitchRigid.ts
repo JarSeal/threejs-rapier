@@ -49,7 +49,12 @@ export const physicsSwitchRigid = async (
   data: PhysicsUpProtocol,
   physicsWorldAPI: WorldAPI,
   engAPI: EngineAPIType,
-  sendMessage: (message: any, data: PhysicsUpProtocol) => void,
+  sendMessage: (
+    message: any,
+    data: PhysicsUpProtocol,
+    isError?: boolean,
+    transfer?: Transferable[]
+  ) => void,
   transformBuffer?: PhysicsTransformBuffer
 ) => {
   const type = data.type;
@@ -137,6 +142,11 @@ export const physicsSwitchRigid = async (
       }
       if (slot !== -1) transformBuffer?.setTransform(slot, pose.pos, pose.rot);
       return sendMessage({ type, slot, pose }, data);
+    }
+    case PhysicsProtocolType.RIGID_READ_POSITIONS: {
+      // RIGID_READ_POSITIONS (p343): replayed before its sub-step, so read before that step runs
+      const positions = engAPI.readBodyPositions(data.ids, new Float32Array(data.ids.length * 3));
+      return sendMessage({ type, positions }, data, false, [positions.buffer]);
     }
     case PhysicsProtocolType.RIGID_GET_USERDATA: {
       // RIGID_GET_USERDATA

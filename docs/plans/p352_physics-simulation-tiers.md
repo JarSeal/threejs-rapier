@@ -1,9 +1,8 @@
-Status: in progress | Phases 1-3 implemented, Phase 4 §5-6 built
+Status: in progress | Phases 1-4 implemented
 Category: Physics
 Epic: p350_lod-system-research.md (Tier 1.2, §6)
-Blocked by: p343_deterministic-physics-tier-policy.md (Phase 4: the policy's `cadence` option)
 Blocks: p353_macro-streaming-grid.md (its physics phase)
-Related: p420_npc-simulation-tiers.md (characters and NPCs: their tiers, kinematic movers and crowds live there, not here), p102_physics-world-bounds.md (its `DISABLE` action is this plan's `DISABLED` tier), p500_restore-physics-snapshot.md (body snapshots share a format), \_DONE_p063_triple-buffered-physics-transform-buffer.md (slot allocation), p101 scene-load determinism (implemented; CLAUDE.md Physics section)
+Related: \_DONE_p343_deterministic-physics-tier-policy.md (the policy's `STEPS` / `FRAMES` cadence and the step plumbing it uses), p420_npc-simulation-tiers.md (characters and NPCs: their tiers, kinematic movers and crowds live there, not here), p102_physics-world-bounds.md (its `DISABLE` action is this plan's `DISABLED` tier), p500_restore-physics-snapshot.md (body snapshots share a format), \_DONE_p063_triple-buffered-physics-transform-buffer.md (slot allocation), p101 scene-load determinism (implemented; CLAUDE.md Physics section)
 
 # Physics Simulation Tiers
 
@@ -363,12 +362,12 @@ As built (differs from §4.1-4.4, decided in review):
   wireframe going and coming back, and (worker) a full buffer refusing a return until a slot
   frees.
 
-### Phase 4 — Distance policy and debug
+### Phase 4 — Distance policy and debug — done
 
 §5 and §6. §5's policy gets a `cadence` option (deterministic `STEPS` or frame-driven `FRAMES`)
-from p343_deterministic-physics-tier-policy.md before this phase is marked done.
+from \_DONE_p343_deterministic-physics-tier-policy.md before this phase is marked done (it did).
 
-As built so far (§5 and §6; differs from them):
+As built (§5 and §6; differs from them; the policy's cadence as built is in \_DONE_p343):
 
 - **Module:** `core/PhysicsTierPolicy.ts` registers itself on import (an `APP_LOGIC` system per
   world, a scene-exit hook, a world-registry hook), like `PhysicsTiers.ts`. Types in
@@ -407,9 +406,13 @@ As built so far (§5 and §6; differs from them):
   the world (the next scene's members follow it), and a deleted world drops its policy. Removing
   a policy or a member leaves the tiers as they are.
 - **Probe:** freezes the policy while armed (source `DETERMINISM_PROBE`; the probe module imports
-  the policy module, debug only).
-- **Not deterministic:** the policy runs on frames, so its requests land on frame-timing-dependent
-  steps, also with a deterministic focus. p343 adds the deterministic `STEPS` cadence.
+  the policy module, debug only). Since p343, only a `FRAMES` policy.
+- **Not deterministic** (as built here): the policy ran on frames, so its requests landed on
+  frame-timing-dependent steps, also with a deterministic focus. **Superseded by p343 (Phases
+  1-2):** `cadence` (`STEPS` by default: measured and decided on fixed steps, deterministic in
+  every target; `FRAMES` = this behaviour) and `interval` replace `everyNFrames`. The demo runs
+  on `STEPS`, and the probe's `physicsTiers` hash with the policy running is the same on every
+  load and in all three targets.
 - **Cell owners:** p353 isn't built, so "entities with a cell owner follow the cell" waits for
   Phase 5.
 - **Demo scene `physicsTiers`** (app, `app/physicsTiers.ts`): a 600 m ground with 49 crate
