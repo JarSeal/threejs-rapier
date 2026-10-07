@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-2 implemented
+Status: in progress | Phases 0-3 implemented
 Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
@@ -361,7 +361,7 @@ bytes exactly):
   both assets in its `textures` (column 4 rows 2-4 and column 5); its results add
   `noOutputFallback` and `assetErrors`.
 
-### Phase 3 — Atlases (D3)
+### Phase 3 — Atlases (D3) — done
 
 Schema, packer, per-slot composition, cell table. **Exit:** a 2-slot atlas of 6 cells, mips
 viewed at the smallest level the file has show no neighbour bleeding.
@@ -373,8 +373,9 @@ Decided before it started (D3 as written can't meet its exit):
   the padding. So the pipeline computes the levels itself (`images.ts`'s exact 2×2 box) and
   passes them to `ktx create --levels N` (verified with 4.4.2: no `--generate-mipmap`, input files
   level-major, layers inner). The chain stops at level `L`, the last one the layout protects:
-  every padded rect (and the atlas size) aligned to `2^L` and `padding ≥ 2^L`, so a level-`L` texel
-  never straddles two cells and a bilinear tap at a cell's edge stays in its padding. three r186
+  `padding ≥ 2^L`, the atlas size aligned to `2^L` and every padded rect to `4 · 2^L`, so neither
+  a level-`L` texel nor a level-`L` 4 × 4 compression block holds two cells, and a bilinear tap at
+  a cell's edge stays in its padding (the block rule came in section 5). three r186
   sizes the GPU texture from `mipmaps.length` on both backends (`Textures.getMipLevels`,
   `texStorage2D/3D`), so a short chain is a complete texture.
 - **Slots are KTX2 only**, like arrays: a `codec: "none"` PNG would get a full chain generated
@@ -407,10 +408,10 @@ padding, levels, cells }`, a cell being `{ uv: [u0, v0, u1, v1], size: [w, h], d
   px of the layout). The atlas id is taken in the textures' id space too. A slot entry gets the
   slot's `debugData` (else the atlas's), both `userData`s merged and the atlas's `throwOnError`.
 - `padding` defaults to 8. The packer places the cells without a `rect` tallest first, each
-  padded and rounded up to the grid `2^⌊log2 padding⌋` (at least 4). An explicit rect off the
-  4 px grid is an error, not snapped (snapping would move the author's layout). A rect, or the
-  atlas size, aligned to less than the padding protects shortens the chain, with a warning naming
-  it.
+  padded and rounded up to the grid `4 · 2^⌊log2 padding⌋` (section 5; it was `2^⌊log2 padding⌋`).
+  An explicit rect off the 4 px grid is an error, not snapped (snapping would move the author's
+  layout). A rect off the packer's grid, or an atlas size aligned to less than the padding
+  protects, shortens the chain, with a warning naming it.
 - A cell needs a source in one slot or more; `rect` and `size` exclude each other. Slot names are
   letters, digits, `_` and `-` (they end the texture id after a dot). The slot schema is strict:
   the plan's `"colorSpace": "SRGB"` on a slot is an error (it is `texOpts.colorSpace`).
@@ -506,11 +507,65 @@ each fail the production gather, naming the slot):
 - No scene lists an atlas yet: section 4's `textureAtlases` scene is the first, and the runtime
   side of a slot entry is untested until then.
 
-#### Section 4: Runtime load and verification
+#### Section 4: Runtime load and verification — done
 
 `loadTextureAsync` gives a slot texture its `userData.textureAtlas`; a `textureAtlases` debug
 scene showing each slot at each of its levels (`textureLod`) with the cell rects, on WebGPU and
 WebGL2. This phase's "As built" and the status line.
+
+As built (verified in the `textureAtlases` scene on WebGPU and WebGL2, the same to a mean of
+0.02 / 255 over the scene: both slots load from the scene's `"p299TestAtlas"`, 512² with 5 levels;
+GPU memory counts each slot's 349,184 B, its `__vramBytes.out`; each cell at level 0 next to its
+source differs by a mean of 0.4-4.1 / 255 at about 1:1; a ring just inside each albedo cell has
+no hue the cell lacks at level 0, at every level, while the same test finds 91-100 % foreign hues
+when judged by a neighbour's; the scene's exit releases both slots):
+
+- `TextureProps.__atlas` (the generated `TextureAtlasSlotInfo`) marks a slot: `loadTextureAsync`
+  hands it to `loadTextureAtlasSlotAsync` (`core/Texture.ts`). The scene loader needed no change.
+- `core/TextureAtlas.ts` (new; Phase 4 adds the helpers): `TextureAtlasInfo` on
+  `userData.textureAtlas` is the slot's `__atlas` (a copy) plus the file's `width`, `height` and
+  `storedLevels`: `__atlas.levels` is what the layout keeps apart, not what the file stores (fewer
+  with `maxSize` or `mipmaps: false`). `getTextureAtlasInfo(texture)` reads it.
+- A file that doesn't fit its layout fails (stale generated data): its size must be the layout's
+  halved per dropped top level, and the dropped plus stored levels at most `__atlas.levels`.
+- No output (`__url` unset) and a failed load log an error and return an unregistered empty
+  texture without `textureAtlas`; `throwOnError` throws. It used to load silently as an empty
+  texture (`!fileName && !__url`).
+- The scene: each slot whole at every stored level (`.level(n)`, content rects magenta, padded
+  rects cyan, the quad's edge grey), each cell through its UV rect at every level, and its source
+  file; `results` add the error paths (`noOutput`, `tooManyLevels`, `droppedPlusStored`,
+  `sizeMismatch`) and `noOutputFallback`.
+
+**Found here, fixed in section 5: block cross-talk at the last level.** The layout kept level-`L`
+_texels_ apart (rects aligned to `2^L`), but KTX2's codecs encode 4 × 4 _blocks_, which at level
+`L` cover `4 · 2^L` layout px. The test atlas is aligned to 16 px, so at level 4 (blocks of 64 px)
+four blocks hold two cells' texels (yellow + metal, blue + checker), and their shared endpoints
+pull each toward the other: decoded level 4 against the box-filtered level 0, the metal content
+texel next to yellow is +9 G / −6 B (an olive tint, visible in the scene), yellow's border
+shifted toward brown as much, and one yellow texel is +67 B. Levels 0-3 have no such block. UASTC
+partitions soften it; ETC1S (one colour per block) would be worse.
+
+#### Section 5: Block-aligned levels — done
+
+Section 4's finding, fixed in section 1's rule (`layoutAtlasCells`, `textureAtlases.ts`): a level
+`L` is protected only when every padded rect is aligned to `4 · 2^L` (whole compression blocks),
+and the packer's grid is `4 · 2^⌊log2 padding⌋`, so packed cells never shorten the chain.
+
+As built (verified: the test atlas re-encoded, still 512² with 5 levels and 349,184 B a slot;
+decoded, no 4 × 4 block of any level holds two cells, in either slot; in the `textureAtlases`
+scene on WebGPU and WebGL2 the level-4 metal cell's olive edge and yellow's reddish corner are
+gone, and section 4's checks give the same figures):
+
+- The atlas size stays at `2^L` (exact halving): a level whose size isn't a multiple of 4 ends in
+  partial blocks, which can't hold two cells once the rects are block aligned.
+- The warning names each limit and what it needs, eg. "r's rect [32, 0, 96, 96] is only aligned
+  to 32 px (it needs 64: the 4×4 compression blocks at level 4 cover 64 px)".
+- The test atlas's explicit rects (256 and 128 px aligned) didn't move; its packed cells did, so
+  both slots got new outputs and lock entries. The schema's `padding` and `rect` descriptions say
+  the grid.
+- Costs space: a packed cell's padded size is rounded up to the grid (64 px at padding 16), so a
+  64² cell with 16 px of padding takes 128², not 96². A small-cell atlas that needs the room can
+  lower its padding (and its levels) or place cells with `rect`.
 
 ### Phase 4 — Helpers and debug (D4, D6)
 

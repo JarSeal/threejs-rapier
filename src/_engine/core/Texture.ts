@@ -13,6 +13,8 @@ import { recordAssetOwner, retagAssetOwner } from './Assets/AssetOwners';
 import { resolveAssetUrl, type GeneratedAssetUrls } from './Assets/AssetUrl';
 import { loadKTX2Texture } from './Import/KTX2';
 import type { TextureArrayInfo } from './TextureArray';
+import type { TextureAtlasInfo } from './TextureAtlas';
+import type { TextureAtlasSlotInfo } from '../schemas/textureAtlasSchema';
 
 export type TexOpts = {
   image?: TexImageSource | OffscreenCanvas;
@@ -42,6 +44,12 @@ export type TextureProps = {
    * by gatherAppData: its `__url` is one KTX2 array file, loaded as a `CompressedArrayTexture`.
    */
   __layers?: string[];
+  /**
+   * A texture atlas slot's (`*.textureAtlas.json`, p299 D3) layout and cell table, baked in by
+   * gatherAppData: its `__url` is the slot's KTX2 output, with a mip chain cut where the layout
+   * stops keeping the cells apart.
+   */
+  __atlas?: TextureAtlasSlotInfo;
 } & GeneratedAssetUrls;
 
 const textures: {
@@ -606,6 +614,73 @@ const loadTextureArrayAssetAsync = async ({
 };
 
 /**
+ * A loaded atlas slot file's {@link TextureAtlasInfo}. Throws when the file doesn't fit its
+ * layout: its size must be the layout's halved per dropped top level, and those levels plus the
+ * stored ones at most the layout's `levels`.
+ */
+const getAtlasSlotInfo = (texture: THREE.Texture, atlas: TextureAtlasSlotInfo) => {
+  const compressed = texture as THREE.CompressedTexture;
+  if (!compressed.isCompressedTexture) throw new Error('its output is not a KTX2 file');
+  const { width, height } = compressed.image as { width: number; height: number };
+  const [layoutWidth, layoutHeight] = atlas.size;
+  const dropped = Math.log2(layoutWidth / width);
+  if (!Number.isInteger(dropped) || dropped < 0 || layoutHeight / height !== 2 ** dropped) {
+    throw new Error(
+      `its output is ${width}×${height} and its layout ${layoutWidth}×${layoutHeight} (__atlas.size): run "yarn gatherAppData"`
+    );
+  }
+  const storedLevels = compressed.mipmaps.length;
+  if (dropped + storedLevels > atlas.levels) {
+    throw new Error(
+      `its output has ${storedLevels} mip level(s)${dropped ? ` below ${dropped} dropped one(s)` : ''} and its layout keeps ${atlas.levels} apart (__atlas.levels): run "yarn gatherAppData"`
+    );
+  }
+  const info: TextureAtlasInfo = {
+    ...structuredClone(atlas),
+    width,
+    height,
+    storedLevels,
+  };
+  return info;
+};
+
+/**
+ * loadTextureAsync for a texture atlas slot (`__atlas`, p299 D3): its KTX2 output, or (without
+ * `throwOnError`) an empty texture when there is none or it fails. A slot has no source file to
+ * fall back to. Its `userData.textureAtlas` has the cell table (`getTextureAtlasInfo`).
+ */
+const loadTextureAtlasSlotAsync = async ({
+  id,
+  texOpts,
+  throwOnError,
+  isPersistent,
+  userData,
+  debugData,
+  __url,
+  __atlas: atlas,
+}: TextureProps & { __atlas: TextureAtlasSlotInfo }) => {
+  let url: string | undefined;
+  try {
+    if (!__url) {
+      throw new Error(
+        'the asset pipeline has no output for it (encoder missing, the encode failed, its textures side is off, or not built yet; see the dev server\'s log, or run "yarn assets"): an atlas slot loads only from its KTX2 output'
+      );
+    }
+    url = resolveTextureUrl({ id, __url });
+    const { texture, report } = await loadTextureFileAsync(url);
+    const info = getAtlasSlotInfo(texture, atlas);
+    setTextureOpts(texture, texOpts, userData, debugData);
+    texture.userData.textureAtlas = info;
+    return saveAndReport(texture, id, isPersistent, report, url);
+  } catch (err) {
+    const errorMsg = `Could not load texture atlas slot "${id}" in loadTextureAsync${url ? ` (url: "${url}")` : ''}: ${(err as Error).message}`;
+    lerror(errorMsg);
+    if (throwOnError) throw new Error(errorMsg);
+    return getNoFileTexture(texOpts);
+  }
+};
+
+/**
  * Loads a texture asynchronously supporting standard textures, HDR data textures, KTX2 compressed
  * textures and CubeTextures. Standard and HDR textures load where AppConfig.assets targets
  * textures (main thread or the assets worker, with the same result either way). KTX2 textures
@@ -615,7 +690,8 @@ const loadTextureArrayAssetAsync = async ({
  * A texture from generated data (a `*.texture.json`) loads the asset pipeline's output (`__url`)
  * instead of its `fileName`, see resolveAssetUrl. The loader is picked by the loaded URL. A
  * texture array asset (`*.textureArray.json`, p299 D2) loads its KTX2 output as a
- * `CompressedArrayTexture`, a one-layer array too.
+ * `CompressedArrayTexture`, a one-layer array too. A texture atlas slot (`*.textureAtlas.json`,
+ * p299 D3) loads its KTX2 output with its cell table on `userData.textureAtlas`.
  */
 export const loadTextureAsync = async (props: TextureProps) => {
   const {
@@ -631,12 +707,14 @@ export const loadTextureAsync = async (props: TextureProps) => {
     __url,
     __sourceUrl,
     __layers,
+    __atlas,
   } = props;
   if (id && textures[id]) {
     retagAssetOwner(textures[id].resource);
     return textures[id].resource;
   }
   if (__layers) return loadTextureArrayAssetAsync({ ...props, __layers });
+  if (__atlas) return loadTextureAtlasSlotAsync({ ...props, __atlas });
 
   // A packed texture (p300 DD5) has no fileName, only its output
   if (!fileName && !__url) return getNoFileTexture(texOpts);

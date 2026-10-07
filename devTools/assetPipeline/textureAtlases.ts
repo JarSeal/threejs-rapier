@@ -30,10 +30,12 @@ import { describeEncodedTexture, type EncodedTexture } from './textures';
  * the mip levels the slots keep.
  *
  * Mip bleeding: a cell's content is surrounded by `padding` px of its own edge, extended. At mip
- * level `L` a texel covers 2^L × 2^L px, so the levels stay apart while every padded rect (and the
- * atlas) is aligned to 2^L and `padding ≥ 2^L`: no texel then mixes two cells, and a bilinear tap
- * at a cell's edge lands in its own padding. The chain stops at the last such level (with box
- * filtered levels; a wider filter, like ktx's default lanczos4, would reach further).
+ * level `L` a texel covers 2^L × 2^L px and a 4 × 4 compression block 4·2^L px, so the levels stay
+ * apart while `padding ≥ 2^L`, every padded rect is aligned to 4·2^L and the atlas to 2^L: no texel
+ * and no block then holds two cells (a block's shared endpoints pull its texels toward each other),
+ * and a bilinear tap at a cell's edge lands in its own padding. The chain stops at the last such
+ * level (with box filtered levels; a wider filter, like ktx's default lanczos4, would reach
+ * further).
  */
 
 /** x, y, width, height in px, top-left origin */
@@ -60,6 +62,8 @@ export type TextureAtlasLayout = {
 
 /** Block compression's grid: every rect is on it */
 const BLOCK_SIZE = 4;
+/** log2(BLOCK_SIZE): a rect aligned to 2^a keeps whole blocks up to level a - BLOCK_LEVELS */
+const BLOCK_LEVELS = 2;
 
 const roundUp = (value: number, step: number) => Math.ceil(value / step) * step;
 
@@ -83,9 +87,9 @@ export type AtlasCellInput = {
 /**
  * Places the cells: those with a `rect` where it says (multiples of 4, inside the atlas, larger
  * than their padding, not overlapping), the rest by a shelf packer, tallest first, each padded and
- * rounded up to the alignment grid (2^⌊log2 padding⌋, at least 4). Returns each cell's padded rect
- * (null for one that failed), the levels the layout keeps apart, and every problem, each naming
- * its cell.
+ * rounded up to the alignment grid (4·2^⌊log2 padding⌋: whole blocks at every level the padding
+ * protects). Returns each cell's padded rect (null for one that failed), the levels the layout
+ * keeps apart, and every problem, each naming its cell.
  */
 export const layoutAtlasCells = (
   size: [number, number],
@@ -97,7 +101,7 @@ export const layoutAtlasCells = (
   const warnings: string[] = [];
   const rects: (AtlasRect | null)[] = cells.map(() => null);
   const paddingLevel = padding >= 1 ? Math.floor(Math.log2(padding)) : 0;
-  const grid = Math.max(BLOCK_SIZE, 2 ** paddingLevel);
+  const grid = BLOCK_SIZE * 2 ** paddingLevel;
 
   cells.forEach(({ label, rect }, index) => {
     if (!rect) return;
@@ -163,19 +167,30 @@ export const layoutAtlasCells = (
     shelfHeight = Math.max(shelfHeight, h);
   }
 
-  // The levels: what the padding protects, less what the atlas size or a rect isn't aligned to
-  let level = Math.min(paddingLevel, getAlignmentLevel(width), getAlignmentLevel(height));
+  // The levels: what the padding protects, less what the atlas size isn't aligned to (texels:
+  // 2^L) or a rect isn't (blocks: 4·2^L)
+  const sizeLevel = Math.min(getAlignmentLevel(width), getAlignmentLevel(height));
+  let level = Math.min(paddingLevel, sizeLevel);
   const limits: string[] = [];
-  if (level < paddingLevel) limits.push(`the atlas size ${width}×${height}`);
+  if (sizeLevel < paddingLevel) {
+    limits.push(
+      `the atlas size ${width}×${height} is only aligned to ${2 ** sizeLevel} px (it needs ${2 ** paddingLevel})`
+    );
+  }
   rects.forEach((rect, index) => {
     if (!rect) return;
-    const rectLevel = Math.min(...rect.map(getAlignmentLevel));
-    if (rectLevel < paddingLevel) limits.push(`${cells[index].label}'s rect ${formatRect(rect)}`);
+    const alignLevel = Math.min(...rect.map(getAlignmentLevel));
+    const rectLevel = alignLevel - BLOCK_LEVELS;
+    if (rectLevel < paddingLevel) {
+      limits.push(
+        `${cells[index].label}'s rect ${formatRect(rect)} is only aligned to ${2 ** alignLevel} px (it needs ${grid}: the ${BLOCK_SIZE}×${BLOCK_SIZE} compression blocks at level ${paddingLevel} cover ${grid} px)`
+      );
+    }
     level = Math.min(level, rectLevel);
   });
   if (limits.length) {
     warnings.push(
-      `the mip chain stops at level ${level} (${2 ** level} px), where the padding (${padding} px) keeps levels 0-${paddingLevel} apart: ${limits.join(', ')} ${limits.length === 1 ? 'is' : 'are'} only aligned to ${2 ** level} px. Align ${limits.length === 1 ? 'it' : 'them'} to ${2 ** paddingLevel} px for the rest.`
+      `the mip chain stops at level ${level} (${2 ** level} px), where the padding (${padding} px) keeps levels 0-${paddingLevel} apart: ${limits.join('; ')}`
     );
   }
   return { rects, levels: level + 1, errors, warnings };

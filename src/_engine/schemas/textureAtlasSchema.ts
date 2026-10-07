@@ -46,7 +46,7 @@ export const TextureAtlasCellSchema = z
       .tuple([PxSchema.min(0), PxSchema.min(0), PxSchema.min(1), PxSchema.min(1)])
       .optional()
       .describe(
-        "x, y, width and height in the atlas's px (top-left origin), the padding included: multiples of 4. Default: placed by the packer."
+        "x, y, width and height in the atlas's px (top-left origin), the padding included: multiples of 4, and of the packer's grid (4 · 2^⌊log2 padding⌋) to keep every level the padding protects. Default: placed by the packer."
       ),
     size: z
       .tuple([PxSchema.min(1), PxSchema.min(1)])
@@ -87,7 +87,7 @@ export const TextureAtlasAssetSchema = z.object({
   padding: PxSchema.min(0)
     .optional()
     .describe(
-      "Px of edge extension around each cell's content (default 8). The mip chain stops at the level it protects: 2^level ≤ padding, so 16 keeps levels 0-4."
+      "Px of edge extension around each cell's content (default 8). The mip chain stops at the level it protects: 2^level ≤ padding, so 16 keeps levels 0-4. Packed cells go on a grid of 4 · 2^⌊log2 padding⌋ px (64 for 16), so the last level's 4 × 4 compression blocks never hold two cells; an explicit rect off that grid shortens the chain."
     ),
   slots: z
     .record(

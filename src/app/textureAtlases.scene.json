@@ -1,0 +1,9 @@
+{
+  "$schema": "../.schemas/scene.schema.json",
+  "id": "textureAtlases",
+  "sceneFile": "./textureAtlases.ts",
+  "isDebugScene": true,
+  "textures": ["p299TestAtlas"],
+  "name": "Texture atlases (p299)",
+  "description": "p299's atlas verification scene: each slot of the p299TestAtlas asset (*.textureAtlas.json, listed by its atlas id) whole at each mip level the file has, with the cell rects outlined, and each cell sampled through its UV rect at every level, next to its source file."
+}

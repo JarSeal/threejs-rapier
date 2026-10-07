@@ -111,6 +111,14 @@ export const sceneFileObjects: {
       }
     ).scene({ sceneData, assets });
   },
+  textureAtlases: async ({ sceneData, assets }) => {
+    const module = await import('../app/./textureAtlases.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
   thirdPersonGymScene: async ({ sceneData, assets }) => {
     const module = await import('../app/./scene_thirdPersonGym.ts');
     await (
