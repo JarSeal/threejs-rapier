@@ -40,6 +40,9 @@ import {
   getGeneratedFields,
   getTextureArrayGeneratedFields,
   getTextureArrayResult,
+  getTextureAtlasSlotGeneratedFields,
+  getTextureAtlasSlotResult,
+  isKtxOnlyAsset,
   isMissingOutput,
 } from './assetPipeline/generated';
 import type { PipelineRun, PipelineRunResult } from './assetPipeline/run';
@@ -364,6 +367,10 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
   const checkShippedArray = (jsonFile: string, sceneId: string) => {
     if (!isProduction || !opts.pipeline) return;
     checkShippedResult(getTextureArrayResult(opts.pipeline, jsonFile), sceneId);
+  };
+  const checkShippedAtlasSlot = (jsonFile: string, slot: string, sceneId: string) => {
+    if (!isProduction || !opts.pipeline) return;
+    checkShippedResult(getTextureAtlasSlotResult(opts.pipeline, jsonFile, slot), sceneId);
   };
 
   const srcDir = path.resolve(__dirname, '../src');
@@ -703,6 +710,8 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
     // textures' registry and id space; the atlas id is taken too (a scene lists it for every slot).
     // After the textures: a cell's source can be a texture asset's.
     const atlasSlotRegistry: Record<string, TextureAtlasSlotTexture> = {};
+    // An atlas's slot ids in the JSON's order: what a scene listing the atlas id gets
+    const atlasSlotIds: Record<string, string[]> = {};
     const atlasFiles = files.filter(
       (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.textureAtlas)
     ) as string[];
@@ -752,6 +761,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
           continue;
         }
         ids.textures.push(atlasId, ...slotIds);
+        atlasSlotIds[atlasId] = slotIds;
         const sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         const cells = getAtlasCellTable(layout);
         for (const [slot, slotJSON] of Object.entries(atlasJSON.slots)) {
@@ -775,6 +785,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
               levels: layout.levels,
               cells,
             },
+            ...getTextureAtlasSlotGeneratedFields(opts.pipeline, fullPath, slot),
           };
         }
       } catch {
@@ -1222,7 +1233,19 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
 
       // Add textures to scenes
       if (Array.isArray(fileContentJSON.textures)) {
-        fileContentJSON.textures = fileContentJSON.textures.map((texId) => {
+        // An atlas id stands for every slot of it; a slot listed twice (by the atlas id and its
+        // own) is loaded once
+        const listedSlotIds = new Set<string>();
+        const listed = fileContentJSON.textures;
+        const sceneTextures = listed.flatMap((texId): typeof listed => {
+          if (typeof texId !== 'string') return [texId];
+          const slotIds = atlasSlotIds[texId] ?? (atlasSlotRegistry[texId] ? [texId] : null);
+          if (!slotIds) return [texId];
+          const unlisted = slotIds.filter((slotId) => !listedSlotIds.has(slotId));
+          for (const slotId of unlisted) listedSlotIds.add(slotId);
+          return unlisted;
+        });
+        fileContentJSON.textures = sceneTextures.map((texId) => {
           if (typeof texId !== 'string') return texId;
           if (texRegistry[texId]) {
             const __saveData = texRegistry[texId].__saveData?.[sceneId]?.length
@@ -1253,6 +1276,13 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
             checkShippedArray(__sourcePath || '', sceneId);
             if (isProduction) delete arrayData.debugData;
             return arrayData;
+          }
+          if (atlasSlotRegistry[texId]) {
+            // Its generated fields and cell table come with it, like an array's
+            const { __sourcePath, ...slotData } = atlasSlotRegistry[texId];
+            checkShippedAtlasSlot(__sourcePath || '', slotData.__atlas.slot, sceneId);
+            if (isProduction) delete slotData.debugData;
+            return slotData;
           }
           return texId; // Fallback to raw string ID if asset file doesn't exist yet
         });
@@ -1440,22 +1470,21 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
               : 'encoder missing';
         console.error(`  ${asset.id} (${source}; ${[...sceneIds].join(', ')}): ${reason}`);
       }
-      const isArray = (result: PipelineRunResult) => result.asset.type === 'textureArray';
       const encoderMissing = results.filter((result) => result.status === 'encoderMissing');
       if (encoderMissing.length) {
-        const unoptimized = encoderMissing.some((result) => !isArray(result))
+        const unoptimized = encoderMissing.some((result) => !isKtxOnlyAsset(result))
           ? ` Or ship them unoptimized in this build: ${ALLOW_UNOPTIMIZED_ENV_KEY}=true yarn build`
           : '';
-        const arrays = encoderMissing.some(isArray)
-          ? ` A texture array has no unoptimized form: it needs ktx, even with ${ALLOW_UNOPTIMIZED_ENV_KEY}.`
+        const ktxOnly = encoderMissing.some(isKtxOnlyAsset)
+          ? ` A texture array or atlas slot has no unoptimized form: it needs ktx, even with ${ALLOW_UNOPTIMIZED_ENV_KEY}.`
           : '';
         console.error(
-          `  Without ktx: set it up (see [Assets] above), run yarn assets, and commit src/public/aek-assets/ and assets.lock.json.${unoptimized}${arrays}`
+          `  Without ktx: set it up (see [Assets] above), run yarn assets, and commit src/public/aek-assets/ and assets.lock.json.${unoptimized}${ktxOnly}`
         );
       }
-      if (results.some((result) => result.status === 'skipped' && isArray(result))) {
+      if (results.some((result) => result.status === 'skipped' && isKtxOnlyAsset(result))) {
         console.error(
-          `  A texture array is only ever its KTX2 output, and it has none while its textures side is off (a rule's "textures": false, the project switches): turn it on for the array, or don't use the array in a shipped scene.`
+          `  A texture array or atlas slot is only ever its KTX2 output, and it has none while its textures side is off (a rule's "textures": false, the project switches): turn it on for it, or don't use it in a shipped scene.`
         );
       }
       if (results.some((result) => result.status === 'error')) {

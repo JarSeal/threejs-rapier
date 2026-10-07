@@ -475,10 +475,36 @@ the arrays' keys didn't change):
 - The test atlas's mask slot warns three times (section 1's masks are stretched into cells of
   other shapes). The warnings are correct, so the asset is left as it is.
 
-#### Section 3: Generated data, scenes and budgets
+#### Section 3: Generated data, scenes and budgets — done
 
 Per slot `__url`, `__bytes`, `__vramBytes`, `__codec`; a scene's `"<atlasId>"` expanded to its
 slots; the production gather's missing-output and budget checks per slot.
+
+As built (verified with the test atlas listed in a shipped scene for the run, as
+`["p299TestAtlas.mask", "p299TestAtlas", "p299TestAtlas.albedo"]`: the scene got the mask and
+albedo slots once each, without `debugData` or `__sourcePath` in production; `yarn build` with no
+`ktx` took both from the lock and shipped both outputs to `dist/aek-assets/`; over budget,
+`AEK_ASSETS_OPTIMIZE=false` and no `ktx` on a cache miss (also with `AEK_ASSETS_ALLOW_UNOPTIMIZED`)
+each fail the production gather, naming the slot):
+
+- `getTextureAtlasSlotGeneratedFields` / `getTextureAtlasSlotResult` (`generated.ts`) go through
+  `getOutputFields` like the arrays' and look the result up by `getTextureAtlasSlotAssetKey`. The
+  fields go on the slot's registry entry and reach the scene entry with it. `__vramBytes.out`
+  counts the stored levels (the test atlas: 512² to 32², 349,184 B).
+- A scene's `"<atlasId>"` becomes its slot ids in the JSON's `slots` order, where the id stood. A
+  slot listed again, by its own id or the atlas's, is dropped, so the loader never registers it
+  twice. Other duplicate texture ids are left as before. An atlas that failed the gather stays a
+  raw string id, like any unknown id.
+- A slot's scene entry is its registry entry less `__sourcePath`, with `__atlas` (the cell table
+  is repeated in every slot entry, as section 1 decided). `debugData` is dropped in production.
+- `isKtxOnlyAsset` (`generated.ts`: a texture array or an atlas slot) replaces the array-only
+  checks: `isMissingOutput` counts a `skipped` slot as missing, the gather's hints say "a texture
+  array or atlas slot", and `command.ts`'s `AEK_ASSETS_ALLOW_UNOPTIMIZED` fallback uses it too.
+- Budgets needed no change: `getBudgetViolations` reads the slot's `EncodedTexture` (its `levels`
+  in the VRAM figure, the full-chain ceiling at the profile's `maxSize`).
+- `assetOutputsBuildPlugin.ts` needed no change (every `__url` in the bundled data).
+- No scene lists an atlas yet: section 4's `textureAtlases` scene is the first, and the runtime
+  side of a slot entry is untested until then.
 
 #### Section 4: Runtime load and verification
 

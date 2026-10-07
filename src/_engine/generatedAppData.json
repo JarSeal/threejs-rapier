@@ -2583,7 +2583,17 @@
             ]
           }
         }
-      }
+      },
+      "__url": "/aek-assets/app/textures/p299TestAtlas.atlas.albedo.2be7cf4d.ktx2",
+      "__bytes": {
+        "in": 976923,
+        "out": 15675
+      },
+      "__vramBytes": {
+        "in": 1398100,
+        "out": 349184
+      },
+      "__codec": "uastc"
     },
     "p299TestAtlas.mask": {
       "id": "p299TestAtlas.mask",
@@ -2678,7 +2688,17 @@
             ]
           }
         }
-      }
+      },
+      "__url": "/aek-assets/app/textures/p299TestAtlas.atlas.mask.5f3d1f24.ktx2",
+      "__bytes": {
+        "in": 3090,
+        "out": 16610
+      },
+      "__vramBytes": {
+        "in": 1398100,
+        "out": 349184
+      },
+      "__codec": "uastc"
     }
   },
   "materials": {

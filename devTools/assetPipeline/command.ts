@@ -3,7 +3,7 @@ import path from 'path';
 import { collectPipelineAssets, readAssetJsons } from './assets';
 import { BUDGET_FIX, getBudgetViolations } from './budgets';
 import { createPipelineCache } from './cache';
-import { getResultFigures } from './generated';
+import { getResultFigures, isKtxOnlyAsset } from './generated';
 import { createKtxProvider } from './ktxEncode';
 import { KTX_FIX } from './ktxTool';
 import { removeStaleOutputs } from './outputs';
@@ -329,9 +329,7 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
   if (opts.isUnoptimizedFallback) {
     const missing = new Map(
       [...pipelineRun.results].flatMap(([key, result]) =>
-        result.status === 'encoderMissing' &&
-        result.asset.type !== 'textureArray' &&
-        result.asset.type !== 'textureAtlas'
+        result.status === 'encoderMissing' && !isKtxOnlyAsset(result)
           ? [[key, result.asset] as const]
           : []
       )
