@@ -39,26 +39,38 @@ import {
   listTextureArrayFiles,
   type ArraySource,
 } from './textureArrays';
+import {
+  encodeTextureAtlasSlot,
+  getTextureAtlasKeyParams,
+  listTextureAtlasFiles,
+  type AtlasSlotSource,
+} from './textureAtlases';
 import { encodeTextureAsset, type EncodedTexture } from './textures';
 
 /**
  * One asset JSON's source through the pipeline (p300 §7): pass it through as it is (DD8), or
  * optimize it: a texture into KTX2 (or a PNG for `codec: "none"`), a GLB / glTF into a
- * compressed .glb, a texture array's layers into one KTX2 array (p299 D2). A packed texture
- * (DD5) is built either way: passed through, it's written as a PNG. An array is never passed
- * through: without its textures side, it has no output.
+ * compressed .glb, a texture array's layers into one KTX2 array (p299 D2), an atlas slot's cells
+ * into one KTX2 (p299 D3). A packed texture (DD5) is built either way: passed through, it's
+ * written as a PNG. An array or an atlas slot is never passed through: without its textures side,
+ * it has no output.
  */
 
 export type PipelineAsset = {
-  type: 'texture' | 'importedAsset' | 'textureArray';
+  type: 'texture' | 'importedAsset' | 'textureArray' | 'textureAtlas';
+  /** An atlas slot's is its texture id, `<atlasId>.<slot>` */
   id: string;
   /** The asset JSON, relative to the repo root */
   jsonFile: string;
-  /** An array's is always an {@link ArraySource}, and only an array's is */
-  source: AssetSource | PackSource | ArraySource;
+  /**
+   * An array's is always an {@link ArraySource}, and only an array's is; the same for an atlas
+   * slot and its {@link AtlasSlotSource}
+   */
+  source: AssetSource | PackSource | ArraySource | AtlasSlotSource;
+  /** An atlas slot's is the slot's */
   optimize?: AssetOptimize;
-  /** A texture (or an array) whose `texOpts.colorSpace` is sRGB: its colour channels are
-   * sRGB-encoded */
+  /** A texture (or an array, an atlas slot) whose `texOpts.colorSpace` is sRGB: its colour
+   * channels are sRGB-encoded */
   isSrgb?: boolean;
   /**
    * An imported asset whose textures the runtime registers: `importTextures` in its JSON or in
@@ -124,7 +136,9 @@ const COMPRESSED_TEXTURE_EXTENSIONS = ['.ktx2', '.basis'];
 
 const getPassThroughReason = (asset: PipelineAsset, settings: ResolvedAssetSettings) => {
   const { passThrough } = settings;
-  if (asset.type === 'textureArray') return passThrough.textures ?? null;
+  if (asset.type === 'textureArray' || asset.type === 'textureAtlas') {
+    return passThrough.textures ?? null;
+  }
   if (asset.type === 'texture') {
     if (passThrough.textures) return passThrough.textures;
     const ext = 'file' in asset.source ? path.extname(asset.source.file).toLowerCase() : '';
@@ -179,13 +193,14 @@ const listGLTFFiles = (file: string, json: GLTFJson) => [
 
 /**
  * Every file an asset's encode reads: the file, every file a pack reads, a glTF with its
- * external files, or every file an array's layers read. Empty for a remote or missing source.
- * Throws like `resolvePackFile` and `readGLTFJson`.
+ * external files, or every file an array's layers (an atlas slot's cells) read. Empty for a
+ * remote or missing source. Throws like `resolvePackFile` and `readGLTFJson`.
  */
 export const listAssetSourceFiles = (asset: PipelineAsset) => {
   const { source } = asset;
   if (source.kind === 'remote') return [];
   if (source.kind === 'array') return listTextureArrayFiles(source);
+  if (source.kind === 'atlas') return listTextureAtlasFiles(source);
   if (source.kind !== 'pack' && !fs.existsSync(source.file)) return [];
   return asset.type === 'importedAsset' && source.kind !== 'pack'
     ? listGLTFFiles(source.file, readGLTFJson(source.file))
@@ -194,19 +209,26 @@ export const listAssetSourceFiles = (asset: PipelineAsset) => {
 
 /**
  * The asset JSONs an asset is built from (absolute): its own and, for an array, its layers'
- * texture JSONs (their source or pack is the layer).
+ * texture JSONs (their source or pack is the layer); for an atlas slot, its cells'.
  */
-export const listAssetJsonFiles = (asset: PipelineAsset) => [
-  path.resolve(ROOT, asset.jsonFile),
-  ...(asset.source.kind === 'array'
-    ? asset.source.layers.flatMap((layer) => (layer.texture ? [layer.texture.jsonFile] : []))
-    : []),
-];
+export const listAssetJsonFiles = (asset: PipelineAsset) => {
+  const { source } = asset;
+  const refs =
+    source.kind === 'array'
+      ? source.layers
+      : source.kind === 'atlas'
+        ? source.cells.flatMap((cell) => (cell.source ? [cell.source] : []))
+        : [];
+  return [
+    path.resolve(ROOT, asset.jsonFile),
+    ...refs.flatMap((ref) => (ref.texture ? [ref.texture.jsonFile] : [])),
+  ];
+};
 
 /**
  * The bytes the runtime downloads without the pipeline: the file, every file a pack reads, a
- * glTF with its external files, or the files of an array's layers (each once). Undefined for a
- * remote or missing source.
+ * glTF with its external files, or the files of an array's layers (an atlas slot's cells), each
+ * once. Undefined for a remote or missing source.
  */
 export const getSourceBytes = (asset: PipelineAsset) => {
   const files = new Set(listAssetSourceFiles(asset));
@@ -265,10 +287,11 @@ const runAsset = async (
   const reason = getPassThroughReason(asset, settings);
   const isSrgb = !!asset.isSrgb;
   if (reason) {
-    if (source.kind === 'array') {
+    if (source.kind === 'array' || source.kind === 'atlas') {
+      const what = source.kind === 'array' ? 'an array' : 'an atlas slot';
       return {
         status: 'skipped',
-        reason: `an array is only built as a KTX2 file, and textures are kept as they are: ${reason}`,
+        reason: `${what} is only built as a KTX2 file, and textures are kept as they are: ${reason}`,
       };
     }
     if (source.kind !== 'pack') {
@@ -314,21 +337,35 @@ const runAsset = async (
   let keyInput: CacheKeyInput;
   let slotSettings: ResolvedTextureSettings | undefined;
   let arraySettings: KtxSettings | undefined;
-  if (source.kind === 'array') {
+  if (source.kind === 'array' || source.kind === 'atlas') {
     // Not passed through, so its textures side is on
-    arraySettings = getTextureArraySlotSettings(settings) ?? undefined;
+    arraySettings =
+      getTextureArraySlotSettings(
+        settings,
+        source.kind === 'array' ? undefined : 'an atlas slot'
+      ) ?? undefined;
     if (!arraySettings) throw new Error(`${asset.jsonFile}: no texture settings`);
-    // A texture's tools: sharp reads the layers, ktx encodes them
+    // A texture's tools: sharp reads the layers (the cells), ktx encodes them
     keyInput = {
       type: 'texture',
-      files: listTextureArrayFiles(source),
-      params: {
-        kind: 'textureArray',
-        slot: settings.slot,
-        settings: arraySettings,
-        isSrgb,
-        ...getTextureArrayKeyParams(source),
-      },
+      files:
+        source.kind === 'array' ? listTextureArrayFiles(source) : listTextureAtlasFiles(source),
+      params:
+        source.kind === 'array'
+          ? {
+              kind: 'textureArray',
+              slot: settings.slot,
+              settings: arraySettings,
+              isSrgb,
+              ...getTextureArrayKeyParams(source),
+            }
+          : {
+              kind: 'textureAtlas',
+              slot: settings.slot,
+              settings: arraySettings,
+              isSrgb,
+              ...getTextureAtlasKeyParams(source),
+            },
     };
   } else if (asset.type === 'texture') {
     // Not passed through, so its textures side is on
@@ -403,6 +440,15 @@ const runAsset = async (
         getKtx,
         warn,
       });
+      result = { status: 'optimized', output, settings, textures: [texture], warnings };
+    } else if (source.kind === 'atlas') {
+      if (!arraySettings) throw new Error(`${asset.jsonFile}: no texture settings`);
+      const { output, texture } = await encodeTextureAtlasSlot(
+        source,
+        settings.slot,
+        arraySettings,
+        { isSrgb, getKtx, warn }
+      );
       result = { status: 'optimized', output, settings, textures: [texture], warnings };
     } else if (slotSettings) {
       const { output, texture } = await encodeTextureAsset(source, settings.slot, slotSettings, {

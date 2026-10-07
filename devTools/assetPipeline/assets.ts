@@ -10,11 +10,17 @@ import {
   type TextureArrayAsset,
 } from '../../src/_engine/schemas/textureArraySchema';
 import {
+  getAtlasSlotTextureId,
+  TextureAtlasAssetSchema,
+  type TextureAtlasAsset,
+} from '../../src/_engine/schemas/textureAtlasSchema';
+import {
   resolveLodChainOptions,
   type ResolvedLodChainOptions,
 } from '../../src/_engine/core/Lod/LodChainOptions';
 import type { PipelineAsset } from './pipeline';
 import { createArraySource, resolveTextureArrayLayers, type TextureLookup } from './textureArrays';
+import { createAtlasSlotSource, resolveTextureAtlas } from './textureAtlases';
 import {
   createPackSource,
   resolveAssetSource,
@@ -28,9 +34,10 @@ import {
 /**
  * The pipeline's asset list (p300 Phase 2 step 7): every source file a `*.texture.json` or
  * `*.importedAsset.json` loads, its own and each scene's latest save entry's (step 2's decision:
- * a scene's file is optimized with the asset's one `optimize`), and every `*.textureArray.json`
- * (p299 D2). One {@link PipelineAsset} per distinct encode, and a key both the run and the
- * gatherer compute the same way, so the gatherer finds each scene entry's output.
+ * a scene's file is optimized with the asset's one `optimize`), every `*.textureArray.json`
+ * (p299 D2) and every slot of a `*.textureAtlas.json` (p299 D3). One {@link PipelineAsset} per
+ * distinct encode, and a key both the run and the gatherer compute the same way, so the gatherer
+ * finds each scene entry's output.
  */
 
 export type PipelineAssetType = PipelineAsset['type'];
@@ -106,6 +113,14 @@ const listAssetUses = (data: AssetData) => [
 export const getTextureArrayAssetKey = (jsonFile: string) =>
   `textureArray:${toRepoPath(path.resolve(ROOT, jsonFile))}`;
 
+/**
+ * A texture atlas slot's key (p299 D3): its atlas's JSON and the slot's name. One use each, with
+ * no scene entries.
+ * @param jsonFile The atlas's JSON, absolute or relative to the repo root
+ */
+export const getTextureAtlasSlotAssetKey = (jsonFile: string, slot: string) =>
+  `textureAtlas:${toRepoPath(path.resolve(ROOT, jsonFile))}:${slot}`;
+
 type AssetJsonBase = {
   id: string;
   /** Absolute */
@@ -115,17 +130,19 @@ type AssetJsonBase = {
 export type AssetJson =
   | (AssetJsonBase & { type: 'texture'; data: TextureAsset })
   | (AssetJsonBase & { type: 'importedAsset'; data: ImportedAsset })
-  | (AssetJsonBase & { type: 'textureArray'; data: TextureArrayAsset });
+  | (AssetJsonBase & { type: 'textureArray'; data: TextureArrayAsset })
+  | (AssetJsonBase & { type: 'textureAtlas'; data: TextureAtlasAsset });
 
 const ASSET_SCHEMAS = {
   texture: { suffix: '.texture.json', schema: TextureAssetSchema },
   importedAsset: { suffix: '.importedAsset.json', schema: ImportedAssetSchema },
   textureArray: { suffix: '.textureArray.json', schema: TextureArrayAssetSchema },
+  textureAtlas: { suffix: '.textureAtlas.json', schema: TextureAtlasAssetSchema },
 } as const;
 
 /**
- * Reads every `*.texture.json`, `*.importedAsset.json` and `*.textureArray.json` under `src/`.
- * An invalid one is skipped: the gatherer reports it.
+ * Reads every `*.texture.json`, `*.importedAsset.json`, `*.textureArray.json` and
+ * `*.textureAtlas.json` under `src/`. An invalid one is skipped: the gatherer reports it.
  */
 export const readAssetJsons = (srcDir = SRC_DIR): AssetJson[] => {
   const files = fs
@@ -133,7 +150,7 @@ export const readAssetJsons = (srcDir = SRC_DIR): AssetJson[] => {
     .filter((file): file is string => typeof file === 'string')
     .sort();
   const assets: AssetJson[] = [];
-  for (const type of ['texture', 'importedAsset', 'textureArray'] as const) {
+  for (const type of ['texture', 'importedAsset', 'textureArray', 'textureAtlas'] as const) {
     const { suffix, schema } = ASSET_SCHEMAS[type];
     for (const file of files.filter((f) => f.endsWith(suffix))) {
       const jsonFile = path.join(srcDir, file);
@@ -174,9 +191,32 @@ const collectTextureArray = (
 };
 
 /**
+ * An atlas's slots, one encode each by its key, or none when its cells don't resolve or don't fit
+ * (the gatherer reports it)
+ */
+const collectTextureAtlas = (
+  { id, jsonFile, data }: Extract<AssetJson, { type: 'textureAtlas' }>,
+  findTexture: TextureLookup
+): [string, PipelineAsset][] => {
+  const { layout } = resolveTextureAtlas(jsonFile, data, findTexture);
+  if (!layout) return [];
+  return Object.entries(data.slots).map(([slot, { texOpts, fill, optimize }]) => [
+    getTextureAtlasSlotAssetKey(jsonFile, slot),
+    {
+      type: 'textureAtlas',
+      id: getAtlasSlotTextureId(id, slot),
+      jsonFile: toRepoPath(jsonFile),
+      source: createAtlasSlotSource(jsonFile, id, layout, slot, fill),
+      ...(optimize !== undefined ? { optimize } : {}),
+      isSrgb: texOpts?.colorSpace === 'srgb',
+    },
+  ]);
+};
+
+/**
  * Every encode the asset JSONs need, one per key ({@link getPipelineAssetKey},
- * {@link getTextureArrayAssetKey}). A use whose source doesn't resolve is left out (the gatherer
- * reports it).
+ * {@link getTextureArrayAssetKey}, {@link getTextureAtlasSlotAssetKey}). A use whose source
+ * doesn't resolve is left out (the gatherer reports it).
  */
 export const collectPipelineAssets = (assetJsons: AssetJson[]) => {
   const assets = new Map<string, PipelineAsset>();
@@ -188,6 +228,12 @@ export const collectPipelineAssets = (assetJsons: AssetJson[]) => {
     if (assetJson.type === 'textureArray') {
       const asset = collectTextureArray(assetJson, findTexture);
       if (asset) assets.set(getTextureArrayAssetKey(assetJson.jsonFile), asset);
+      continue;
+    }
+    if (assetJson.type === 'textureAtlas') {
+      for (const [key, asset] of collectTextureAtlas(assetJson, findTexture)) {
+        assets.set(key, asset);
+      }
       continue;
     }
     const { type, id, jsonFile, data } = assetJson;

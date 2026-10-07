@@ -39,20 +39,24 @@ const getSourceUrl = (source: AssetSource | PackSource) => {
   return undefined;
 };
 
-/** A texture's levels: `blockSize`² pixels per block of `blockBytes` (RGBA8 is 1 px, 4 B) */
+/**
+ * A texture's levels: `blockSize`² pixels per block of `blockBytes` (RGBA8 is 1 px, 4 B), at most
+ * `levelCount` of them
+ */
 const getLevelsBytes = (
   width: number,
   height: number,
   blockSize: number,
   blockBytes: number,
-  mipmaps: boolean
+  mipmaps: boolean,
+  levelCount = Infinity
 ) => {
   let total = 0;
   let w = width;
   let h = height;
-  for (;;) {
+  for (let level = 1; ; level++) {
     total += Math.ceil(w / blockSize) * Math.ceil(h / blockSize) * blockBytes;
-    if (!mipmaps || (w === 1 && h === 1)) return total;
+    if (!mipmaps || (w === 1 && h === 1) || level >= levelCount) return total;
     w = Math.max(1, w >> 1);
     h = Math.max(1, h >> 1);
   }
@@ -63,23 +67,29 @@ const getLevelsBytes = (
  * PNG (`none`) is RGBA8 with the mips the runtime generates. KTX2 is counted at 1 B/px (BC7, ASTC
  * 4×4, RGBA ETC2): the most it takes on any device. ETC1S without alpha takes half of that on an
  * ETC2 device (phones). Phase 4's budgets use the same figure (§11 question 3).
+ * @param levelCount A KTX2's mip levels when its chain is shorter (an atlas slot's, p299 D3)
  */
 export const estimateVramBytes = (
   width: number,
   height: number,
   codec: TextureCodec,
-  mipmaps: boolean
+  mipmaps: boolean,
+  levelCount?: number
 ) =>
   codec === 'none'
     ? getLevelsBytes(width, height, 1, 4, true)
-    : getLevelsBytes(width, height, 4, 16, mipmaps);
+    : getLevelsBytes(width, height, 4, 16, mipmaps, levelCount);
 
-/** An array's (p299 D2) is every layer's: `in` as the runtime would assemble its sources (RGBA8) */
+/**
+ * An array's (p299 D2) is every layer's: `in` as the runtime would assemble its sources (RGBA8).
+ * An atlas slot's (p299 D3) counts its shortened chain; its `in` is the layout as one RGBA8 image.
+ */
 export const estimateTextureVramBytes = (texture: EncodedTexture) => {
   const layers = texture.layers ?? 1;
+  const { width, height, codec, mipmaps, levels } = texture;
   return {
     in: estimateVramBytes(texture.source.width, texture.source.height, 'none', true) * layers,
-    out: estimateVramBytes(texture.width, texture.height, texture.codec, texture.mipmaps) * layers,
+    out: estimateVramBytes(width, height, codec, mipmaps, levels) * layers,
   };
 };
 

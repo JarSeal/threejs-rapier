@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { encodePng, type Img } from './images';
+import { encodePng, toChannels, type Img } from './images';
 import { ensureKtx, getKtxEnv, type KtxTool } from './ktxTool';
 import type { ResolvedTextureSettings } from './settings';
 import { ROOT } from './sources';
@@ -36,10 +36,14 @@ export const createKtxProvider = (log?: (message: string) => void): KtxProvider 
     }));
 };
 
-/** The `ktx create` options for an image with `channels` (3 or 4) channels. */
+/**
+ * The `ktx create` options for an image with `channels` (3 or 4) channels.
+ * @param opts.generateMipmap Default: `settings.mipmaps`. False when the inputs are the levels
+ * (`--levels`, {@link encodeKtx2Levels})
+ */
 export const getKtxCreateArgs = (
   settings: KtxSettings,
-  opts: { channels: 3 | 4; isSrgb: boolean; isNormal: boolean }
+  opts: { channels: 3 | 4; isSrgb: boolean; isNormal: boolean; generateMipmap?: boolean }
 ) => {
   const { isSrgb } = opts;
   return [
@@ -49,7 +53,7 @@ export const getKtxCreateArgs = (
     isSrgb ? 'srgb' : 'linear',
     '--assign-primaries',
     isSrgb ? 'bt709' : 'none',
-    ...(settings.mipmaps ? ['--generate-mipmap'] : []),
+    ...(opts.generateMipmap ?? settings.mipmaps ? ['--generate-mipmap'] : []),
     ...(opts.isNormal ? ['--normalize'] : []),
     ...(settings.normalMode ? ['--normal-mode'] : []),
     ...(settings.codec === 'etc1s'
@@ -70,30 +74,6 @@ const toRgb = (img: Img): Img => {
   if (img.channels !== 1) return img;
   const out: Img = { ...img, channels: 3, data: new Float32Array(img.data.length * 3) };
   for (let i = 0; i < img.data.length; i++) out.data.fill(img.data[i], i * 3, i * 3 + 3);
-  return out;
-};
-
-/**
- * A layer of an array as the array's `channels` (3 or 4; its layers share one format): grey
- * becomes RGB (as {@link toRgb}), two channels (R, G) get B = 0 (as `encodePng` writes them) and
- * a layer without alpha is opaque.
- */
-const toChannels = (img: Img, channels: 3 | 4): Img => {
-  const from = img.channels;
-  if (from === channels) return img;
-  if (from > channels) {
-    throw new Error(`a ${from}-channel layer can't be stored with ${channels} channels`);
-  }
-  // Where R, G and B come from (-1: zero)
-  const rgb = from === 1 ? [0, 0, 0] : from === 2 ? [0, 1, -1] : [0, 1, 2];
-  const pixels = img.width * img.height;
-  const out: Img = { ...img, channels, data: new Float32Array(pixels * channels) };
-  for (let i = 0; i < pixels; i++) {
-    for (let c = 0; c < 3; c++) {
-      out.data[i * channels + c] = rgb[c] < 0 ? 0 : img.data[i * from + rgb[c]];
-    }
-    if (channels === 4) out.data[i * channels + 3] = 1;
-  }
   return out;
 };
 
@@ -167,5 +147,29 @@ export const encodeKtx2Layers = async (
   const args = [...getKtxCreateArgs(settings, opts), '--layers', String(layerCount)];
   return runKtxCreate(tool, args, layerCount, async (index) =>
     encodePng(toChannels(await readLayer(index), opts.channels), opts.isSrgb)
+  );
+};
+
+/**
+ * Encodes a texture with the mip levels given (`ktx create --levels`, no `--generate-mipmap`;
+ * p299 D3's atlas slots, whose chain stops where its layout does): level `i` from
+ * `readLevel(i)`, level 0 first, each exactly half the one before (rounded down, at least 1),
+ * linear float channels flipped as they should be stored. Each level is written out before the
+ * next is read. `settings.mipmaps` isn't read: the level count is. Throws like {@link encodeKtx2}.
+ */
+export const encodeKtx2Levels = async (
+  levelCount: number,
+  readLevel: (index: number) => Promise<Img>,
+  settings: KtxSettings,
+  opts: { channels: 3 | 4; isSrgb: boolean; isNormal: boolean; getKtx: KtxProvider }
+): Promise<Uint8Array> => {
+  const tool = await opts.getKtx();
+  const args = [
+    ...getKtxCreateArgs(settings, { ...opts, generateMipmap: false }),
+    '--levels',
+    String(levelCount),
+  ];
+  return runKtxCreate(tool, args, levelCount, async (index) =>
+    encodePng(toChannels(await readLevel(index), opts.channels), opts.isSrgb)
   );
 };

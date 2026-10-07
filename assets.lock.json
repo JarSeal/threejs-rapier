@@ -10,6 +10,59 @@
         "out": 33824
       }
     },
+    "401243dc01984b1ef59be3599004c6e62fcf9610e9b7318a4eb92948b65196f8": {
+      "source": "src/app/textures/p299TestAtlas.textureAtlas.json",
+      "url": "/aek-assets/app/textures/p299TestAtlas.atlas.mask.5f3d1f24.ktx2",
+      "bytes": 16610,
+      "textures": [
+        {
+          "slot": "data",
+          "bytes": 16610,
+          "source": {
+            "width": 512,
+            "height": 512,
+            "bytes": 3090
+          },
+          "codec": "uastc",
+          "width": 512,
+          "height": 512,
+          "hasAlpha": false,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 5
+        }
+      ],
+      "warnings": [
+        "cells[1] (\"green\"): sources.mask 64×64 is upscaled and stretched (its aspect ratio changes by 57.14%) to the cell's 224×96",
+        "cells[4] (\"blue\"): sources.mask 64×64 is upscaled and stretched (its aspect ratio changes by 100.00%) to the cell's 64×128",
+        "cells[5] (\"yellow\"): sources.mask 224×224 is stretched (its aspect ratio changes by 50.00%) to the cell's 128×64"
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "5679b834b00e1e686edf82b7823da0b65cfd40c66b6165ae699efbbf42519f67": {
+      "source": "src/app/textures/p299TestAtlas.textureAtlas.json",
+      "url": "/aek-assets/app/textures/p299TestAtlas.atlas.albedo.2be7cf4d.ktx2",
+      "bytes": 15675,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 15675,
+          "source": {
+            "width": 512,
+            "height": 512,
+            "bytes": 976923
+          },
+          "codec": "uastc",
+          "width": 512,
+          "height": 512,
+          "hasAlpha": false,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 5
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
     "79858cda8def71d812a88187ff747d80d2d198da0030f1b57330fd0425f388fe": {
       "source": "src/app/textures/p299TestArray1.textureArray.json",
       "url": "/aek-assets/app/textures/p299TestArray1.array.ecc27102.ktx2",

@@ -22,8 +22,9 @@ import {
 /**
  * The dev server's gatherer (`yarn dev`): re-gathers the generated data when an asset JSON is
  * added, changed or deleted, and runs the asset pipeline (p300) first when what it reads changed:
- * - an asset JSON (`*.texture.json`, `*.importedAsset.json`, `*.textureArray.json`): its assets
- *   are built, and the arrays that have one of its textures as a layer;
+ * - an asset JSON (`*.texture.json`, `*.importedAsset.json`, `*.textureArray.json`,
+ *   `*.textureAtlas.json`): its assets are built, and the arrays and atlas slots that have one of
+ *   its textures as a layer or a cell;
  * - a source file of an asset (a pack's files and a .gltf's external files too): the assets that
  *   read it are built;
  * - `assets.config.json`, or the switches in `src/CONFIG.ts` (`assets.optimization`, loaded
@@ -34,7 +35,12 @@ import {
  * changes that come in during a run go into the next one.
  */
 
-const ASSET_JSON_SUFFIXES = ['.texture.json', '.importedAsset.json', '.textureArray.json'];
+const ASSET_JSON_SUFFIXES = [
+  '.texture.json',
+  '.importedAsset.json',
+  '.textureArray.json',
+  '.textureAtlas.json',
+];
 
 /** Lets a burst of saves (eg. a debug tool writing several JSONs) go into one run */
 const DEBOUNCE_MS = 100;

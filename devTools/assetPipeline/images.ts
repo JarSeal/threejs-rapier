@@ -202,7 +202,7 @@ const renormalize = (img: Img, o: number) => {
 };
 
 /** A 2×2 box filter (exact for a 2:1 step); normals are renormalized after averaging. */
-const halve = (img: Img, isNormal: boolean): Img => {
+export const halve = (img: Img, isNormal: boolean): Img => {
   const { channels: ch } = img;
   const out = createImage(img.width >> 1, img.height >> 1, ch);
   for (let y = 0; y < out.height; y++) {
@@ -308,6 +308,30 @@ export const getOutputSize = (
   }
   const stretch = Math.abs(outWidth / outHeight / (width / height) - 1);
   return { width: outWidth, height: outHeight, stretch };
+};
+
+/**
+ * An image as `channels` (3 or 4) channels, for a texture whose sources share one format (an
+ * array's layers, an atlas slot's cells): grey becomes RGB, two channels (R, G) get B = 0 (as
+ * `encodePng` writes them) and an image without alpha is opaque.
+ */
+export const toChannels = (img: Img, channels: 3 | 4): Img => {
+  const from = img.channels;
+  if (from === channels) return img;
+  if (from > channels) {
+    throw new Error(`a ${from}-channel image can't be stored with ${channels} channels`);
+  }
+  // Where R, G and B come from (-1: zero)
+  const rgb = from === 1 ? [0, 0, 0] : from === 2 ? [0, 1, -1] : [0, 1, 2];
+  const pixels = img.width * img.height;
+  const out: Img = { ...img, channels, data: new Float32Array(pixels * channels) };
+  for (let i = 0; i < pixels; i++) {
+    for (let c = 0; c < 3; c++) {
+      out.data[i * channels + c] = rgb[c] < 0 ? 0 : img.data[i * from + rgb[c]];
+    }
+    if (channels === 4) out.data[i * channels + 3] = 1;
+  }
+  return out;
 };
 
 export const flipY = (img: Img): Img => {

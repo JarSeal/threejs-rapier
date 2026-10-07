@@ -40,12 +40,15 @@ const formatDuration = (ms: number) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).
 
 const getAssetLabel = (asset: PipelineAsset) => {
   const source = asset.source.kind === 'remote' ? asset.source.url : asset.source.repoPath;
-  const layers =
+  const count = (n: number, noun: string) => `, ${n} ${noun}${n === 1 ? '' : 's'}`;
+  const parts =
     asset.source.kind === 'array'
-      ? `, ${asset.source.layers.length} layer${asset.source.layers.length === 1 ? '' : 's'}`
-      : '';
+      ? count(asset.source.layers.length, 'layer')
+      : asset.source.kind === 'atlas'
+        ? count(asset.source.cells.filter((cell) => cell.source).length, 'cell')
+        : '';
   const colorSpace = asset.type !== 'importedAsset' && asset.isSrgb ? ', sRGB' : '';
-  return `${asset.id} ${DIM}(${source}${layers}${colorSpace})${RESET}`;
+  return `${asset.id} ${DIM}(${source}${parts}${colorSpace})${RESET}`;
 };
 
 const STATUS_LABELS: Record<PipelineRunResult['status'], string> = {
@@ -243,8 +246,8 @@ export type AssetsCommandOpts = {
    * Re-runs the assets that got no output for want of `ktx` with their textures side off, so they
    * pass through as unoptimized outputs (a production build under `AEK_ASSETS_ALLOW_UNOPTIMIZED`,
    * which has no `__sourceUrl` to fall back to). Not cached: the lock keeps the real settings'
-   * entries only. Not a texture array (p299 D2): it is only ever a KTX2 file, so it stays
-   * `encoderMissing`. Default: false.
+   * entries only. Not a texture array (p299 D2) nor an atlas slot (D3): each is only ever a KTX2
+   * file, so it stays `encoderMissing`. Default: false.
    */
   isUnoptimizedFallback?: boolean;
 };
@@ -326,7 +329,9 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
   if (opts.isUnoptimizedFallback) {
     const missing = new Map(
       [...pipelineRun.results].flatMap(([key, result]) =>
-        result.status === 'encoderMissing' && result.asset.type !== 'textureArray'
+        result.status === 'encoderMissing' &&
+        result.asset.type !== 'textureArray' &&
+        result.asset.type !== 'textureAtlas'
           ? [[key, result.asset] as const]
           : []
       )

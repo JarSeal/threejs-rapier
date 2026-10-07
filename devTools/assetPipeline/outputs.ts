@@ -43,6 +43,14 @@ export const getPackLogicalPath = (source: PackSource) =>
  */
 export const getArrayLogicalPath = (jsonFile: string) => getJsonLogicalPath(jsonFile, '.array');
 
+/**
+ * A texture atlas slot's logical path (p299 D3): its JSON's, eg. 'app/textures/decals.atlas.albedo'
+ * for the slot "albedo" of decals.textureAtlas.json
+ * @param jsonFile Absolute
+ */
+export const getAtlasLogicalPath = (jsonFile: string, slot: string) =>
+  getJsonLogicalPath(jsonFile, `.atlas.${slot}`);
+
 export type PipelineOutput = {
   /** Absolute path on disk */
   file: string;

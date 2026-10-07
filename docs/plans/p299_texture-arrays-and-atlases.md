@@ -426,13 +426,54 @@ padding, levels, cells }`, a cell being `{ uv: [u0, v0, u1, v1], size: [w, h], d
 - Test sources (`src/app/textures/source/p299Atlas/`): saturated solid cells with a dark border
   and white diagonals, and greyscale masks, so a neighbour's hue shows where it bleeds.
 
-#### Section 2: Composition and encode
+#### Section 2: Composition and encode — done
 
 Per slot: each source resized into its cell's content rect, edge-extended into its padding, the
 rest of the atlas `fill`; then the box-filtered levels down to the protected one (less what
 `maxSize` drops), encoded with `ktx create --levels N`. A `textureAtlas` pipeline asset per slot,
 through `collectPipelineAssets`, `processAsset`, the cache and the lock. Output:
 `aek-assets/<json path>.atlas.<slot>.<hash>.ktx2`.
+
+As built (verified on the test atlas: both slots 512² with 5 levels down to 32², each level
+extracted with `ktx extract` shows every cell in its own rect with its edge extended and no
+neighbour's hue; a second run is all cache hits, a deleted output is restored from the store, and
+the arrays' keys didn't change):
+
+- `AtlasSlotSource` (`kind: 'atlas'`, `textureAtlases.ts`): the slot's name, the atlas id, the
+  layout (size, padding, levels) and each cell's rects with this slot's source, or none (its
+  fill). `collectPipelineAssets` reads `*.textureAtlas.json` (`readAssetJsons`) and adds one
+  pipeline asset per slot, keyed `getTextureAtlasSlotAssetKey` (`textureAtlas:<json>:<slot>`), with
+  the slot's texture id (`<atlasId>.<slot>`), its `optimize` and its colour space. Its settings
+  resolve against the atlas JSON's path. An atlas whose cells don't resolve or fit gets none.
+- The cache key (`getTextureAtlasKeyParams`) has the layout as this slot draws it (each cell's
+  rects and what its source is: a file, a pack recipe or the fill), the JSON's `fill`, and the
+  files this slot's cells read, in cell order. So an edit to another slot's sources only rebuilds
+  that slot, unless it moves the layout.
+- Channels: a slot is RGBA when one of its sources has alpha (from the headers,
+  `probeTextureSource`), or its `fill` has 4 values with alpha below 1. The default fill
+  `[0, 0, 0, 0]` is transparent black in an RGBA slot and black in an RGB one. A 3-value fill is
+  opaque.
+- Levels: composed at the layout's size, then `images.ts`'s `halve` (exported) per level, each
+  flipped as stored and written one at a time (`encodeKtx2Levels` in `ktxEncode.ts`: the inputs
+  are the levels, `getKtxCreateArgs`' new `generateMipmap: false`). `mipmaps: false` stores one
+  level. `maxSize` drops the top levels with a warning; it fails when it leaves none of the
+  protected levels, or when the new top level isn't a multiple of 4 (an atlas `size` aligned to
+  less than `4 << dropped`).
+- `EncodedTexture.levels` (new, in the lock entry): the stored level count, a shortened chain.
+  `estimateVramBytes` takes it, so the run's VRAM figure (and section 3's `__vramBytes`) counts
+  only those levels. An atlas slot's `source` is the layout's size and its unique source files'
+  bytes; VRAM `in` is the layout as one RGBA8 image with a full chain.
+- Warnings, cached with the output: a cell source that is upscaled or stretched into its cell,
+  and `maxSize` dropping levels. The gather now warns for a slot no cell has a source in.
+- Shared with arrays (`textureArrays.ts`): `readTextureSource` (the layer reader without the flip),
+  `probeTextureSource`, `listTextureSourceFiles`, `getTextureSourceKeyParam`; `toChannels` moved
+  to `images.ts`.
+- Tooling: `yarn assets --only <atlasId>` builds every slot, `<atlasId>.<slot>` one. The run lists
+  a slot with its cell count. Like arrays, an atlas slot is never passed through (`skipped` with
+  its textures side off) and stays out of `AEK_ASSETS_ALLOW_UNOPTIMIZED`'s fallback. The dev server
+  rebuilds a slot when the atlas JSON, a cell source's `*.texture.json` or a source image changes.
+- The test atlas's mask slot warns three times (section 1's masks are stretched into cells of
+  other shapes). The warnings are correct, so the asset is left as it is.
 
 #### Section 3: Generated data, scenes and budgets
 

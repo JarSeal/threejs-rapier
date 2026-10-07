@@ -202,16 +202,22 @@ export const createArraySource = (
   return { kind: 'array', jsonFile: file, repoPath: toRepoPath(file), layers, size };
 };
 
+/** Every file a layer's (or an atlas cell's) source reads: its file, or a pack's in its order */
+export const listTextureSourceFiles = ({ source }: TextureArrayLayer) =>
+  source.kind === 'pack'
+    ? listPackFiles(source.pack).map((src) => resolvePackFile(source.jsonFile, src))
+    : [source.file];
+
+/** What a layer's (or an atlas cell's) source is in a cache key, besides its files' bytes */
+export const getTextureSourceKeyParam = ({ source }: TextureArrayLayer) =>
+  source.kind === 'pack' ? { pack: source.pack } : 'file';
+
 /**
  * Every file an array's encode reads, layer by layer (a pack's files in its order). A file two
  * layers read is listed twice: the cache key hashes the files in this order.
  */
 export const listTextureArrayFiles = (source: ArraySource) =>
-  source.layers.flatMap(({ source: layer }) =>
-    layer.kind === 'pack'
-      ? listPackFiles(layer.pack).map((src) => resolvePackFile(layer.jsonFile, src))
-      : [layer.file]
-  );
+  source.layers.flatMap(listTextureSourceFiles);
 
 /**
  * The cache key's inputs (besides the files, the settings and the colour space): what each
@@ -219,9 +225,7 @@ export const listTextureArrayFiles = (source: ArraySource) =>
  */
 export const getTextureArrayKeyParams = (source: ArraySource) => ({
   size: source.size ?? null,
-  layers: source.layers.map(({ source: layer }) =>
-    layer.kind === 'pack' ? { pack: layer.pack } : 'file'
-  ),
+  layers: source.layers.map(getTextureSourceKeyParam),
   output: getArrayLogicalPath(source.jsonFile),
 });
 
@@ -249,8 +253,11 @@ export const getTextureArraySlotSettings = (
 const getLayerLabel = (source: ArraySource, index: number) =>
   `layers[${index}] ("${source.layers[index].key}")`;
 
-/** A layer's size and whether it has alpha, from the file headers (no pixels are decoded) */
-const probeLayer = async (layer: TextureArrayLayer, isNormal: boolean) => {
+/**
+ * A layer's (or an atlas cell's) source size and whether it has alpha, from the file headers (no
+ * pixels are decoded). A normal map's alpha isn't read.
+ */
+export const probeTextureSource = async (layer: TextureArrayLayer, isNormal: boolean) => {
   const { source } = layer;
   if (source.kind === 'pack') {
     const hasAlpha = getPackChannelCount(source.pack) === 4;
@@ -269,31 +276,27 @@ const probeLayer = async (layer: TextureArrayLayer, isNormal: boolean) => {
   return { width, height, hasAlpha: !isNormal && (channels === 2 || channels === 4) };
 };
 
-/** A layer's linear channels at the array's size, flipped as stored (like a texture's KTX2) */
-const readLayer = async (
+/**
+ * A layer's (or an atlas cell's) source as linear channels at `size`, top row first: a pack built
+ * at it, a file resized to it (a normal map as XYZ, renormalized).
+ */
+export const readTextureSource = async (
   layer: TextureArrayLayer,
   size: { width: number; height: number },
   opts: { isSrgb: boolean; isNormal: boolean }
 ): Promise<Img> => {
   const { source } = layer;
-  let img: Img;
   if (source.kind === 'pack') {
-    img = await buildPackedImage(source.pack, {
+    return buildPackedImage(source.pack, {
       resolveFile: (src) => resolvePackFile(source.jsonFile, src),
       isSrgb: opts.isSrgb,
       getSize: () => size,
     });
-  } else {
-    const read = await readImageFile(source.file, {
-      isSrgb: opts.isSrgb,
-      rgbOnly: opts.isNormal,
-    });
-    img =
-      read.width === size.width && read.height === size.height
-        ? read
-        : resizeImage(read, size.width, size.height, opts.isNormal);
   }
-  return flipY(img);
+  const read = await readImageFile(source.file, { isSrgb: opts.isSrgb, rgbOnly: opts.isNormal });
+  return read.width === size.width && read.height === size.height
+    ? read
+    : resizeImage(read, size.width, size.height, opts.isNormal);
 };
 
 /**
@@ -318,9 +321,9 @@ export const encodeTextureArray = async (
     }
   };
 
-  const probes: Awaited<ReturnType<typeof probeLayer>>[] = [];
+  const probes: Awaited<ReturnType<typeof probeTextureSource>>[] = [];
   for (let index = 0; index < source.layers.length; index++) {
-    probes.push(await withLabel(index, () => probeLayer(source.layers[index], isNormal)));
+    probes.push(await withLabel(index, () => probeTextureSource(source.layers[index], isNormal)));
   }
   let base = probes[0];
   if (source.size) {
@@ -351,9 +354,12 @@ export const encodeTextureArray = async (
   const channels = probes.some((probe) => probe.hasAlpha) ? 4 : 3;
   const bytes = await encodeKtx2Layers(
     source.layers.length,
+    // Flipped as stored, like a texture's KTX2
     (index) =>
-      withLabel(index, () =>
-        readLayer(source.layers[index], size, { isSrgb: opts.isSrgb, isNormal })
+      withLabel(index, async () =>
+        flipY(
+          await readTextureSource(source.layers[index], size, { isSrgb: opts.isSrgb, isNormal })
+        )
       ),
     settings,
     { channels, isSrgb: opts.isSrgb, isNormal, getKtx: opts.getKtx }
