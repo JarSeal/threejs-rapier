@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-3 implemented, Phase 4 sections 1-3
+Status: in progress | Phases 0-4 implemented
 Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
@@ -567,7 +567,7 @@ gone, and section 4's checks give the same figures):
   64² cell with 16 px of padding takes 128², not 96². A small-cell atlas that needs the room can
   lower its padding (and its levels) or place cells with `rect`.
 
-### Phase 4 — Helpers and debug (D4, D6)
+### Phase 4 — Helpers and debug (D4, D6) — done
 
 **Exit:** a mesh remapped into an atlas cell renders in the `textureAtlases` scene and a mesh
 sampling an array layer in the `textureArrays` scene; the Assets tab shows layers and cells.
@@ -695,10 +695,48 @@ with GPU mips 682.7 KB; each atlas slot 341.0 KB, its `__vramBytes.out` of 349,1
   nodes built in code shows 0 (as before; the GPU memory tab's `forEachMaterialTexture` also reads
   `userData.uniforms`, which code-built nodes aren't in either).
 
-#### Section 4: Previews
+#### Section 4: Previews — done
 
 The GPU preview renderer; layer thumbnails and the atlas slot image with the content and padded
 rects and the cell ids on hover, at a picked level. This phase's "As built" and the status line.
+
+As built (verified in both p299 scenes on WebGPU and WebGL2, the same figures on both: every
+array and slot the scenes register previews at every level it has; at level 0 each albedo cell
+next to its source file differs by a mean of 0-0.09 / 255 (the solid cells; checker 2.8, metal 4,
+resampled into smaller cells) and each layer of the 3-layer asset by 0-3.4 / 255, where the same
+comparison flipped upside down gives 2.8-6.4 and 6.6-45: the orientation is right on both; the
+overlay covers the image exactly):
+
+- `renderTexturePreviewAsync(texture, { level, layers?, maxSize })` (`core/Debug/_dbg__TexturePreview.ts`):
+  one `NodeMaterial` per call sampling `texture(t, uv).level(levelUniform)` (`.depth(layerUniform)`
+  for an array), so one shader serves every tile; the tiles are rendered side by side into one
+  RGBA8 target per strip (up to 4096 px wide) and read back once. The target has the texture's
+  colour space (sRGB encoded on write, data as it is; a render target has no tone mapping), so the
+  bytes go into a canvas as they are. `NoBlending` keeps the alpha. It reuses the impostor bake's
+  `getBakeRenderer`, `withBakeRendererState` and `clearBakeTarget`.
+- Readback: WebGPU's rows start at the top and are padded to 256 bytes, WebGL2's start at the
+  bottom; the row stride is taken from the returned length. three's `QuadMesh` has v = 0 at the
+  top, so the shader samples `1 - v`.
+- `getTextureLevelCount` / `getTextureLevelSize`: a provided chain (KTX2, an atlas slot's shortened
+  one), a generated full chain (`generateMipmaps` with a mipmap `minFilter`, eg. the uncompressed
+  arrays), else 1. A level over `maxSize` is sampled down at that level (bilinear, so fine detail
+  aliases) and the status line says so; layer thumbnails cap at 128 px, the slot image at 1024 px.
+  The canvases scale with `image-rendering: pixelated` over a checkerboard (alpha shows).
+- The window (`core/Debug/_dbg__AssetsPreview.ts`, a "Preview" section after the array / atlas
+  section): level buttons (the file's levels; a slot whose maxSize dropped top levels also names
+  the layout's level), a status line, then a thumbnail per layer captioned with its member or
+  layer name, or the slot image with an SVG overlay in the layout's px (padded rects cyan, content
+  rects magenta, as the scene draws them), a "Cell rects" toggle, the hovered cell highlighted and
+  named under the image (`<id>: <w> × <h> px at <x>, <y>`, the cell table's convention) and in its
+  `<title>`.
+- The picked level and the rects toggle are per info window for the session, kept when its
+  content is rebuilt and dropped by the kind's `onClose`. A level change re-renders and keeps the
+  old images until the new ones arrive (the latest request wins). A template CMP gets no
+  `onCreateCmp` of its own (CMP.ts calls the parent's), so the render starts when the content is
+  built and fills the element when the readback arrives.
+- Arrays without `TextureArrayInfo` (a plain `--layers` KTX2) preview too: their layers come from
+  `image.depth`. Plain 2D textures get no preview: the renderer handles them, the plan's scope
+  doesn't.
 
 ### Phase 5 — JSON binding (D5, after p302 D4)
 

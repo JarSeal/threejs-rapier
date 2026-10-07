@@ -60,6 +60,7 @@ import {
   getVertexCount,
   UNIQUE_EDGES_MAX_ENTRIES,
 } from './_dbg__AssetStats';
+import { createTexturePreviewCmp, forgetTexturePreviewState } from './_dbg__AssetsPreview';
 import styles from './Assets.module.scss';
 
 type AssetKind = 'texture' | 'geometry';
@@ -745,6 +746,11 @@ const createTextureContent = (id: string) => {
   const users = getTextureMaterialUsers(texture, id);
   const d = describeTexture(texture);
   const load = describeLoadReport(report);
+  // An array's layers or an atlas slot's image (p299 D6)
+  const previewCmp = createTexturePreviewCmp(
+    texture,
+    getKindWindowId(INFO_WIN_ID, rowKey('texture', id))
+  );
 
   const html = () => `<div>
 ${field('Type', d.kind)}
@@ -774,6 +780,7 @@ ${section(
 )}
 ${isArray ? describeTextureArray(texture, registered) : ''}
 ${describeTextureAtlas(texture)}
+${previewCmp ? section('Preview', `${previewCmp}`) : ''}
 ${pipeline?.sectionHtml ?? ''}
 ${
   importId
@@ -1032,7 +1039,10 @@ const isAssetLoaded = ({ kind, id }: { kind: AssetKind; id: string }) =>
 
 registerDraggableWindowKind(INFO_WIN_ID, {
   content: createInfoContent,
-  onClose: refreshAssetsTab,
+  onClose: (id) => {
+    forgetTexturePreviewState(id);
+    refreshAssetsTab();
+  },
   // Kept open on a scene change when the asset is still loaded (eg. shared with the next scene)
   sceneTargetResolver: (data) => isAssetLoaded(data as { kind: AssetKind; id: string }),
 });
