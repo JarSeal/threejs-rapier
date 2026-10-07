@@ -7,10 +7,11 @@ import sharp from 'sharp';
 import { ensureKtx, getKtxEnv } from './ktxTool';
 
 /**
- * p299 Phase 0: the spike's test files, for the `textureArraySpike` scene.
+ * p299: the test files of the `textureArrays` scene (Phase 0 spike, then the verification scene).
  *
  * - `arr2_<codec>.ktx2`: a two-layer array encoded by `ktx create --layers 2` (layers 0 and 1).
  * - `s<i>_<codec>.ktx2`: layers 0-3 as single textures, for runtime assembly and the layer swap.
+ * - `l<i>.png`: layers 0-3 as images, for the uncompressed (`DataArrayTexture`) path.
  * - `perf/m<nn>_uastc.ktx2`: 16 single 1K members, for timing CPU concatenation against
  *   `copyTextureToTexture` assembly.
  *
@@ -39,12 +40,13 @@ const CODEC_ARGS = {
 } as const;
 type Codec = keyof typeof CODEC_ARGS;
 
-/** A layer image (top row first), written as a flipped PNG. */
+/** A layer image (top row first), written as a PNG: flipped for a KTX2 encoder input. */
 const writeLayerPng = async (
   file: string,
   size: number,
   stripes: number,
-  color: [number, number, number]
+  color: [number, number, number],
+  flip = true
 ) => {
   const data = Buffer.alloc(size * size * 3);
   const barHeight = Math.max(4, size >> 3);
@@ -56,7 +58,7 @@ const writeLayerPng = async (
     }
   }
   await sharp(data, { raw: { width: size, height: size, channels: 3 } })
-    .flip()
+    .flip(flip)
     .png()
     .toFile(file);
 };
@@ -91,6 +93,8 @@ const main = async () => {
     const file = path.join(TMP_DIR, `l${i}.png`);
     await writeLayerPng(file, 256, i + 1, LAYER_COLORS[i]);
     layerPngs.push(file);
+    // Loaded as images, which three flips on upload (or the assets worker when it decodes)
+    await writeLayerPng(path.join(OUT_DIR, `l${i}.png`), 256, i + 1, LAYER_COLORS[i], false);
   }
   for (const codec of Object.keys(CODEC_ARGS) as Codec[]) {
     ktxCreate(codec, layerPngs.slice(0, 2), path.join(OUT_DIR, `arr2_${codec}.ktx2`), 2);

@@ -1,4 +1,4 @@
-Status: in progress | Phase 0 implemented
+Status: in progress | Phases 0-1 implemented
 Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
@@ -179,7 +179,7 @@ loads them. Until p302 lands, arrays and atlases are used from TSL code (D4).
 
 **Exit:** a test scene samples layer 0 and 1 of both kinds of array on both backends.
 
-As built (the `textureArraySpike` debug scene, its files from
+As built (a spike scene, since turned into Phase 1's `textureArrays` scene; its files from
 `devTools/assetPipeline/p299ArraySpike.ts` in `src/public/debugger/assets/testOptimized/p299/`;
 measured in Chrome on an Apple GPU, where ETC1S transcodes to ETC2 and UASTC to ASTC 4×4 on both
 backends):
@@ -203,7 +203,7 @@ backends):
    bytes, both kinds, both backends). Nothing to add for D6.
 
 Found on the way, not this plan's: a Basis file transcoded to uncompressed RGBA32 (a GPU with no
-BC, ETC2 or ASTC; forced with the scene's `?p299Rgba=true`) fails for single textures as much as
+BC, ETC2 or ASTC; forced in the spike with a loader whose `workerConfig` was all false) fails for single textures as much as
 arrays. WebGPU throws in `_copyCompressedBufferToTexture` (`_getBlockData` has no entry for
 `rgba8unorm`), WebGL2 uploads (and counts) the bytes but samples black. Every KTX2 the engine loads
 has this today; it needs its own issue.
@@ -211,10 +211,46 @@ has this today; it needs its own issue.
 Untested: a one-member array (three sets `isArrayTexture` from `image.depth > 1`, so it would bind
 by `isCompressedArrayTexture` alone). Phase 1 tests it or requires two members.
 
-### Phase 1 — Runtime arrays (D1)
+### Phase 1 — Runtime arrays (D1) — done
 
 `core/TextureArray.ts`, registry integration, ref counting, layer swap. **Exit:** an array of 4
 KTX2 members renders identically to the 4 separate textures, with one binding.
+
+As built (verified in the `textureArrays` debug scene on WebGPU and WebGL2: the 4-layer array,
+drawn by one quad with one material, differs from the 4 single textures by at most 1/255):
+
+1. API: `buildTextureArray({ id?, members, colorSpace?, texOpts?, swappable?, isPersistent?,
+debugData? })`, `setTextureArrayLayer(id, layer, member)` (async; swaps of one array run in call
+   order), `getTextureArray(id)`, `getTextureArrayInfo(texture)` (`userData.textureArray`: members
+   per layer, kind, size, levels, bytes per layer, `swappable`, `cpuDataReleased`).
+2. A member is a registered texture's id (read and left alone), a `*.texture.json` id or
+   `TextureProps`. The last two are loaded for the array alone through `loadTextureFileAsync` and
+   `resolveTextureUrl`, split out of `loadTextureAsync` (`core/Texture.ts`, which now uses them):
+   never registered nor uploaded, their asset's `texOpts` applied as `loadTextureAsync` would, and
+   dropped after assembly.
+3. Ownership: an array holds a copy of its members' data, so it is self-contained: a registered
+   texture owned by the scene that built it, released at that scene's exit like any texture
+   (verified). "Members as dependencies for scene ownership" is only a JSON concern (p302 D6's
+   closure, Phase 5); nothing ties a member's lifecycle to the array at runtime. Texture ref counts
+   aren't used by the engine (release goes by owner and material use), so neither do arrays.
+4. Ids: a non-swappable array without an id gets `arr:<hash>` of its members, colour space and
+   texOpts, so two builds share one. A swappable one gets a unique id: a swap must never change an
+   array someone else shares.
+5. The CPU copy: kept for a swappable array, else dropped right after the first upload, in a
+   microtask after `onUpdate` (three sizes a texture from its data after calling `onUpdate`).
+   `buildTextureArray` uploads at once (`initTexture`), so the load pays for it. A dropped array
+   can't be re-uploaded (`needsUpdate` would fail). The Assets tab sizes compressed textures from
+   their mip data, so it shows no size for a dropped array (and an uncompressed array's size
+   leaves out its layers): Phase 4's D6 fixes both. The GPU memory tab counts arrays right.
+6. Uncompressed path: image members are drawn into an `OffscreenCanvas` (flipped when the texture
+   has `flipY`), into a `DataArrayTexture` with GPU mipmaps. Its colour space comes from
+   `colorSpace` or the members' asset `texOpts`. A mix of KTX2 and image members throws, and the
+   message points at `yarn assets` (an asset without pipeline output loads its source image).
+7. One-member arrays work on both backends (`isArrayTexture` is false for every
+   `CompressedArrayTexture` in r186, since its depth is set after the base constructor; binding goes
+   by `isCompressedArrayTexture`). No two-member rule.
+8. Mismatches throw with the member, its layer and both values: format (codec), size, mip count,
+   colour space, kind; an unknown member; a swap of a non-swappable array; a layer out of range.
 
 ### Phase 2 — Build-time arrays (D2)
 

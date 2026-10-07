@@ -1,0 +1,8 @@
+{
+  "$schema": "../.schemas/scene.schema.json",
+  "id": "textureArrays",
+  "sceneFile": "./textureArrays.ts",
+  "isDebugScene": true,
+  "name": "Texture arrays (p299)",
+  "description": "p299's verification scene: runtime texture arrays (buildTextureArray) next to the textures they were built from. A 4-layer KTX2 array drawn by one quad and one material, the uncompressed PNG path, a one-member array of a texture asset, layer swaps after the first upload, and `ktx create --layers` files. Files from devTools/assetPipeline/p299ArraySpike.ts."
+}

@@ -154,7 +154,11 @@ export const setTexturePersistence = (id: string, state: boolean) => {
   }
 };
 
-const setTextureOpts = (
+/**
+ * Applies texOpts to a texture and replaces its userData (with `userData`, or an empty object),
+ * plus debugData's name and description.
+ */
+export const setTextureOpts = (
   texture: THREE.Texture | THREE.DataTexture | THREE.CubeTexture,
   texOpts?: TexOpts,
   userData?: Record<string, unknown>,
@@ -435,6 +439,73 @@ export const loadTexture = ({
 };
 
 /**
+ * The URL loadTextureAsync loads a single-file texture from: the asset pipeline's output, or its
+ * `fileName` resolved like three's loaders do (see resolveAssetUrl).
+ */
+export const resolveTextureUrl = ({
+  id,
+  fileName,
+  path,
+  __url,
+  __sourceUrl,
+}: Omit<TextureProps, 'fileName'> & { fileName?: string }) =>
+  resolveAssetUrl({ id, fileName, __url, __sourceUrl }, (name) => toLoaderUrl(name, path));
+
+type TextureFileLoaderType = 'KTX2Loader' | 'HDRLoader' | 'TextureLoader';
+
+const getTextureFileLoaderType = (url: string, useHDRLoader?: boolean): TextureFileLoaderType =>
+  isKTX2(url) ? 'KTX2Loader' : useHDRLoader && isHDR(url) ? 'HDRLoader' : 'TextureLoader';
+
+/**
+ * Loads one texture file without registering it (loadTextureAsync registers what this returns),
+ * with the loader its URL calls for: a KTX2 file gives a CompressedTexture (a
+ * CompressedArrayTexture for an array file) with its flip and mip chain baked in, an HDR file
+ * (with `useHDRLoader`) a HalfFloat DataTexture, anything else a Texture. Standard and HDR files
+ * load where AppConfig.assets targets textures. A Texture decoded in the assets worker holds an
+ * ImageBitmap with its flip baked in (`flipY` false); one the caller doesn't register is the
+ * caller's to close.
+ * @param url the file's URL, as resolveAssetUrl returns it
+ * @param useHDRLoader load an `.hdr` file as HDR data
+ */
+export const loadTextureFileAsync = async (
+  url: string,
+  useHDRLoader?: boolean
+): Promise<{ texture: THREE.Texture; report: AssetLoadReport }> => {
+  const loaderType = getTextureFileLoaderType(url, useHDRLoader);
+  if (loaderType === 'KTX2Loader') {
+    // Compressed texture: flipY and mipmaps are baked into the file (see loadKTX2Texture)
+    const startedAt = performance.now();
+    const texture = await loadKTX2Texture(url);
+    const report: AssetLoadReport = {
+      target: 'MAIN_THREAD',
+      loadedOn: 'MAIN_THREAD',
+      durationMs: performance.now() - startedAt,
+    };
+    return { texture, report };
+  }
+  if (loaderType === 'HDRLoader') {
+    const { result, report } = await runAssetTask<THREE.DataTexture>(
+      'TEXTURE',
+      async () => createHDRTextureFromWorkerData(await loadHDRTextureInWorker(url)),
+      () => new HDRLoader().loadAsync(url),
+      null // HDR parsing is plain JS, no worker capability needed
+    );
+    return { texture: result, report };
+  }
+  if (useHDRLoader) {
+    lwarn(
+      `[Aekasha Texture Pipeline] useHDRLoader override ignored for non-HDR file extension: ${url}`
+    );
+  }
+  const { result, report } = await runAssetTask<THREE.Texture>(
+    'TEXTURE',
+    async () => createTextureFromWorkerBitmap(await loadTextureInWorker(url)),
+    () => new THREE.TextureLoader().loadAsync(url)
+  );
+  return { texture: result, report };
+};
+
+/**
  * Loads a texture asynchronously supporting standard textures, HDR data textures, KTX2 compressed
  * textures and CubeTextures. Standard and HDR textures load where AppConfig.assets targets
  * textures (main thread or the assets worker, with the same result either way). KTX2 textures
@@ -470,51 +541,11 @@ export const loadTextureAsync = async ({
 
   try {
     if (!Array.isArray(fileName)) {
-      url = resolveAssetUrl({ id, fileName, __url, __sourceUrl }, (name) =>
-        toLoaderUrl(name, path)
-      );
-      if (isKTX2(url)) {
-        // Compressed texture: flipY and mipmaps are baked into the file (see loadKTX2Texture)
-        loaderType = 'KTX2Loader';
-        const startedAt = performance.now();
-        const result = await loadKTX2Texture(url);
-        const report: AssetLoadReport = {
-          target: 'MAIN_THREAD',
-          loadedOn: 'MAIN_THREAD',
-          durationMs: performance.now() - startedAt,
-        };
-        const loadedTexture = setTextureOpts(result, texOpts, userData, debugData);
-        return saveAndReport(loadedTexture, id, isPersistent, report, url);
-      } else if (useHDRLoader && isHDR(url)) {
-        // Data texture
-        loaderType = 'HDRLoader';
-        const hdrUrl = url;
-        const { result, report } = await runAssetTask<THREE.DataTexture>(
-          'TEXTURE',
-          async () => createHDRTextureFromWorkerData(await loadHDRTextureInWorker(hdrUrl)),
-          () => new HDRLoader().loadAsync(hdrUrl),
-          null // HDR parsing is plain JS, no worker capability needed
-        );
-        const loadedTexture = setTextureOpts(result, texOpts, userData, debugData);
-        return saveAndReport(loadedTexture, id, isPersistent, report, url) as THREE.DataTexture;
-      } else {
-        if (useHDRLoader && !isHDR(url)) {
-          lwarn(
-            `[Aekasha Texture Pipeline] useHDRLoader override ignored for non-HDR file extension: ${url}`
-          );
-        }
-
-        // Texture
-        loaderType = 'TextureLoader';
-        const textureUrl = url;
-        const { result, report } = await runAssetTask<THREE.Texture>(
-          'TEXTURE',
-          async () => createTextureFromWorkerBitmap(await loadTextureInWorker(textureUrl)),
-          () => new THREE.TextureLoader().loadAsync(textureUrl)
-        );
-        const loadedTexture = setTextureOpts(result, texOpts, userData, debugData);
-        return saveAndReport(loadedTexture, id, isPersistent, report, url);
-      }
+      url = resolveTextureUrl({ id, fileName, path, __url, __sourceUrl });
+      loaderType = getTextureFileLoaderType(url, useHDRLoader);
+      const { texture: result, report } = await loadTextureFileAsync(url, useHDRLoader);
+      const loadedTexture = setTextureOpts(result, texOpts, userData, debugData);
+      return saveAndReport(loadedTexture, id, isPersistent, report, url);
     } else {
       // Cube texture (always loaded on the main thread)
       if (fileName.length !== 6) {
