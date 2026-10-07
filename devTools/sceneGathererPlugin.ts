@@ -2,6 +2,7 @@
 import path from 'path';
 import type { Plugin, ViteDevServer } from 'vite';
 import type { AppConfig } from '../src/_engine/core/Config';
+import { AEK_GATHER_EVENT, type DevDataGatheredEvent } from '../src/_engine/debug/DevFilesProtocol';
 import { runAssetsCommand } from './assetPipeline/command';
 import { AEK_ASSETS_DIR } from './assetPipeline/outputs';
 import {
@@ -11,7 +12,9 @@ import {
 } from './assetPipeline/pipeline';
 import type { PipelineRun, PipelineRunResult } from './assetPipeline/run';
 import { ASSETS_CONFIG_FILE } from './assetPipeline/settings';
+import { ROOT } from './assetPipeline/sources';
 import { CONFIG_FILE, resolveProjectOptOut, type ProjectOptOut } from './assetPipeline/switches';
+import { DEV_FILES_TEMP_SUFFIX } from './devFiles/commit';
 import {
   gatherSceneData,
   isFilePathValid,
@@ -33,6 +36,11 @@ import {
  * Every other asset is only looked up in the cache, so the gather keeps its `__url`. A run never
  * removes stale outputs (`yarn assets` does). Changes are queued: one run at a time, and the
  * changes that come in during a run go into the next one.
+ *
+ * Each gather ends with the custom HMR event `aek:gather` (`DevDataGatheredEvent`: how it went,
+ * the changed files, whether a reload follows), before the `full-reload`. The dev files' client
+ * delivers it to `onDevDataGathered` (p342 §2.5); Vite's client handles the reload only after its
+ * listeners have settled.
  */
 
 const ASSET_JSON_SUFFIXES = [
@@ -55,6 +63,8 @@ type PendingWork = {
   /** src/CONFIG.ts changed: reload the switches, and run with all assets if they differ */
   isSwitchesCheck: boolean;
   needsGather: boolean;
+  /** Every file whose event queued this work, for the `aek:gather` event */
+  changedFiles: Set<string>;
 };
 
 const createPendingWork = (): PendingWork => ({
@@ -63,6 +73,7 @@ const createPendingWork = (): PendingWork => ({
   needsRun: false,
   isSwitchesCheck: false,
   needsGather: false,
+  changedFiles: new Set(),
 });
 
 /** Every file the run's assets read, so a change to one of them can be told apart */
@@ -84,10 +95,30 @@ const sendError = (server: ViteDevServer, message: string, stack: string) =>
     err: { message, stack, plugin: 'vite-plugin-scene-gatherer' },
   });
 
+const toAssetErrors = (errors: PipelineRunResult[]) =>
+  errors.map((result) => ({
+    id: result.asset.id,
+    reason: 'reason' in result ? result.reason : '',
+  }));
+
 const formatAssetErrors = (errors: PipelineRunResult[]) =>
-  errors
-    .map((result) => `${result.asset.id}: ${'reason' in result ? result.reason : ''}`)
+  toAssetErrors(errors)
+    .map(({ id, reason }) => `${id}: ${reason}`)
     .join('\n');
+
+const sendGatherEvent = (
+  server: ViteDevServer,
+  work: PendingWork,
+  event: Omit<DevDataGatheredEvent, 'files'>
+) => {
+  const data: DevDataGatheredEvent = {
+    ...event,
+    files: [...work.changedFiles].map((file) =>
+      path.relative(ROOT, file).split(path.sep).join('/')
+    ),
+  };
+  server.hot.send({ type: 'custom', event: AEK_GATHER_EVENT, data });
+};
 
 export const sceneGathererPlugin = (): Plugin => ({
   name: 'vite-plugin-scene-gatherer',
@@ -161,6 +192,14 @@ export const sceneGathererPlugin = (): Plugin => ({
           // An invalid assets.lock.json or assets.config.json: the generated data stays as it is
           const message = (err as Error).message;
           console.error(`\x1b[31m✗ [Assets] ${message}\x1b[0m`);
+          if (work.needsGather) {
+            sendGatherEvent(server, work, {
+              status: 'failed',
+              assetErrors: [],
+              willReload: false,
+              message: `The asset pipeline could not start: ${message}`,
+            });
+          }
           sendError(server, '[Asset Pipeline Error] The run could not start', message);
           return;
         }
@@ -170,15 +209,28 @@ export const sceneGathererPlugin = (): Plugin => ({
       const isGathered = gatherSceneData({ pipeline: lastRun });
       isLastGatherFailed = !isGathered;
       if (!isGathered) {
+        sendGatherEvent(server, work, {
+          status: 'failed',
+          assetErrors: toAssetErrors(assetErrors),
+          willReload: false,
+          message: 'The gather failed: check the terminal for its errors',
+        });
         sendError(
           server,
           '[Scene Pipeline Error] Consolidation Failed',
           'Check the terminal for the gatherer’s errors.'
         );
       } else if (assetErrors.length) {
-        // The gather is done (the asset falls back to its source), but the error needs a look
+        // The gather is done (the asset falls back to its source), but the error needs a look.
+        // Vite reloads the page anyway: it changed the generated data, which nothing accepts
+        sendGatherEvent(server, work, {
+          status: 'done',
+          assetErrors: toAssetErrors(assetErrors),
+          willReload: true,
+        });
         sendError(server, '[Asset Pipeline Error] An asset failed', formatAssetErrors(assetErrors));
       } else {
+        sendGatherEvent(server, work, { status: 'done', assetErrors: [], willReload: true });
         server.hot.send({ type: 'full-reload' });
       }
     };
@@ -196,6 +248,14 @@ export const sceneGathererPlugin = (): Plugin => ({
             await processWork(work);
           } catch (err) {
             console.error('\x1b[31m✗ [Scene Gatherer]\x1b[0m', err);
+            if (work.needsGather) {
+              sendGatherEvent(server, work, {
+                status: 'failed',
+                assetErrors: [],
+                willReload: false,
+                message: `The gatherer failed: ${(err as Error).message}`,
+              });
+            }
           }
         }
       } finally {
@@ -203,8 +263,9 @@ export const sceneGathererPlugin = (): Plugin => ({
       }
     };
 
-    const schedule = (update: (work: PendingWork) => void) => {
+    const schedule = (update: (work: PendingWork) => void, file?: string) => {
       update(pending);
+      if (file) pending.changedFiles.add(file);
       hasPending = true;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => void flush(), DEBOUNCE_MS);
@@ -214,24 +275,25 @@ export const sceneGathererPlugin = (): Plugin => ({
       const file = path.resolve(filePath);
       if (file === OUTPUT_FILE_DATA || file === OUTPUT_FILE_FN) return;
       if (file.startsWith(AEK_ASSETS_DIR + path.sep)) return; // The pipeline's own outputs
+      if (file.endsWith(DEV_FILES_TEMP_SUFFIX)) return; // A dev files commit renames it into place
 
       if (file === CONFIG_FILE) {
-        schedule((work) => (work.isSwitchesCheck = true));
+        schedule((work) => (work.isSwitchesCheck = true), file);
       } else if (file === ASSETS_CONFIG_FILE) {
-        schedule((work) => (work.needsRun = work.isAllSelected = work.needsGather = true));
+        schedule((work) => (work.needsRun = work.isAllSelected = work.needsGather = true), file);
       } else if (ASSET_JSON_SUFFIXES.some((suffix) => file.endsWith(suffix))) {
         schedule((work) => {
           work.files.add(file);
           work.needsRun = work.needsGather = true;
-        });
+        }, file);
       } else if (isFilePathValid(file)) {
-        schedule((work) => (work.needsGather = true));
+        schedule((work) => (work.needsGather = true), file);
       } else if (sourceFiles.has(file) || (event !== 'change' && isLastGatherFailed)) {
         // A source changed, or a file came or went that the failed gather may have missed
         schedule((work) => {
           work.files.add(file);
           work.needsRun = work.needsGather = true;
-        });
+        }, file);
       }
     };
 

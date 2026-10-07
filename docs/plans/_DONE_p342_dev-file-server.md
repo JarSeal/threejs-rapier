@@ -1,6 +1,5 @@
-Status: draft | not-implemented
+Status: implemented (Phases 1-4)
 Category: Dev tooling, Debug
-Blocks: p351_impostor-billboard-lod.md (Phase 4's export)
 Related: p304_procedural-texture-baker.md (D5's PNG export), \_DONE_p085_material-editor-params-and-persistence.md (overrides that could go into the JSON), \_DONE_p069_character-live-config-editing.md, \_DONE_p300_asset-optimization-pipeline-plan.md (encodes what is written)
 
 # Dev File Server
@@ -142,6 +141,13 @@ CLAUDE.md asks every writer of save entries to stamp `engineVersion`, `toolkitVe
 validates and formats the result like any JSON write. No tool uses it in this plan; the material
 editor's, sky box's and character config's "save to JSON" are their own plans.
 
+**Save history size** (added after Phase 3): how many entries a save keeps per scene, the new one
+included. -1 keeps them all, 0 turns saving into `__saveData` off. `AppConfig.devFiles.saveHistorySize`
+(default 20) sets it, and the Debug tools tab's "File server" folder overrides it per browser
+(`debugToolsState.devFiles`, saved only once changed there, so until then a CONFIG change
+applies). Outside the debug env it's always 0. The client sends it with each save entry, since
+the value lives in the browser.
+
 ### 2.7 `server.fs.strict`
 
 Replace `fs.strict: false` with `fs.allow: [<repo root>]`: the root is `src/`, so `node_modules`
@@ -151,7 +157,7 @@ write, but it's the same threat (§2.2) and a one-line fix.
 
 ## 3. Phases
 
-### Phase 1 — Server
+### Phase 1 — Server — done
 
 §2.1-2.3 and §2.7: the plugin, the routes, the token, host and origin checks, the path policy,
 staging, batch commits with rollback, Prettier, schema validation, conflicts.
@@ -165,7 +171,24 @@ lands; an unchanged write reports `unchanged`; each refusal gets its code (no to
 failure is in the renames (forced by the script). `/@fs/` outside the repo is refused and the app
 still loads on WebGPU and WebGL2.
 
-### Phase 2 — Client API and gatherer event
+As built:
+
+- `GET status` also returns `canWrite` (this device may use the other routes), `deniedRoots`,
+  `extensions`, `maxFileBytes` and `maxBatchBytes`.
+- `GET read` answers with the raw bytes and the hash in an `x-aek-sha256` header, not JSON.
+- Three more error codes: `BAD_REQUEST`, `NOT_FOUND` (`read` of a missing file, an unknown route),
+  `WRITE_FAILED` (a failed batch, every file restored).
+- A write whose bytes equal the file's is `unchanged` and isn't written: no file event, no gather.
+  Commits run one at a time. The backups of the last 20 commits are kept in
+  `.cache/dev-files/backup/<commit>/`, for undoing a write by hand.
+- Schema validation is `validateGatheredJson` in `gatherAppData.ts` (the gatherer's schemas by
+  suffix, a sky box's id defaulted to its file name as the gather does).
+- The self-check: `npx tsx devTools/devFiles/selfCheck.ts` starts its own dev server on 8091 with
+  `AEK_DEV_FILES_FAULTS=true`, which makes a commit honour an `x-aek-dev-fault: rename:<n>` header
+  (the forced rename failures); `--url http://localhost:8080` runs against a running `yarn dev`
+  and skips those. It writes into `src/app/__devFilesSelfCheck__/` and removes it.
+
+### Phase 2 — Client API and gatherer event — done
 
 §2.4 and §2.5: `debug/DevFiles.ts`, `_dbg__DevFiles.ts`, `encodePNG`, the `aek:gather` event, and
 a "Dev files" row in the Debug tools tab (on, localhost only, off, unavailable).
@@ -175,24 +198,111 @@ a "Dev files" row in the Debug tools tab (on, localhost only, off, unavailable).
 texture loads from its KTX2. A write in production and with `AEK_DEV_FILES=false` reports
 unavailable.
 
-### Phase 3 — `__saveData` writes
+As built:
+
+- The protocol (route names, headers, the bodies, the `aek:gather` event) moved from
+  `devTools/devFiles/protocol.ts` to `src/_engine/debug/DevFilesProtocol.ts`: the engine's public
+  API needs its types, and imports go from `devTools/` to `src/`, never back. It has no imports,
+  so Node loads it too.
+- `getDevFilesStatus()` never rejects: `{ available: true, server }` or
+  `{ available: false, reason, message, server }`, the reasons `NOT_DEBUG_ENV`, `NO_DEV_SERVER`,
+  `UNREACHABLE`, `NOT_ENABLED`, `NOT_LOCAL`, `NO_TOKEN`. `DevFilesError` adds two client codes:
+  `UNAVAILABLE` (not the debug env, no dev server, no token in the page) and `NETWORK`.
+- `writeDevFiles(writes)` has no `opts`. `readDevFile(path)` resolves `null` for a missing file
+  and always returns `bytes`, plus `json` for a `.json` path.
+- `encodePNG(source, { flipY? })` encodes `ImageData` and RGBA8 buffers with its own encoder
+  (`core/Debug/_dbg__PNGEncoder.ts`: libpng's filter heuristic, `CompressionStream` deflate), not
+  `convertToBlob`: a canvas stores premultiplied alpha and loses a transparent pixel's colour,
+  which an impostor atlas's dilation writes (p351). Canvases go through their own encoder.
+- `aek:gather` carries `willReload` and, when `failed`, `message`. Every gather that wrote the
+  generated data reloads the page, asset errors too (Vite reloads on the change of
+  `generatedAppData.json`, which nothing accepts; the asset error overlay the gatherer shows
+  doesn't survive it, which predates this plan). Only a `failed` gather keeps the page. `files`
+  lists the changed files the run reacted to, so a new PNG that no asset reads yet isn't in it;
+  a batch of `unchanged` files sets off no gather and no event.
+- `onDevDataGathered(fn)` returns its remover. Vite's client handles the `full-reload` only after
+  the listeners of the message before it settled, so the reload waits for `fn`'s promise (capped
+  at 2 s).
+- The gatherer ignores a commit's `*.aek-tmp` files (after a failed gather every added file
+  queues a run).
+- Phase 1 fix: chokidar reads a new folder before it watches it, so the files a commit renames
+  into a folder it created were never reported (the read saw the temporaries). The commit returns
+  them and the plugin emits `add` for each on `server.watcher`.
+- The row's texts: `On (localhost only)`, `On (LAN too)`, `Off (AEK_DEV_FILES)` and
+  `Unavailable (…)` with the reason. It asks the server on every mount of the tab.
+- Testing from a page: after a gather the app runs the invalidated modules (`Scene.ts` and its
+  importers) under `?t=` URLs, so an `import('/_engine/...')` from the test gets fresh copies of
+  them; drive the UI instead.
+
+### Phase 3 — `__saveData` writes — done
 
 §2.6. **Exit:** an entry written into a test material JSON for one scene is applied by the gatherer
 in that scene and not in another, stamped with the three versions; a second write puts its entry
 first and keeps the first one after it.
 
-### Phase 4 — Docs and versioning
+As built:
 
-1. CLAUDE.md: the Debug system section (the API, the security rules, the env vars), Commands
-   (`AEK_DEV_FILES`, `AEK_DEV_FILES_LAN`).
+- The write is `{ path, saveData: { sceneId, entry }, expectedHash? }` (`DevFilesSaveDataWrite`
+  in `DevFilesProtocol.ts`, a third `DevFileWrite` variant in `debug/DevFiles.ts`); the server
+  side is `devTools/devFiles/saveData.ts`. After the entry is put in, the file goes through the
+  JSON write's validation and Prettier.
+- Only a gathered type with `__saveData` takes one (`hasGatheredSaveData`, `gatherAppData.ts`):
+  texture arrays and atlases have none, so they and plain JSONs get `BAD_REQUEST`. A missing file
+  is `NOT_FOUND`, one that isn't JSON `INVALID_JSON`, a `__saveData` or scene list of the wrong
+  shape `INVALID_SCHEMA`.
+- `__meta` is the entry's first key. The versions are always the server's, read from
+  `package.json` on every write (a bump while `yarn dev` runs is stamped at once; an entry's own
+  are replaced); `date` is the entry's own, else the time of the write.
+- An entry equal to the scene's latest one (`__meta` and key order aside) is `unchanged`: saving
+  twice doesn't stack copies.
+- Save history size (§2.6, added after the phase): the wire write is
+  `saveData: { sceneId, entry, historySize }` (`DevFilesSaveDataWrite`); the public
+  `DevFileWrite` takes `DevFilesSaveData` (`{ sceneId, entry }`) and `writeDevFiles` fills in
+  `getDevFilesSaveHistorySize()` (`debug/DevFiles.ts`: the tab's value, else the config's, else
+  20; 0 outside the debug env). With 0 the client rejects the batch with `SAVE_DATA_DISABLED`
+  before sending anything, and the server refuses it with the same code (422). A missing or
+  non-integer `historySize`, or one below -1, is `BAD_REQUEST`. The server trims only the written
+  scene's list; an entry equal to the latest one in a list longer than the size is only trimmed
+  (`updated`).
+- The "File server" folder (Debug tools tab, after Undo / Redo) has the "Dev files" status row
+  (moved there from the tab's top), "Save history size (per scene)" (a number input, min -1,
+  step 1) and a read-only "Saving into \_\_saveData" row that says what the size means (Off,
+  keeps the latest N, keeps every entry).
+- The `expectedHash` check compares with the hash of the bytes the entry was put into, not a
+  second read.
+- The self-check's Phase 3 cases write a material and two debug scenes (reusing `scene01.ts` as
+  their `sceneFile`) and poll `generatedAppData.json` until the gather applies the entry. At the
+  end they wait for the gather that drops the scenes (else restore `src/_engine/generatedApp*`
+  from a snapshot), since those files are committed. A running `yarn dev` reloads its page on
+  those gathers too.
+
+### Phase 4 — Docs and versioning — done
+
+1. CLAUDE.md: the Debug system section (the API, the security rules, the env vars, the "File
+   server" folder and `AppConfig.devFiles.saveHistorySize`), Commands (`AEK_DEV_FILES`,
+   `AEK_DEV_FILES_LAN`).
 2. `readme.md`: the env vars, if it lists dev settings.
 3. p351 Phase 4 and p304 D5: write through `writeDevFiles` instead of downloading.
 4. Versions and `CHANGELOG.md` (§4).
 
+As built:
+
+- CLAUDE.md: Commands has the env vars and the self-check; the data pipeline paragraph the
+  `aek:gather` event; the Debug system section a "Dev files" entry (API, security, paths, save
+  entries, history size, the "File server" folder); the build config notes `server.fs.allow` and
+  the plugin.
+- `readme.md` lists no env vars, so the dev file server went into its Debug suite list as one
+  entry, with the two env vars.
+- p351 Phase 4 writes its PNGs and JSONs in one `writeDevFiles` batch (`encodePNG` for the
+  atlases) and downloads only when the dev files are unavailable; its `Blocked by` on this plan
+  is gone. p304 D5 writes into the texture set's `source/` the same way.
+- Engine 4.12.0, app 1.7.0, and a Project section in `CHANGELOG.md`.
+
 ## 4. Versioning
 
-Engine minor (a new public debug API, `debug/DevFiles.ts`). Project entry for the dev server
-plugin. No toolkit or app change.
+Engine minor (a new public debug API, `debug/DevFiles.ts`, and `AppConfig.devFiles`). Project
+entry for the dev server plugin. App minor: `src/CONFIG.ts` gets its `devFiles` section. No
+toolkit change.
 
 ## 5. Open questions
 
@@ -202,6 +312,18 @@ plugin. No toolkit or app change.
    to skip its `full-reload` for writes that ask for it. Its own plan, when a tool needs it.
 2. **LAN writes by default?** Localhost only is the safe default; whoever works from a phone sets
    `AEK_DEV_FILES_LAN=true`. Revisit if that's the common case.
-3. **Delete and rename:** needed once an exporter replaces a set of files whose names change (an
-   impostor re-exported with fewer frames leaves stale PNGs). p351 Phase 4 decides whether it
-   needs them (it could also write its frames into one folder per impostor and list it).
+3. **Delete and rename:** needed once an exporter replaces a set of files whose names change.
+   p351 Phase 4 doesn't: an impostor exports one PNG per atlas, not per frame, so a re-export
+   with fewer frames writes the same files.
+4. **More "File server" settings**, candidates beside the save history size (planned in
+   `p355_save-menu-and-file-server-settings.md`, with the Æ menu's save items):
+   - A gather toast (on by default): after a write, a toast with how its gather went
+     (`onDevDataGathered`: done, asset errors, failed with the message) before the reload. Every
+     exporter wants this feedback, so it belongs to the engine rather than each tool.
+   - Confirm writes: a dialog listing a batch's files and statuses before it's committed, for
+     tools that overwrite existing files.
+   - The server's backups kept (`BACKUPS_KEPT`, 20 commits): a server setting, so an env var
+     (`AEK_DEV_FILES_BACKUPS`) shown read-only in the folder through `GET status`, not a browser
+     setting.
+   - An author stamp in `__meta` (`MetaSchema` has `author` commented out), from git's
+     `user.name` on the server.
