@@ -3,7 +3,14 @@ import fs from 'fs';
 import type { TextureSlot } from '../../src/_engine/schemas/assetsConfigSchema';
 import type { TextureAsset } from '../../src/_engine/schemas/textureSchema';
 import { isTextureArrayLayerFile } from '../../src/_engine/schemas/textureArraySchema';
-import { flipY, readImageFile, readImageInfo, resizeImage, type Img } from './images';
+import {
+  flipY,
+  readImageFile,
+  readImageInfo,
+  readImageSizeSync,
+  resizeImage,
+  type Img,
+} from './images';
 import { encodeKtx2Layers, type KtxProvider, type KtxSettings } from './ktxEncode';
 import { getArrayLogicalPath, writeOutput, type PipelineOutput } from './outputs';
 import { buildPackedImage, getPackChannelCount, listPackFiles } from './pack';
@@ -84,10 +91,56 @@ const resolveTextureLayer = (
 const getColorSpaceName = (isSrgb: boolean) => (isSrgb ? 'sRGB' : 'linear');
 
 /**
- * Resolves an array's layers. Every problem is in `errors`, each naming its layer: a file that
- * doesn't resolve or can't be read as an image, an unknown texture id, a texture without a file
- * or pack (or a cube texture), a packed texture in another colour space than the array's (its
- * recipe decodes and multiplies in its own), and two layers with the same name.
+ * Resolves a source image named in an array's `layers` or an atlas cell's `sources` (p299 D3):
+ * a texture asset's id or a file. Returns why it can't be one: a file that doesn't resolve or
+ * can't be read as an image, an unknown texture id, a texture without a file or pack (or a cube
+ * texture), or a packed texture in another colour space than the target's (its recipe decodes and
+ * multiplies in its own).
+ * @param jsonFile The array's or atlas's JSON, absolute or relative to the repo root
+ * @param opts.isSrgb The target (the array, the atlas slot) is sRGB: the source's pixels are read
+ * as that, whatever its texture's `colorSpace` says
+ * @param opts.target Names the target in the colour space error, eg. 'the array'
+ */
+export const resolveTextureSourceRef = (
+  jsonFile: string,
+  ref: string,
+  findTexture: TextureLookup,
+  opts: { isSrgb: boolean; target: string }
+): TextureArrayLayer | string => {
+  if (isTextureArrayLayerFile(ref)) {
+    const source = resolveFileLayer(jsonFile, ref);
+    return typeof source === 'string'
+      ? source
+      : { key: path.basename(ref, path.extname(ref)), source };
+  }
+  if (/^[a-z][a-z\d+.-]*:/i.test(ref)) {
+    return "a remote file isn't read: a source is a texture id or a local file";
+  }
+  const entry = resolveTextureLayer(ref, findTexture);
+  if (
+    typeof entry !== 'string' &&
+    entry.source.kind === 'pack' &&
+    entry.texture?.isSrgb !== opts.isSrgb
+  ) {
+    return `the texture's pack is built for a ${getColorSpaceName(!!entry.texture?.isSrgb)} texture and ${opts.target} is ${getColorSpaceName(opts.isSrgb)} (texOpts.colorSpace): its channels would decode and multiply in another colour space`;
+  }
+  return entry;
+};
+
+/**
+ * A source's size from its file headers, synchronously (`readImageSizeSync`): a pack's `size`,
+ * else its first file's. Null when the format's header isn't read (see `readImageSizeSync`).
+ */
+export const readTextureSourceSizeSync = ({ source }: TextureArrayLayer) => {
+  if (source.kind !== 'pack') return readImageSizeSync(source.file);
+  if (source.pack.size) return { width: source.pack.size[0], height: source.pack.size[1] };
+  const [first] = listPackFiles(source.pack);
+  return first ? readImageSizeSync(resolvePackFile(source.jsonFile, first)) : null;
+};
+
+/**
+ * Resolves an array's layers. Every problem is in `errors`, each naming its layer: those of
+ * {@link resolveTextureSourceRef}, and two layers with the same name.
  * @param jsonFile The array's JSON, absolute or relative to the repo root
  * @param opts.isSrgb The array's `texOpts.colorSpace` is sRGB: every layer's pixels are read as
  * that, whatever its texture's `colorSpace` says
@@ -104,25 +157,10 @@ export const resolveTextureArrayLayers = (
 
   layers.forEach((layer, index) => {
     const label = `layers[${index}] ("${layer}")`;
-    let entry: TextureArrayLayer | string;
-    if (isTextureArrayLayerFile(layer)) {
-      const source = resolveFileLayer(jsonFile, layer);
-      entry =
-        typeof source === 'string'
-          ? source
-          : { key: path.basename(layer, path.extname(layer)), source };
-    } else if (/^[a-z][a-z\d+.-]*:/i.test(layer)) {
-      entry = "a remote file isn't read: a layer is a texture id or a local file";
-    } else {
-      entry = resolveTextureLayer(layer, findTexture);
-      if (
-        typeof entry !== 'string' &&
-        entry.source.kind === 'pack' &&
-        entry.texture?.isSrgb !== opts.isSrgb
-      ) {
-        entry = `the texture's pack is built for a ${getColorSpaceName(!!entry.texture?.isSrgb)} texture and the array is ${getColorSpaceName(opts.isSrgb)} (texOpts.colorSpace): its channels would decode and multiply in another colour space`;
-      }
-    }
+    const entry = resolveTextureSourceRef(jsonFile, layer, findTexture, {
+      isSrgb: opts.isSrgb,
+      target: 'the array',
+    });
     if (typeof entry === 'string') {
       errors.push(`${label}: ${entry}`);
       return;
@@ -188,18 +226,21 @@ export const getTextureArrayKeyParams = (source: ArraySource) => ({
 });
 
 /**
- * The array's slot settings, or null when its textures side is off (a rule's `textures: false`,
- * the project switches): then it has no output. Throws when the slot resolves to `codec: "none"`
- * (eg. the `data` slot's default): an array is only ever a KTX2 file.
+ * The array's (or an atlas slot's, p299 D3) slot settings, or null when its textures side is off
+ * (a rule's `textures: false`, the project switches): then it has no output. Throws when the slot
+ * resolves to `codec: "none"` (eg. the `data` slot's default): an array, or an atlas slot with its
+ * shortened mip chain, is only ever a KTX2 file.
+ * @param what Names it in the error (default 'an array')
  */
 export const getTextureArraySlotSettings = (
-  settings: ResolvedAssetSettings
+  settings: ResolvedAssetSettings,
+  what = 'an array'
 ): KtxSettings | null => {
   if (!settings.textures) return null;
   const slotSettings = settings.textures[settings.slot];
   if (slotSettings.codec === 'none') {
     throw new Error(
-      `the slot "${settings.slot}" resolves to codec "none", and an array is a KTX2 file: set its codec ("optimize": { "textures": { "${settings.slot}": { "codec": "uastc" } } }), or use another slot`
+      `the slot "${settings.slot}" resolves to codec "none", and ${what} is a KTX2 file: set its codec ("optimize": { "textures": { "${settings.slot}": { "codec": "uastc" } } }), or use another slot`
     );
   }
   return slotSettings;

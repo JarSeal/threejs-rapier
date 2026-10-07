@@ -364,7 +364,86 @@ bytes exactly):
 ### Phase 3 — Atlases (D3)
 
 Schema, packer, per-slot composition, cell table. **Exit:** a 2-slot atlas of 6 cells, mips
-viewed at the smallest level show no neighbour bleeding.
+viewed at the smallest level the file has show no neighbour bleeding.
+
+Decided before it started (D3 as written can't meet its exit):
+
+- **A shortened mip chain.** No padding protects a full chain: at 1×1 every cell is averaged
+  together. And `ktx create --generate-mipmap` filters with `lanczos4`, whose kernel reaches past
+  the padding. So the pipeline computes the levels itself (`images.ts`'s exact 2×2 box) and
+  passes them to `ktx create --levels N` (verified with 4.4.2: no `--generate-mipmap`, input files
+  level-major, layers inner). The chain stops at level `L`, the last one the layout protects:
+  every padded rect (and the atlas size) aligned to `2^L` and `padding ≥ 2^L`, so a level-`L` texel
+  never straddles two cells and a bilinear tap at a cell's edge stays in its padding. three r186
+  sizes the GPU texture from `mipmaps.length` on both backends (`Textures.getMipLevels`,
+  `texStorage2D/3D`), so a short chain is a complete texture.
+- **Slots are KTX2 only**, like arrays: a `codec: "none"` PNG would get a full chain generated
+  at runtime. p309's `normalRough` (slot `data`) needs a codec set.
+- **`maxSize`:** a slot drops its top levels until it fits (exact halving keeps the cells
+  aligned), and warns when that leaves fewer levels than the layout protects.
+- **`rect` includes the padding**; the cell's UV rect is the content inside it. UVs are three's
+  (v up, the KTX2 stored flipped like every texture's).
+- **Slot colour space** is the slot's `texOpts.colorSpace` (`"srgb"`), like textures and arrays.
+- **Runtime ids** (asked): each slot is an ordinary registered texture, id `<atlasId>.<slot>`,
+  with the cell table on `userData.textureAtlas` (like `userData.textureArray`). A scene lists
+  `"<atlasId>"` in its `textures` (the gatherer expands it to every slot) or one slot by its id.
+  No SceneLoader change.
+
+#### Section 1: Schema, gatherer suffix, cell resolution, packer — done
+
+`schemas/textureAtlasSchema.ts`, the `.textureAtlas.json` suffix in `gatherAppData.ts` (slots in
+the textures' registry and id space) and `devTools/assetPipeline/textureAtlases.ts`: cell sources
+resolved like array layers (a texture's source or pack, or a file), the layout (explicit rects and
+a shelf packer, both aligned; the protected level count) and the cell table (`__atlas`). Source
+sizes come from a synchronous header read (`readImageSizeSync`, PNG / JPEG / WebP), since the
+gather is synchronous; another format needs the cell's `size` or `rect`. Test asset:
+`src/app/textures/p299TestAtlas.textureAtlas.json` (2 slots, 6 cells: explicit rects and packed
+ones, a texture asset source, a cell without a source in one slot).
+
+As built:
+
+- Each slot is a dev data `textures` entry `<atlasId>.<slot>` with `__atlas: { id, slot, size,
+padding, levels, cells }`, a cell being `{ uv: [u0, v0, u1, v1], size: [w, h], data? }` (content
+  px of the layout). The atlas id is taken in the textures' id space too. A slot entry gets the
+  slot's `debugData` (else the atlas's), both `userData`s merged and the atlas's `throwOnError`.
+- `padding` defaults to 8. The packer places the cells without a `rect` tallest first, each
+  padded and rounded up to the grid `2^⌊log2 padding⌋` (at least 4). An explicit rect off the
+  4 px grid is an error, not snapped (snapping would move the author's layout). A rect, or the
+  atlas size, aligned to less than the padding protects shortens the chain, with a warning naming
+  it.
+- A cell needs a source in one slot or more; `rect` and `size` exclude each other. Slot names are
+  letters, digits, `_` and `-` (they end the texture id after a dot). The slot schema is strict:
+  the plan's `"colorSpace": "SRGB"` on a slot is an error (it is `texOpts.colorSpace`).
+- The gather checks each slot's settings: codec `none` fails like an array's
+  (`getTextureArraySlotSettings`, now with a `what` for the message).
+- Shared with arrays (`textureArrays.ts`): `resolveTextureSourceRef` (a layer or cell source) and
+  `readTextureSourceSizeSync`. `readImageSizeSync` (`images.ts`) matched sharp on 44 files (PNG,
+  baseline and progressive JPEG, lossy / lossless / alpha WebP).
+- `gatherAppData.ts`'s issue expansion also unwraps a record's "Invalid key in record" into the
+  key's own message (any record-keyed schema).
+- Not yet: the dev server doesn't watch an atlas's source images (section 2 adds them through the
+  pipeline assets), and a scene can't list an atlas yet (section 3).
+- Test sources (`src/app/textures/source/p299Atlas/`): saturated solid cells with a dark border
+  and white diagonals, and greyscale masks, so a neighbour's hue shows where it bleeds.
+
+#### Section 2: Composition and encode
+
+Per slot: each source resized into its cell's content rect, edge-extended into its padding, the
+rest of the atlas `fill`; then the box-filtered levels down to the protected one (less what
+`maxSize` drops), encoded with `ktx create --levels N`. A `textureAtlas` pipeline asset per slot,
+through `collectPipelineAssets`, `processAsset`, the cache and the lock. Output:
+`aek-assets/<json path>.atlas.<slot>.<hash>.ktx2`.
+
+#### Section 3: Generated data, scenes and budgets
+
+Per slot `__url`, `__bytes`, `__vramBytes`, `__codec`; a scene's `"<atlasId>"` expanded to its
+slots; the production gather's missing-output and budget checks per slot.
+
+#### Section 4: Runtime load and verification
+
+`loadTextureAsync` gives a slot texture its `userData.textureAtlas`; a `textureAtlases` debug
+scene showing each slot at each of its levels (`textureLod`) with the cell rects, on WebGPU and
+WebGL2. This phase's "As built" and the status line.
 
 ### Phase 4 — Helpers and debug (D4, D6)
 

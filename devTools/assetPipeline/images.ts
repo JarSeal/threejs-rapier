@@ -1,3 +1,5 @@
+import fs from 'fs';
+
 /**
  * Image I/O and resizing for the pipeline (p300 DD5, §4). sharp only reads and writes files; the
  * maths runs in plain JS on floats (0..1), colour channels linear, and is quantized to 8 bits
@@ -61,6 +63,72 @@ export const readImageInfo = async (input: string | Buffer) => {
   const sharp = await loadSharp();
   const { width, height, channels } = await sharp(input).metadata();
   return { width, height, channels };
+};
+
+const readBytes = (fd: number, position: number, length: number) => {
+  const buffer = Buffer.alloc(length);
+  return buffer.subarray(0, fs.readSync(fd, buffer, 0, length, position));
+};
+
+/** JPEG start-of-frame markers (C0-CF but DHT C4, JPG C8 and DAC CC): they hold the size */
+const isJpegFrameMarker = (marker: number) =>
+  marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+
+/**
+ * An image file's size from its header, synchronously (the gatherer is synchronous, sharp isn't):
+ * PNG, JPEG and WebP. The size sharp decodes (no EXIF orientation applied). Null for another
+ * format, or a header it can't read.
+ */
+export const readImageSizeSync = (file: string): { width: number; height: number } | null => {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const head = readBytes(fd, 0, 30);
+    if (
+      head.length >= 24 &&
+      head.readUInt32BE(0) === 0x89504e47 &&
+      head.readUInt32BE(4) === 0x0d0a1a0a
+    ) {
+      return { width: head.readUInt32BE(16), height: head.readUInt32BE(20) };
+    }
+    if (
+      head.length >= 30 &&
+      head.toString('ascii', 0, 4) === 'RIFF' &&
+      head.toString('ascii', 8, 12) === 'WEBP'
+    ) {
+      const chunk = head.toString('ascii', 12, 16);
+      if (chunk === 'VP8 ') {
+        return { width: head.readUInt16LE(26) & 0x3fff, height: head.readUInt16LE(28) & 0x3fff };
+      }
+      if (chunk === 'VP8L') {
+        const bits = head.readUInt32LE(21);
+        return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+      }
+      if (chunk === 'VP8X') {
+        return { width: head.readUIntLE(24, 3) + 1, height: head.readUIntLE(27, 3) + 1 };
+      }
+      return null;
+    }
+    if (head.length < 2 || head[0] !== 0xff || head[1] !== 0xd8) return null;
+    // JPEG: walk the segments to the frame header
+    let position = 2;
+    for (;;) {
+      const marker = readBytes(fd, position, 4);
+      if (marker.length < 4 || marker[0] !== 0xff) return null;
+      if (marker[1] === 0xff) {
+        position++; // Fill byte
+        continue;
+      }
+      if (isJpegFrameMarker(marker[1])) {
+        const frame = readBytes(fd, position + 5, 4);
+        return frame.length < 4
+          ? null
+          : { width: frame.readUInt16BE(2), height: frame.readUInt16BE(0) };
+      }
+      position += 2 + marker.readUInt16BE(2);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
 };
 
 /**

@@ -2486,6 +2486,199 @@
         "out": 87408
       },
       "__codec": "uastc"
+    },
+    "p299TestAtlas.albedo": {
+      "id": "p299TestAtlas.albedo",
+      "texOpts": {
+        "colorSpace": "srgb"
+      },
+      "debugData": {
+        "name": "p299 test atlas",
+        "description": "p299 Phase 3: a 2-slot atlas of 6 cells (explicit rects and packed ones, a texture asset's source, cells without a mask source), 16 px of padding, for checking mip bleeding."
+      },
+      "__sourcePath": "src/app/textures/p299TestAtlas.textureAtlas.json",
+      "__atlas": {
+        "id": "p299TestAtlas",
+        "slot": "albedo",
+        "size": [
+          512,
+          512
+        ],
+        "padding": 16,
+        "levels": 5,
+        "cells": {
+          "red": {
+            "uv": [
+              0.03125,
+              0.53125,
+              0.46875,
+              0.96875
+            ],
+            "size": [
+              224,
+              224
+            ]
+          },
+          "green": {
+            "uv": [
+              0.53125,
+              0.78125,
+              0.96875,
+              0.96875
+            ],
+            "size": [
+              224,
+              96
+            ],
+            "data": {
+              "note": "passed through to the cell table"
+            }
+          },
+          "checker": {
+            "uv": [
+              0.71875,
+              0.53125,
+              0.90625,
+              0.71875
+            ],
+            "size": [
+              96,
+              96
+            ]
+          },
+          "metal": {
+            "uv": [
+              0.34375,
+              0.28125,
+              0.46875,
+              0.40625
+            ],
+            "size": [
+              64,
+              64
+            ]
+          },
+          "blue": {
+            "uv": [
+              0.53125,
+              0.46875,
+              0.65625,
+              0.71875
+            ],
+            "size": [
+              64,
+              128
+            ]
+          },
+          "yellow": {
+            "uv": [
+              0.03125,
+              0.28125,
+              0.28125,
+              0.40625
+            ],
+            "size": [
+              128,
+              64
+            ]
+          }
+        }
+      }
+    },
+    "p299TestAtlas.mask": {
+      "id": "p299TestAtlas.mask",
+      "debugData": {
+        "name": "p299 test atlas",
+        "description": "p299 Phase 3: a 2-slot atlas of 6 cells (explicit rects and packed ones, a texture asset's source, cells without a mask source), 16 px of padding, for checking mip bleeding."
+      },
+      "__sourcePath": "src/app/textures/p299TestAtlas.textureAtlas.json",
+      "__atlas": {
+        "id": "p299TestAtlas",
+        "slot": "mask",
+        "size": [
+          512,
+          512
+        ],
+        "padding": 16,
+        "levels": 5,
+        "cells": {
+          "red": {
+            "uv": [
+              0.03125,
+              0.53125,
+              0.46875,
+              0.96875
+            ],
+            "size": [
+              224,
+              224
+            ]
+          },
+          "green": {
+            "uv": [
+              0.53125,
+              0.78125,
+              0.96875,
+              0.96875
+            ],
+            "size": [
+              224,
+              96
+            ],
+            "data": {
+              "note": "passed through to the cell table"
+            }
+          },
+          "checker": {
+            "uv": [
+              0.71875,
+              0.53125,
+              0.90625,
+              0.71875
+            ],
+            "size": [
+              96,
+              96
+            ]
+          },
+          "metal": {
+            "uv": [
+              0.34375,
+              0.28125,
+              0.46875,
+              0.40625
+            ],
+            "size": [
+              64,
+              64
+            ]
+          },
+          "blue": {
+            "uv": [
+              0.53125,
+              0.46875,
+              0.65625,
+              0.71875
+            ],
+            "size": [
+              64,
+              128
+            ]
+          },
+          "yellow": {
+            "uv": [
+              0.03125,
+              0.28125,
+              0.28125,
+              0.40625
+            ],
+            "size": [
+              128,
+              64
+            ]
+          }
+        }
+      }
     }
   },
   "materials": {

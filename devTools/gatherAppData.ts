@@ -58,7 +58,14 @@ import {
 import {
   getTextureArraySlotSettings,
   resolveTextureArrayLayers,
+  type TextureLookup,
 } from './assetPipeline/textureArrays';
+import {
+  getAtlasSlotTextureId,
+  TextureAtlasAssetSchema,
+  type TextureAtlasSlotTexture,
+} from '../src/_engine/schemas/textureAtlasSchema';
+import { getAtlasCellTable, resolveTextureAtlas } from './assetPipeline/textureAtlases';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
@@ -76,6 +83,7 @@ const JSON_ENDING_SIGNATURES = {
   geometry: '.geometry.json',
   texture: '.texture.json',
   textureArray: '.textureArray.json',
+  textureAtlas: '.textureAtlas.json',
   material: '.material.json',
   mesh: '.mesh.json',
   importedAsset: '.importedAsset.json',
@@ -87,9 +95,15 @@ const JSON_ENDING_SIGNATURES = {
 type ZodIssue = z.ZodError['issues'][number];
 
 /** A union's "Invalid input" says nothing: when exactly one branch got past its type check (eg.
- * `optimize`'s object, not its `false`), its own issues are the ones to show. */
+ * `optimize`'s object, not its `false`), its own issues are the ones to show. Nor does a record's
+ * "Invalid key in record": the key's own issues are shown instead. */
 const expandUnionIssues = (issues: ZodIssue[]): ZodIssue[] =>
   issues.flatMap((issue) => {
+    if (issue.code === 'invalid_key') {
+      return expandUnionIssues(
+        issue.issues.map((keyIssue) => ({ ...keyIssue, path: [...issue.path, ...keyIssue.path] }))
+      );
+    }
     if (issue.code !== 'invalid_union') return [issue];
     const isTypeMismatch = (branchIssue: ZodIssue) =>
       !branchIssue.path.length &&
@@ -279,6 +293,7 @@ const compileJsonSchemas = () => {
     { name: 'geometry.schema.json', schema: GeoAssetSchema },
     { name: 'texture.schema.json', schema: TextureAssetSchema },
     { name: 'textureArray.schema.json', schema: TextureArrayAssetSchema },
+    { name: 'textureAtlas.schema.json', schema: TextureAtlasAssetSchema },
     { name: 'material.schema.json', schema: MaterialAssetSchema },
     { name: 'mesh.schema.json', schema: MeshAssetSchema },
     { name: 'importedAsset.schema.json', schema: ImportedAssetSchema },
@@ -357,7 +372,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
     cameras: Record<string, CameraAsset>;
     lights: Record<string, LightAsset>;
     geometries: Record<string, GeoAsset>;
-    textures: Record<string, TextureAsset | TextureArrayAsset>;
+    textures: Record<string, TextureAsset | TextureArrayAsset | TextureAtlasSlotTexture>;
     materials: Record<string, MaterialAsset>;
     meshes: Record<string, unknown>;
     importedAssets: Record<string, unknown>;
@@ -619,6 +634,13 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
       }
     }
 
+    // A texture asset by id, for the arrays' layers and the atlases' cells
+    const findTexture: TextureLookup = (id) =>
+      texRegistry[id] && {
+        jsonFile: path.resolve(__dirname, '..', texRegistry[id].__sourcePath || ''),
+        data: texRegistry[id],
+      };
+
     // Texture arrays (p299 D2): textures at runtime, in the textures' registry and id space. After
     // the textures: a layer can be a texture asset's source.
     const arrayRegistry: Record<string, TextureArrayAsset> = {};
@@ -643,11 +665,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
         const { layers, errors } = resolveTextureArrayLayers(
           fullPath,
           arrayJSON.layers,
-          (id) =>
-            texRegistry[id] && {
-              jsonFile: path.resolve(__dirname, '..', texRegistry[id].__sourcePath || ''),
-              data: texRegistry[id],
-            },
+          findTexture,
           { isSrgb: arrayJSON.texOpts?.colorSpace === 'srgb' }
         );
         try {
@@ -681,7 +699,89 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
         logJSONError(file);
       }
     }
-    combinedData.textures = { ...texRegistry, ...arrayRegistry };
+    // Texture atlases (p299 D3): each slot is a texture at runtime (`<atlasId>.<slot>`), in the
+    // textures' registry and id space; the atlas id is taken too (a scene lists it for every slot).
+    // After the textures: a cell's source can be a texture asset's.
+    const atlasSlotRegistry: Record<string, TextureAtlasSlotTexture> = {};
+    const atlasFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.textureAtlas)
+    ) as string[];
+    for (const file of atlasFiles) {
+      const fullPath = path.resolve(srcDir, file);
+      const fileContent = fs.readFileSync(fullPath, 'utf-8');
+      try {
+        const parsedData = JSON.parse(fileContent);
+        const validation = TextureAtlasAssetSchema.safeParse(parsedData);
+        if (!validation.success) {
+          logValidationError(
+            `Validation error inside texture atlas file ${file}`,
+            validation.error.issues
+          );
+          hasError = true;
+          continue;
+        }
+        const atlasJSON = validation.data;
+        const { layout, errors, warnings } = resolveTextureAtlas(fullPath, atlasJSON, findTexture);
+        for (const [slot, { optimize }] of Object.entries(atlasJSON.slots)) {
+          try {
+            getTextureArraySlotSettings(
+              resolveSettings({ sourcePath: toRepoPath(fullPath), optimize }),
+              'an atlas slot'
+            );
+          } catch (e) {
+            errors.push(`slots.${slot}: ${(e as Error).message}`);
+          }
+        }
+        for (const warning of warnings) {
+          console.warn(`\x1b[33m⚠ [Scene Gatherer] ${file}: ${warning}\x1b[0m`);
+        }
+        if (errors.length || !layout) {
+          for (const error of errors) {
+            console.error(`\x1b[31m✗ [Scene Gatherer] ${file}: ${error}\x1b[0m`);
+          }
+          hasError = true;
+          continue;
+        }
+        const atlasId = atlasJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.textureAtlas);
+        const slotIds = Object.keys(atlasJSON.slots).map((slot) =>
+          getAtlasSlotTextureId(atlasId, slot)
+        );
+        const takenId = [atlasId, ...slotIds].find((id) => ids.textures.includes(id));
+        if (takenId) {
+          logDuplicateIdError('texture (or a texture atlas or its slot)', takenId, file);
+          continue;
+        }
+        ids.textures.push(atlasId, ...slotIds);
+        const sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        const cells = getAtlasCellTable(layout);
+        for (const [slot, slotJSON] of Object.entries(atlasJSON.slots)) {
+          const slotId = getAtlasSlotTextureId(atlasId, slot);
+          const userData = { ...atlasJSON.userData, ...slotJSON.userData };
+          const debugData = slotJSON.debugData ?? atlasJSON.debugData;
+          atlasSlotRegistry[slotId] = {
+            id: slotId,
+            ...(slotJSON.texOpts ? { texOpts: slotJSON.texOpts } : {}),
+            ...(atlasJSON.throwOnError !== undefined
+              ? { throwOnError: atlasJSON.throwOnError }
+              : {}),
+            ...(Object.keys(userData).length ? { userData } : {}),
+            ...(debugData ? { debugData } : {}),
+            __sourcePath: sourcePath,
+            __atlas: {
+              id: atlasId,
+              slot,
+              size: layout.size,
+              padding: layout.padding,
+              levels: layout.levels,
+              cells,
+            },
+          };
+        }
+      } catch {
+        logJSONError(file);
+      }
+    }
+    combinedData.textures = { ...texRegistry, ...arrayRegistry, ...atlasSlotRegistry };
 
     // Materials
     const matRegistry: Record<string, MaterialAsset> = {};
