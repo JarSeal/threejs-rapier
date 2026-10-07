@@ -31,6 +31,7 @@ import {
   type ImpostorBakePass,
   type ImpostorShading,
 } from './ImpostorBake';
+import { recordImpostor } from './ImpostorRegistry';
 
 export type CrossQuadsOptions = {
   /** The id the generated assets are registered under: the geometry `id`, the material
@@ -141,6 +142,30 @@ const getAxisRadius = (geometry: THREE.BufferGeometry, cx: number, cz: number) =
 };
 
 /**
+ * The options a bake of `geometry` drawn with `material` uses: `opts` with their defaults, and the
+ * shading resolved (never `AUTO`; an unlit one bakes no normals). What an export writes, and its
+ * fingerprint covers (`getImpostorSourceHash`).
+ */
+export const resolveCrossQuadsOptions = (
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material | THREE.Material[],
+  opts: CrossQuadsOptions = {}
+) => {
+  const { planes = 3, frameSize = 128, gutter = 4, alphaTest = 0.5, shading = 'AUTO' } = opts;
+  const resolvedShading = getShadingProps(getDominantMaterial(geometry, material), shading);
+  return {
+    kind: 'CROSS_QUADS' as const,
+    planes,
+    frameSize,
+    gutter,
+    alphaTest,
+    // An unlit impostor has no use for normals
+    normals: (opts.normals ?? true) && resolvedShading.type !== 'BASICNODEMATERIAL',
+    shading: resolvedShading,
+  };
+};
+
+/**
  * Bakes `geometry` drawn with `material` (a per-group array works as on a mesh) into a cross-quad
  * impostor: `planes` vertical planes through the vertical axis of its bounding box, each with the
  * object as seen along its normal by an orthographic camera fitted to its bounds. Its geometry,
@@ -157,16 +182,19 @@ export const generateCrossQuads = (
   material: THREE.Material | THREE.Material[],
   opts: CrossQuadsOptions = {}
 ): CrossQuads => {
-  const { planes = 3, frameSize = 128, gutter = 4, alphaTest = 0.5, shading = 'AUTO' } = opts;
   const id =
     opts.id ?? `${(geometry.userData.id as string | undefined) ?? geometry.uuid}#crossQuads`;
   const registered = getRegistered(id);
   if (registered) return registered;
   deleteLeftovers(id);
   const renderer = getBakeRenderer('generateCrossQuads');
-  const { type, params } = getShadingProps(getDominantMaterial(geometry, material), shading);
-  // An unlit impostor has no use for normals
-  const normals = (opts.normals ?? true) && type !== 'BASICNODEMATERIAL';
+  const bakeStart = performance.now();
+  const { planes, frameSize, gutter, alphaTest, normals, shading } = resolveCrossQuadsOptions(
+    geometry,
+    material,
+    opts
+  );
+  const { type, params } = shading;
 
   // Frame layout: every plane spans the object's bounds around its axis, at one texel size
   if (!geometry.boundingBox) geometry.computeBoundingBox();
@@ -303,5 +331,12 @@ export const generateCrossQuads = (
     impostorMaterial.normalNode = createPlaneNormalNode(normal);
   }
 
+  recordImpostor({
+    id,
+    kind: 'CROSS_QUADS',
+    origin: 'BAKED',
+    bakeMs: performance.now() - bakeStart,
+    source: { geometry, material, options: { ...opts, id } },
+  });
   return { id, geometry: quads, material: impostorMaterial, albedo, normal };
 };

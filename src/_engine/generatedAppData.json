@@ -3985,5 +3985,6 @@
       },
       "__sourcePath": "src/app/postFx/ambientOcclusion.postFx.json"
     }
-  }
+  },
+  "impostors": {}
 }

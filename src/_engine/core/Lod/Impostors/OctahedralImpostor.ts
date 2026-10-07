@@ -33,6 +33,7 @@ import {
   type ImpostorBakePass,
   type ImpostorShading,
 } from './ImpostorBake';
+import { recordImpostor } from './ImpostorRegistry';
 import { getOctahedralFrameBasis, getOctahedralFrameDirection } from './Octahedral';
 import {
   createOctahedralImpostorNodes,
@@ -141,6 +142,37 @@ const deleteLeftovers = (id: string) => {
 };
 
 /**
+ * The options a bake of `geometry` drawn with `material` uses: `opts` with their defaults, and the
+ * shading resolved (never `AUTO`). What an export writes, and its fingerprint covers
+ * (`getImpostorSourceHash`).
+ */
+export const resolveOctahedralImpostorOptions = (
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material | THREE.Material[],
+  opts: OctahedralImpostorOptions = {}
+) => {
+  const {
+    frames = 12,
+    hemi = false,
+    frameSize = 64,
+    gutter = 4,
+    alphaTest = 0.5,
+    shading = 'AUTO',
+    surfaceDepth = true,
+  } = opts;
+  return {
+    kind: 'OCTAHEDRAL' as const,
+    frames,
+    hemi,
+    frameSize,
+    gutter,
+    alphaTest,
+    surfaceDepth,
+    shading: getShadingProps(getDominantMaterial(geometry, material), shading),
+  };
+};
+
+/**
  * Bakes `geometry` drawn with `material` (a per-group array works as on a mesh) into an octahedral
  * impostor: atlases of `frames × frames` orthographic views of its bounding sphere, from the
  * directions of a full or hemi octahedral map, each into its own atlas cell, and a camera-facing
@@ -158,24 +190,18 @@ export const generateOctahedralImpostor = (
   material: THREE.Material | THREE.Material[],
   opts: OctahedralImpostorOptions = {}
 ): OctahedralImpostor => {
-  const {
-    frames = 12,
-    hemi = false,
-    frameSize = 64,
-    gutter = 4,
-    alphaTest = 0.5,
-    shading = 'AUTO',
-    surfaceDepth = true,
-  } = opts;
   const id =
     opts.id ?? `${(geometry.userData.id as string | undefined) ?? geometry.uuid}#octahedral`;
   const registered = getRegistered(id);
   if (registered) return registered;
+  const { frames, hemi, frameSize, gutter, alphaTest, surfaceDepth, shading } =
+    resolveOctahedralImpostorOptions(geometry, material, opts);
   deleteLeftovers(id);
   if (!Number.isInteger(frames) || frames < 2 || frames > 32) {
     throw new Error(`generateOctahedralImpostor: '${id}' frames must be an integer 2-32.`);
   }
   const renderer = getBakeRenderer('generateOctahedralImpostor');
+  const bakeStart = performance.now();
 
   // Every frame shows the bounding sphere, at one texel size
   if (!geometry.boundingSphere) geometry.computeBoundingSphere();
@@ -281,7 +307,7 @@ export const generateOctahedralImpostor = (
   const quad = createOctahedralImpostorQuad(layout);
   quad.name = id;
   saveBufferGeometry(quad, { id });
-  const { type, params } = getShadingProps(getDominantMaterial(geometry, material), shading);
+  const { type, params } = shading;
   const impostorMaterial = createMaterial({
     id: `${id}.mat`,
     type,
@@ -305,5 +331,12 @@ export const generateOctahedralImpostor = (
     }
   }
 
+  recordImpostor({
+    id,
+    kind: 'OCTAHEDRAL',
+    origin: 'BAKED',
+    bakeMs: performance.now() - bakeStart,
+    source: { geometry, material, options: { ...opts, id } },
+  });
   return { id, layout, geometry: quad, material: impostorMaterial, albedo, normalDepth };
 };

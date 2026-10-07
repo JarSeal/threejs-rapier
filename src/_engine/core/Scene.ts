@@ -18,6 +18,7 @@ import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import type { SceneSpatialDomainEntry } from '../schemas/spatialDomainSchema';
+import type { ImpostorDef } from '../schemas/impostorSchema';
 import { MeshProps } from './MeshManager';
 import { deleteEntity } from '../utils/ECSHelpers';
 import { getECSWorld, getEntityIdByAppId } from './ECS';
@@ -54,6 +55,9 @@ export type SceneData = {
   postFxEnabled?: boolean;
   /** Registered for this scene by the loader, see registerSceneSpatialDomains (SpatialIndexSystem.ts). */
   spatialDomains?: SceneSpatialDomainEntry[];
+  /** The exported impostors the scene lists, resolved by the gatherer (their atlas slots are in
+   * `textures`). */
+  impostors?: ImpostorDef[];
 };
 
 const scenes: { [id: string]: THREE.Group } = {};

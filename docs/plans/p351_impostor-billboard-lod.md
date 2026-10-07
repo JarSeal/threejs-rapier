@@ -642,7 +642,37 @@ Sections, each reviewed before the next:
    (`core/Lod/Impostors/ImpostorRegistry.ts`): every impostor generated in this session by id, its
    kind, where it came from (`BAKED` | `EXPORTED`), its bake ms, and (for re-exports) its source
    geometry, material and options, released with the impostor's assets. The source fingerprint
-   (`getImpostorSourceHash`). No behaviour change yet.
+   (`getImpostorSourceHash`). No behaviour change yet. — done: `ImpostorAssetSchema`
+   (`schemas/impostorSchema.ts`) is a discriminated union with the `OCTAHEDRAL` branch only
+   (section 6 adds `CROSS_QUADS`): `atlas`, `formatVersion`, `sourceHash`, `alphaTest`, `shading`
+   (`{ type, params }`, `specular` as a hex string), `layout` (its `atlasSize` checked against
+   `frames × (frameSize + 2 × gutter)`) and `surfaceDepth`, all required (a tool writes them).
+   `IMPOSTOR_EXPORT_FORMAT_VERSION` (1), the kinds and their atlas slots (`IMPOSTOR_ATLAS_SLOTS`)
+   are in `core/Lod/Impostors/ImpostorFormat.ts`, which imports nothing, so the schema, the
+   gatherer and the runtime share them. The gatherer fails an impostor whose atlas is missing,
+   lacks a slot its kind reads or isn't the layout's size, and warns about another format version
+   (the runtime bakes it). Changed from the text above: a production gather keeps only `scenes`,
+   so a scene's `impostors` is expanded into the impostors' definitions (`ImpostorDef`, on
+   `SceneData.impostors`), not only into slot ids; the slots the kind reads (not every slot of
+   the atlas) are added to the scene's `textures` before those are resolved, so a slot also listed
+   by its atlas loads once, and the production output check covers them. The top-level
+   `impostors` registry is dev data. An id with no valid `*.impostor.json` warns and is left out
+   (it bakes). The registry (`ImpostorRegistry.ts`: `recordImpostor`, `getImpostorRecord`,
+   `getImpostorRecords`) gets both generators' bakes with their wall time; its record keeps the
+   source (geometry, material, the call's options) in the debug env and prod test mode only, and
+   is dropped when the impostor's geometry is deleted (`onGeometryDeleted`). The fingerprint
+   (`ImpostorSourceHash.ts`, 64 bits: MurmurHash3 in two seeded lanes, synchronous) covers every
+   geometry attribute by name, the index, groups and draw range, what the bake reads of the
+   materials (colour, map and alpha map by registered id, alpha test, opacity, side, vertex
+   colours, flat shading, a `colorNode` as there or not: beyond the decision's text, as the
+   rock's colour is a material param), and the settings `resolveOctahedralImpostorOptions` /
+   `resolveCrossQuadsOptions` return (the defaults and the resolved shading, which the
+   generators now take their own options from). Checked: the gatherer with a temporary impostor
+   over `p299TestAtlasImage` (its 3 × 3 frames of 56 + 2 × 4 make 192), in a dev and a production
+   gather, and each error; the hash in Node (a 1e-6 vertex move, a colour, an option, the index,
+   the groups each change it; key order doesn't; a 16k-triangle torus knot in 0.75 ms); largeWorld
+   on WebGL2 (SwiftShader): both impostors recorded with their sources, the rock's fingerprint the
+   same on two loads, both records gone after leaving the scene.
 3. **Export:** read each atlas render target's level 0 back (`readRenderTargetPixelsAsync`; rows
    flipped where a backend reads bottom-up, checked on WebGPU and WebGL2), `encodePNG` it (byte-
    exact: a transparent texel keeps its dilated colour), and write one `writeDevFiles` batch: the

@@ -1,0 +1,211 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "id": {
+          "description": "Default: the file name. The generator's `id` option.",
+          "type": "string"
+        },
+        "atlas": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The `*.textureAtlas.json`'s id: its slots are the impostor's textures."
+        },
+        "formatVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "The export format (IMPOSTOR_EXPORT_FORMAT_VERSION, now 1): another one is refused at runtime, which bakes instead. Re-export it."
+        },
+        "sourceHash": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The fingerprint of the source geometry, its materials' bake inputs, the resolved shading and the options it was baked with (getImpostorSourceHash): the debug env warns when the source it's used with differs (re-export)."
+        },
+        "alphaTest": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "shading": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "PHONGNODEMATERIAL",
+                "LAMBERTNODEMATERIAL",
+                "BASICNODEMATERIAL",
+                "STANDARDNODEMATERIAL"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "shininess": {
+                  "type": "number"
+                },
+                "specular": {
+                  "description": "Hex, eg. \"#111111\".",
+                  "type": "string"
+                },
+                "roughness": {
+                  "type": "number"
+                },
+                "metalness": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        "debugData": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "comments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "timestamp": {
+                    "type": "number"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "timestamp",
+                  "comment"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "todo": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "debugObj": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "additionalProperties": false
+        },
+        "__sourcePath": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "const": "OCTAHEDRAL"
+        },
+        "layout": {
+          "type": "object",
+          "properties": {
+            "frames": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 32,
+              "description": "Frames along each side of the grid."
+            },
+            "hemi": {
+              "type": "boolean",
+              "description": "The upper hemisphere only."
+            },
+            "frameSize": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "description": "A frame's side, in texels."
+            },
+            "gutter": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991,
+              "description": "Texels between a frame and its cell's edge."
+            },
+            "atlasSize": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "description": "Texels per side of the (square) atlas: frames × (frameSize + 2 × gutter), the atlas's size."
+            },
+            "center": {
+              "type": "array",
+              "items": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "description": "The object's bounding sphere centre (local space)."
+            },
+            "radius": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "The bounding sphere's radius."
+            },
+            "extent": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Half a frame's side, in local units."
+            }
+          },
+          "required": [
+            "frames",
+            "hemi",
+            "frameSize",
+            "gutter",
+            "atlasSize",
+            "center",
+            "radius",
+            "extent"
+          ],
+          "additionalProperties": false
+        },
+        "surfaceDepth": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "atlas",
+        "formatVersion",
+        "sourceHash",
+        "alphaTest",
+        "shading",
+        "kind",
+        "layout",
+        "surfaceDepth"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}
