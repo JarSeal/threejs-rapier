@@ -9,7 +9,7 @@ import {
   DEV_FILES_ROUTE_BASE,
   DEV_FILES_TOKEN_META,
   type DevFilesStatusBody,
-} from './devFiles/protocol';
+} from '../src/_engine/debug/DevFilesProtocol';
 import {
   checkDeviceAndToken,
   checkHostAndOrigin,
@@ -21,7 +21,7 @@ import { createStage } from './devFiles/stage';
 /**
  * The dev file server (p342): lets debug tooling in the browser write files into the repo while
  * `yarn dev` runs (an exported impostor, a baked texture). Dev server only, never in a build.
- * Routes under `/__aek/files/` (`devFiles/protocol.ts`):
+ * Routes under `/__aek/files/` (`src/_engine/debug/DevFilesProtocol.ts`):
  * - `GET status`: whether the routes are on and take this device's requests (no token needed);
  * - `GET read?path=`: the file's bytes, its hash in the `x-aek-sha256` header;
  * - `PUT stage`: a raw body (a PNG) staged for a commit, `{ stageId, bytes, sha256 }`;

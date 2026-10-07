@@ -2,7 +2,7 @@ import { networkInterfaces } from 'os';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import type { IncomingMessage } from 'http';
 import { DevFilesError } from './http';
-import { DEV_FILES_TOKEN_HEADER } from './protocol';
+import { DEV_FILES_TOKEN_HEADER } from '../../src/_engine/debug/DevFilesProtocol';
 
 /**
  * The checks a request passes before a route runs (p342 §2.2). Two threats: another device on

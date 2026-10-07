@@ -3,7 +3,7 @@ import path from 'path';
 import { createHash, randomBytes } from 'crypto';
 import { ROOT } from '../assetPipeline/sources';
 import { DevFilesError } from './http';
-import type { DevFilesStageBody } from './protocol';
+import type { DevFilesStageBody } from '../../src/_engine/debug/DevFilesProtocol';
 
 /**
  * Staged files (p342 §2.1): a binary body (a PNG) is sent raw with `PUT stage` and named by its

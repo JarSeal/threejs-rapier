@@ -10,7 +10,7 @@ import type {
   DevFilesConflicts,
   DevFilesSchemaIssues,
   DevFilesWriteStatus,
-} from './protocol';
+} from '../../src/_engine/debug/DevFilesProtocol';
 import { DEV_FILES_CACHE_DIR, sha256, type DevFilesStage } from './stage';
 
 /**

@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Dev tooling, Debug
 Blocks: p351_impostor-billboard-lod.md (Phase 4's export)
 Related: p304_procedural-texture-baker.md (D5's PNG export), \_DONE_p085_material-editor-params-and-persistence.md (overrides that could go into the JSON), \_DONE_p069_character-live-config-editing.md, \_DONE_p300_asset-optimization-pipeline-plan.md (encodes what is written)
@@ -151,7 +151,7 @@ write, but it's the same threat (§2.2) and a one-line fix.
 
 ## 3. Phases
 
-### Phase 1 — Server
+### Phase 1 — Server — done
 
 §2.1-2.3 and §2.7: the plugin, the routes, the token, host and origin checks, the path policy,
 staging, batch commits with rollback, Prettier, schema validation, conflicts.
@@ -164,6 +164,23 @@ lands; an unchanged write reports `unchanged`; each refusal gets its code (no to
 `expectedHash`); a batch whose last write fails leaves every file as it was, also when the
 failure is in the renames (forced by the script). `/@fs/` outside the repo is refused and the app
 still loads on WebGPU and WebGL2.
+
+As built:
+
+- `GET status` also returns `canWrite` (this device may use the other routes), `deniedRoots`,
+  `extensions`, `maxFileBytes` and `maxBatchBytes`.
+- `GET read` answers with the raw bytes and the hash in an `x-aek-sha256` header, not JSON.
+- Three more error codes: `BAD_REQUEST`, `NOT_FOUND` (`read` of a missing file, an unknown route),
+  `WRITE_FAILED` (a failed batch, every file restored).
+- A write whose bytes equal the file's is `unchanged` and isn't written: no file event, no gather.
+  Commits run one at a time. The backups of the last 20 commits are kept in
+  `.cache/dev-files/backup/<commit>/`, for undoing a write by hand.
+- Schema validation is `validateGatheredJson` in `gatherAppData.ts` (the gatherer's schemas by
+  suffix, a sky box's id defaulted to its file name as the gather does).
+- The self-check: `npx tsx devTools/devFiles/selfCheck.ts` starts its own dev server on 8091 with
+  `AEK_DEV_FILES_FAULTS=true`, which makes a commit honour an `x-aek-dev-fault: rename:<n>` header
+  (the forced rename failures); `--url http://localhost:8080` runs against a running `yarn dev`
+  and skips those. It writes into `src/app/__devFilesSelfCheck__/` and removes it.
 
 ### Phase 2 — Client API and gatherer event
 

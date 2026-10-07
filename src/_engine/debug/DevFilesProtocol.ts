@@ -1,6 +1,7 @@
 /**
- * The dev file server's routes (p342), under `/__aek/files/`. Types only, so the browser client
- * can `import type` them.
+ * The dev file server's routes (p342), under `/__aek/files/`: what the server
+ * (`devTools/devFilesPlugin.ts`) and the browser client (`debug/DevFiles.ts`) share.
+ * No imports: the dev server (Node) imports this too.
  */
 
 export const DEV_FILES_ROUTE_BASE = '/__aek/files/';

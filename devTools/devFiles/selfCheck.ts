@@ -15,7 +15,7 @@ import {
   type DevFilesErrorBody,
   type DevFilesStageBody,
   type DevFilesStatusBody,
-} from './protocol';
+} from '../../src/_engine/debug/DevFilesProtocol';
 
 /**
  * The dev file server's self-check (p342 Phase 1), no test framework:

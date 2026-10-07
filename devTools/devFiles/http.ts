@@ -1,5 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { DevFilesErrorBody, DevFilesErrorCode } from './protocol';
+import type {
+  DevFilesErrorBody,
+  DevFilesErrorCode,
+} from '../../src/_engine/debug/DevFilesProtocol';
 
 const STATUS_BY_CODE: Record<DevFilesErrorCode, number> = {
   NOT_ENABLED: 404,
