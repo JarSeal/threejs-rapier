@@ -1,7 +1,7 @@
 Status: in progress | Phases 1-3 implemented
 Category: Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 2.2)
-Related: \_DONE_p342_dev-file-server.md (Phase 4's export writes through it), p299_texture-arrays-and-atlases.md (Phase 4's exported atlases), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
+Related: \_DONE_p342_dev-file-server.md (Phase 4's export writes through it), p299_texture-arrays-and-atlases.md (Phase 4's exported atlases; Phase 4 section 1 extends its format), \_DONE_p300_asset-optimization-pipeline-plan.md (Phase 4's KTX2 encode), p354_gpu-driven-culling.md / p375_batched-mesh-batches.md (later lanes of Phase 5's showcase), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
 
 # Impostor & Billboard LOD
 
@@ -101,10 +101,11 @@ breaks shadows and post effects (fog, SSAO) for the transitioning object. Dither
 ### 2.5 Bake caching
 
 Phase 1 bakes at load, in the asset loading phase, budgeted like p353's priming. A baked atlas is
-a registered texture owned like any other asset. Phase 4 adds a debug "Export impostor" button
-that writes the atlas as PNGs next to an `*.impostor.json` (atlas paths, frame count, bounds)
-straight into the repo through the dev file server (`_DONE_p342`); p300 then encodes it as KTX2,
-and nothing is baked on the client.
+a registered texture owned like any other asset. Phase 4 adds a debug "Export" button that writes
+each atlas as one PNG, a p299 `*.textureAtlas.json` and an `*.impostor.json` (everything the
+material needs, see Phase 4's decisions) straight into the repo through the dev file server
+(`_DONE_p342`); p300 then encodes the atlases as KTX2, and a scene that lists the impostor bakes
+nothing on the client.
 
 ## 3. Phases
 
@@ -546,30 +547,169 @@ gutter = 4, alphaTest = 0.5, shading = 'AUTO', surfaceDepth = true })` in
 
 ### Phase 4 — Exported atlases
 
-Export button, `*.impostor.json` asset type (schema, gatherer suffix), KTX2 through p300. The
-exported atlas uses p299's atlas format (a `*.textureAtlas.json` per impostor, frames as cells
-with a generated cell table), so `*.impostor.json` holds only frame count, bounds and the atlas id.
+A debug "Export" button writes an impostor's atlases into the repo through the dev file server
+(`_DONE_p342`); p300 encodes them as KTX2, and a scene that lists the impostor loads it instead of
+baking. Both impostor kinds export (octahedral first, cross-quads last), through one asset type.
 
-The export writes through the dev file server (`debug/DevFiles.ts`, `_DONE_p342`), not a
-download:
+Decided before it started (the design review of Phase 4's first draft; each point names what it
+replaced):
 
-- The atlases are read back from their render targets and encoded with `encodePNG` (its own
-  encoder is byte-exact for RGBA8 data: the dilated colour of a transparent texel survives, which
-  a canvas encoder loses to premultiplied alpha; `flipY` if a backend's readback is bottom-up).
-- One `writeDevFiles` batch writes the PNGs, the `*.textureAtlas.json` and the `*.impostor.json`
-  (all or nothing; a re-export reads the JSONs first and passes their `expectedHash`). The
-  gather then runs the asset pipeline (the KTX2 encode) and reloads the page with the exported
-  impostor; `onDevDataGathered` reports asset errors before the reload.
-- When `getDevFilesStatus()` is unavailable (a LAN device without `AEK_DEV_FILES_LAN`, a build),
-  the button downloads the files instead, with the paths to put them at.
-- The dev file server has no delete or rename (`_DONE_p342` §5): a re-export with fewer frames
-  keeps one PNG per atlas, not per frame, so it leaves no stale files.
+1. **One PNG per atlas, through a p299 extension.** p299's atlas composes each slot from per-cell
+   sources (resized into the cell, edge-extended), and a cell without a source is an error. The
+   bake has already composed and dilated the whole atlas, so p299 gets a whole-image slot source
+   (`slots.<name>.image`: that slot skips composition, every cell needs a `rect`). Not 288 PNGs
+   per impostor (one per frame and slot): that recomposes what the bake composed, and as the file
+   server can't delete (`_DONE_p342` §5), a re-export with fewer frames would leave stale ones.
+2. **A full mip chain.** p299 stops the chain at the last level its padding protects. The bake's
+   72 px cells (64 + 2 × 4) keep levels 0-1 there, so a frame would never get below 32 texels and
+   shimmer at distance, unlike the runtime bake (a full chain, `generateMipmaps`), which Phase 3
+   measured. p299 gets `mipChain: "FULL"` (the exact box down to 1 × 1, cells mixing past the
+   protected levels): neighbouring cells are neighbouring views of the same object, dilated, as in
+   the runtime bake. Not a larger gutter: 8 keeps levels 0-2 at 960², 16 keeps 0-3 at 1152², over
+   the default `maxSize` of 1024 (level 0 dropped).
+3. **Codecs per slot.** Albedo (sRGB colour, cut alpha): the default `baseColor` profile (UASTC,
+   RDO 2). `normalDepth` (object-space normal in RGB, depth in alpha, linear): slot `data` with
+   UASTC, `rdo: 0`, zstd on. Not `normalMode` (two channels can't hold an object-space normal and a
+   depth), not codec `none` (p299 slots are KTX2 only). Depth error moves the parallax sample and
+   the written depth, and Phase 3 section 4's one-texel shadow offset is tuned to one 8-bit step;
+   section 5 measures it. A cross-quad normal atlas is a `normal` slot. UASTC is 8 bits a texel
+   on the GPU: a rock's atlas drops from about 4 MB (RGBA8 with mips) to about 1 MB.
+4. **`*.impostor.json` holds everything the material needs**, not only "frame count, bounds and
+   the atlas id": `kind` (`OCTAHEDRAL` | `CROSS_QUADS`), the atlas id, the kind's layout (for
+   octahedral the whole `OctahedralImpostorLayout`), `alphaTest`, `surfaceDepth`, the resolved
+   shading (`getShadingProps`' `{ type, params }`, never `AUTO`: the source material isn't needed
+   at runtime), a format version (`IMPOSTOR_EXPORT_FORMAT_VERSION`, bumped when the depth
+   encoding, the frame maps or the layout's meaning changes; an older one is refused, with a
+   re-export hint) and a source fingerprint (a hash of the source geometry's attributes and index,
+   the resolved shading and the bake options). In the debug env, using an export compares its
+   fingerprint against the geometry and material passed in and warns "stale, re-export" (a
+   procedural rock whose seed changed would otherwise keep its old impostor); production skips the
+   hash.
+5. **One synchronous call, the scene lists the impostor.** A scene JSON's new `impostors: [id]`
+   is expanded by the gatherer into the atlas's slot textures (like p299's atlas id in
+   `textures`), so `SceneLoader` loads them before the scene file runs, unchanged.
+   `generateOctahedralImpostor` / `generateCrossQuads` with that `id` then find the gathered JSON
+   (generated data, no load) and the loaded slots, and build the quad (or planes) and the material
+   from them without baking. Not listed, not exported, or an older format: they bake as now. No
+   `loadImpostorAsync`: app code keeps one path, and largeWorld's adoption is a scene JSON line.
+6. **Cross-quads export too**, as the phase's last section: the export, the JSON, the scene
+   listing and the fingerprint are shared; only their layout (planes, frame size, the planes'
+   placement) and rebuilding the plane geometry are their own. Leaving them out would mean a
+   second format later.
+7. **The button lives in the LOD tab**, an "Impostors" folder: one row per impostor generated in
+   the current scene (id, kind, baked / exported / exported but stale, atlas size, bake ms) with
+   Export, plus Export all. Re-exporting an exported impostor bakes it again from its source (the
+   registry keeps the geometry and material the call got), never reads the KTX2 back.
+
+Sections, each reviewed before the next:
+
+1. **p299 extensions:** `slots.<name>.image` (a ready-made image of the layout's `size`; that slot
+   is not composed: no resize, edge extension or fill; every cell needs a `rect`; a cell needs no
+   `sources` when every slot has an `image`; the image's size is checked by the synchronous header
+   read) and `mipChain: "PROTECTED" | "FULL"` (default `PROTECTED`; `FULL` computes every level
+   with `images.ts`'s exact box and doesn't warn about unprotected levels). Both in the schema,
+   `textureAtlases.ts` (layout, cache key, composition) and the cell table's `levels`. A third test
+   atlas in the `textureAtlases` scene: a ready-made 2-slot image with a full chain, each cell
+   through its rect at every level. p299's D3 notes these (done with this plan update).
+2. **Asset type and registry:** `schemas/impostorSchema.ts` (decision 4, a discriminated union by
+   `kind`), the `.impostor.json` suffix in `gatherAppData.ts` (validated, its atlas must exist and
+   have the kind's slots; impostor ids in their own id space), the generated data's impostors, the
+   scene schema's `impostors` expanded into the atlas's slot ids. The impostor registry
+   (`core/Lod/Impostors/ImpostorRegistry.ts`): every impostor generated in this session by id, its
+   kind, where it came from (`BAKED` | `EXPORTED`), its bake ms, and (for re-exports) its source
+   geometry, material and options, released with the impostor's assets. The source fingerprint
+   (`getImpostorSourceHash`). No behaviour change yet.
+3. **Export:** read each atlas render target's level 0 back (`readRenderTargetPixelsAsync`; rows
+   flipped where a backend reads bottom-up, checked on WebGPU and WebGL2), `encodePNG` it (byte-
+   exact: a transparent texel keeps its dilated colour), and write one `writeDevFiles` batch: the
+   PNGs, the `*.textureAtlas.json` (`image` slots, one cell per frame with its `rect`, `mipChain:
+"FULL"`, decision 3's `optimize`) and the `*.impostor.json`, into `src/app/impostors/`
+   (`AppConfig.lod.impostorExportDir`). A re-export reads both JSONs first and passes their
+   `expectedHash`. `onDevDataGathered` shows the gather's asset errors (a failed KTX2 encode, a
+   budget) as a toast before the reload. When `getDevFilesStatus()` is unavailable (a LAN device
+   without `AEK_DEV_FILES_LAN`, prodTest), the button downloads the four files with the paths to
+   put them at. The LOD tab's Impostors folder (decision 7). Checked by exporting largeWorld's rock:
+   four files written, the gather encodes both slots (`assets.lock.json`), the Assets tab shows the
+   cells; a second export is `unchanged`.
+4. **Load path:** the material and quad build split from the bake in `OctahedralImpostor.ts`
+   (one `buildOctahedralImpostor(layout, albedo, normalDepth, opts)` both paths call). A loaded
+   KTX2 atlas is stored v-up (p299: three's UVs), a render target has v = 0 at the top, so the
+   material takes the atlas's v origin (a build-time constant per material, from the layout: no
+   runtime cost); the frame maps in `Octahedral.ts` don't change. `generateOctahedralImpostor`
+   uses an export when its JSON is gathered and its slots are loaded (decision 5), checks the
+   format version and (debug env) the fingerprint, and otherwise bakes. Checked against a bake of
+   the same rock under another id, both forced to the impostor level side by side, on WebGPU and
+   WebGL2: the same frames, upright, the same side.
+5. **largeWorld rocks and the codecs:** largeWorld lists `largeWorldRockImpostor` in `impostors`.
+   Measured with Phase 3 section 5's harness: the exported impostor against the runtime bake and
+   against level 0 at the switch distance (15° to overhead, mean luma difference, mask IoU, area),
+   its self-shadowing (no extra acne from the compressed depth; if there is, raise `normalDepth`'s
+   UASTC `level` to the highest, then `rdo: 0` on albedo too, and record which settled it), the
+   GPU memory tab's bytes per atlas, the scene load's time without the bake. Change
+   the rock's seed: the debug env warns that the export is stale and the scene still runs.
+6. **Cross-quads:** the `CROSS_QUADS` kind (planes, frame size and gutter, each plane's placement:
+   the radius around the vertical axis, the height and base), the plane geometry rebuilt from it
+   with v-up UVs for a loaded atlas, the `normal` slot optional (`normals: false`), export and
+   load as for octahedral. largeWorld lists `largeWorldTreeCross`; checked like section 5 against
+   the runtime bake.
+7. **Close the phase:** As built, the exit measured, CLAUDE.md (the data pipeline's suffix list,
+   the Impostors section: export, the scene's `impostors`, the v origin), `readme.md` (the new asset
+   JSON type; the Roadmap's exported atlases into Features), `docs/techniques/asset-optimization.md`
+   (impostor atlases: `image` slots, `mipChain`, the slot codecs), versions and CHANGELOG.
+
+**Exit:** largeWorld's rocks and trees load from their exports, with no bake at load (the scene
+load is faster by the rock's 40-115 ms and the tree's 12 ms); they look like the runtime bake
+(Phase 3 section 5's comparison at the switch distance stays within the bake's own figures, no
+extra self-shadowing acne); WebGPU and WebGL2 agree; the GPU memory tab shows about 1 MB per
+atlas; a stale export warns in the debug env; with `getDevFilesStatus()` unavailable the button
+downloads the files.
+
+### Phase 5 — LOD showcase scene
+
+A demo scene for the LOD system as it stands after Phase 4, built so that later plans add to it:
+p376 (HLOD proxies), p353 (streaming cells), p354 (GPU culling), p375 (batched meshes), p308
+(scatter, leaf cards) and p420 (NPC tiers) each add a lane. largeWorld stays the stress test;
+this scene shows one feature per lane, side by side, and what each one costs.
+
+- **Scene:** `lodShowcase` (`src/app/lodShowcase.scene.json`, `lodShowcase.ts`), not a debug
+  scene. A flat ground, lanes side by side along x, each running away from the camera along -z with
+  its objects at increasing distances, so every level of every lane is on screen at once from the
+  start camera. The `dayNight` sky box (impostors are lit at runtime: §2.3), so night shows that
+  every level darkens alike.
+- **Lanes** (`src/app/lodShowcase/lanes/*.ts`, one module each: `{ id, title, description,
+create(ctx), debugItems? }`, laid out by a lane list in `lodShowcase.ts`; a later plan adds a
+  lane with a module and a list entry):
+  1. **Hand-made levels on plain meshes** (p348): a `*.mesh.json` with `lod` levels (geometries at
+     lower segment counts, `fadeSeconds`), authored in JSON, not code.
+  2. **Generated chain** (p347): a heavy procedural mesh (a `TorusKnotGeometry` at 256 × 32
+     segments, about 16k triangles) with `lod: 'AUTO'`, its chain simplified at load.
+  3. **Instanced pool and cross-quads** (p348, Phases 1-2): a tree grove ending in cross-quads and
+     a cull fade at the far end (largeWorld's tree generators), exported (Phase 4).
+  4. **Instanced pool and octahedral impostor** (Phase 3): the heavy mesh of lane 2 as a pool, its
+     chain's levels then an exported impostor: the lane where an impostor pays off (largeWorld's
+     80-triangle rock doesn't, Phase 3 section 5).
+  5. **Baked against exported:** the same rock twice, one impostor baked at load and one exported,
+     forced to the impostor level side by side.
+  6. **Static instance cell** (p348 §4.3): an `InstancedMesh` entity whose whole cell swaps levels
+     and fades.
+- **Demo tab** ("LOD demo", scene-scoped, `src/app/_dbg__lodShowcase.ts`, debug env only like
+  `_dbg__spaceDemo.ts`): camera stops (the start view, each lane's switch distances, overhead), a
+  dolly along the lanes at a set speed (a scene looper, the same path every run, so it doubles as
+  Phase 2's no-pop recorder run), the time of day (`setTimeOfDay`, play / pause), per lane its
+  instances per level and triangles drawn, and buttons that open the LOD tab (overlay, bias,
+  forced level, fade time scale, Impostors) and the profiler. Nothing persisted but the camera stop.
+- **Exit:** every lane visible from the start camera; the dolly runs end to end with no pop
+  (Phase 2's recorder); the scene loads without an impostor bake (lanes 3-5 exported, lane 5's
+  baked half excepted); lane 4's GPU time with impostors against drawing its chain's last level
+  shows the payoff; WebGPU and WebGL2; `readme.md`'s LOD highlight points at the scene.
 
 ## 4. Versioning
 
 Engine minor per phase: the generators and bake helpers live in core (`core/Lod/Impostors/`, see
-§2.1), plus `lodDither` / fade support in LOD pools and, in Phase 4, the new asset type (also a
-`readme.md` entry: a new asset JSON type). App patches for largeWorld's adoption.
+§2.1), plus `lodDither` / fade support in LOD pools and, in Phase 4, the new asset type and p299's
+atlas extensions (also a `readme.md` entry: a new asset JSON type). App patches for largeWorld's
+adoption; an app minor for Phase 5's new scene. One bump per branch merged to `main` (CLAUDE.md),
+at the level of its biggest change.
 
 ## 5. Open questions
 

@@ -133,7 +133,16 @@ One layout, one output per map slot:
   `devTools/buildDecalAtlas.ts` are replaced by a `*.textureAtlas.json` with the `albedoAlpha` /
   `normalRough` slots and extra per-cell data (`physicalSize`, `tileAlong`, `opacitySource`) in
   a free-form `data` field the gatherer passes through.
-- p351's exported impostor atlases (its Phase 4) use the same cell table format.
+- p351's exported impostor atlases (its Phase 4) use the same cell table format. p351 Phase 4
+  section 1 adds two things to this format for them, implemented there:
+  - **A whole-image slot source** (`slots.<name>.image`): a ready-made image of the layout's
+    `size` (a bake that already composed and dilated its cells). That slot skips composition (no
+    resize, no edge extension, no fill); every cell then needs a `rect`, and a cell needs no
+    `sources` when every slot has an `image`.
+  - **`mipChain: "FULL"`** on the atlas (default `"PROTECTED"`, the Phase 3 rule): every level
+    down to 1 × 1 with the exact 2 × 2 box, past the levels the padding protects, so cells mix at
+    the smallest levels. For content whose neighbouring cells are near-identical (an impostor's
+    neighbouring views), where a short chain would shimmer at distance.
 
 ### D4 — Helpers
 
