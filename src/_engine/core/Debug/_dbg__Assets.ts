@@ -44,6 +44,9 @@ import {
   type LodLevelVertices,
 } from '../Lod/LodChains';
 import type { GeneratedAssetFields } from '../../schemas/assetsConfigSchema';
+import type { TextureAtlasSlotInfo } from '../../schemas/textureAtlasSchema';
+import { getTextureArrayInfo } from '../TextureArray';
+import { getTextureAtlasInfo } from '../TextureAtlas';
 import {
   computeUniqueEdgeCount,
   describeTexture,
@@ -51,11 +54,13 @@ import {
   formatNumber,
   getFileType,
   getGeometryByteSize,
+  getTextureDepth,
   getTextureImageSrc,
   getTriangleCount,
   getVertexCount,
   UNIQUE_EDGES_MAX_ENTRIES,
 } from './_dbg__AssetStats';
+import styles from './Assets.module.scss';
 
 type AssetKind = 'texture' | 'geometry';
 type AssetRow = {
@@ -63,6 +68,8 @@ type AssetRow = {
   id: string;
   name: string;
   description?: string;
+  /** What kind of texture, when the id doesn't say (an array, an atlas slot) */
+  variant?: string;
   /** Owner scene id (see AssetOwners). */
   owner?: string;
 };
@@ -96,6 +103,14 @@ type DeclaredFile = {
   fileName?: string | string[];
   path?: string;
   __fileSize?: number;
+  /** The asset JSON's path (dev data) */
+  __sourcePath?: string;
+  /** A texture array asset's layer sources as its JSON lists them (dev data) */
+  layers?: string[];
+  /** A texture array asset's layer names */
+  __layers?: string[];
+  /** A texture atlas slot's layout and cell table */
+  __atlas?: TextureAtlasSlotInfo;
 } & GeneratedAssetFields;
 type GeneratedData = {
   textures?: Record<string, DeclaredFile>;
@@ -154,6 +169,17 @@ const getSceneDeclaredKeys = () => {
 
 // --- List ---
 
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+/** "array, 3 layers", "atlas slot, 6 cells": what a texture is when its id doesn't say. */
+const getTextureVariant = (texture: THREE.Texture) => {
+  const atlas = getTextureAtlasInfo(texture);
+  if (atlas) return `atlas slot, ${plural(Object.keys(atlas.cells).length, 'cell')}`;
+  const depth = getTextureDepth(texture);
+  if (getTextureArrayInfo(texture) || depth > 1) return `array, ${plural(depth, 'layer')}`;
+  return undefined;
+};
+
 const getAllRows = (): AssetRow[] => {
   const rows: AssetRow[] = [];
   for (const [id, entry] of Object.entries(getTextureRegistry())) {
@@ -163,6 +189,7 @@ const getAllRows = (): AssetRow[] => {
       id,
       name: (t.userData.name as string) || t.name || id,
       description: t.userData.description as string | undefined,
+      variant: getTextureVariant(t),
       owner: getAssetOwner(t),
     });
   }
@@ -227,7 +254,7 @@ const getAssetsListData = (): DebuggerListItem[] =>
   getListState().rows.map((row) => ({
     itemId: rowKey(row.kind, row.id),
     title: row.name,
-    subTitle: row.id,
+    subTitle: row.variant ? `${row.id} (${row.variant})` : row.id,
     tooltip: row.id,
     icon: row.kind === 'texture' ? 'texture' : 'geometry',
     ...(row.description ? { description: row.description } : {}),
@@ -463,6 +490,12 @@ const describePipelineFile = (
   if (!declared?.__url && !declared?.__sourceUrl) return undefined;
   const { __url, __sourceUrl, __bytes, __vramBytes, __codec } = declared;
   const isPacked = !declared.fileName;
+  // Built from many files: no single source stands in for it (p299)
+  const composedText = declared.__layers
+    ? `a texture array of ${plural(declared.__layers.length, 'layer')}`
+    : declared.__atlas
+      ? 'an atlas slot, composed from its cells'
+      : undefined;
   const loadedUrl = report?.sourceUrl;
   const isOutput = Boolean(loadedUrl && __url && loadedUrl === toAppUrl(__url));
   const isSource =
@@ -474,7 +507,9 @@ const describePipelineFile = (
       __url === __sourceUrl
         ? 'the source, passed through as is'
         : isPacked && isLoadingSourceFiles()
-          ? 'pipeline output: packed, no source file'
+          ? composedText
+            ? 'pipeline output: no single source file'
+            : 'pipeline output: packed, no source file'
           : 'pipeline output';
   } else if (isSource) {
     loadedAs = __url
@@ -496,7 +531,12 @@ const describePipelineFile = (
       field('Output', __url ?? '— (none: encoder missing, the encode failed, or not built yet)'),
       field(
         'Source',
-        __sourceUrl ?? (isPacked ? '— (packed from several files)' : '— (not in production data)')
+        __sourceUrl ??
+          (composedText
+            ? `— (${composedText})`
+            : isPacked
+              ? '— (packed from several files)'
+              : '— (not in production data)')
       ),
       __codec ? field('Codec', __codec) : '',
       field('Download', formatInOut(__bytes) ?? '—'),
@@ -525,11 +565,132 @@ const getTextureMaterialUsers = (texture: THREE.Texture, id: string) => {
   return users;
 };
 
+const table = (head: string[], rows: string[]) =>
+  `<table class="${styles.assetsTable}"><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
+
+const ARRAY_ORIGIN_TEXT = {
+  RUNTIME: 'runtime (buildTextureArray)',
+  BUILD: 'build time (a texture array asset, *.textureArray.json)',
+};
+
+/** The info window's array section (p299 D6): what it was built from and its layers.
+ * @param registered the array asset's dev data registry entry (its JSON's layer list) */
+const describeTextureArray = (texture: THREE.Texture, registered?: DeclaredFile) => {
+  const info = getTextureArrayInfo(texture);
+  if (!info) {
+    return section(
+      'Texture array',
+      field('Layers', getTextureDepth(texture)) +
+        field(
+          'Members',
+          '— (no member list: neither built by buildTextureArray nor a texture array asset)'
+        )
+    );
+  }
+  const isCompressed = info.kind === 'COMPRESSED';
+  // The JSON's layer list (a texture id or a file), in dev data
+  const sources = info.origin === 'BUILD' ? registered?.layers : undefined;
+  const cpuCopy = info.cpuDataReleased
+    ? 'released after the upload (not swappable): its byte sizes come from its layer size'
+    : info.swappable
+      ? 'kept, for setTextureArrayLayer'
+      : info.origin === 'BUILD'
+        ? 'kept, like every loaded KTX2 texture'
+        : 'kept until its first upload (not swappable)';
+  const rows = info.members.map(
+    (member, i) =>
+      `<tr><td class="${styles.assetsTableNumber}">${i}</td><td>${esc(member)}</td>${sources ? `<td>${esc(sources[i] ?? '—')}</td>` : ''}</tr>`
+  );
+  return section(
+    'Texture array',
+    [
+      field('Origin', ARRAY_ORIGIN_TEXT[info.origin]),
+      field(
+        'Kind',
+        isCompressed
+          ? 'KTX2 layers (CompressedArrayTexture)'
+          : 'image layers (DataArrayTexture, mipmaps generated on the GPU)'
+      ),
+      field('Layers', info.members.length),
+      field(
+        'Layer size',
+        `${info.width} × ${info.height}, ${isCompressed ? plural(info.levels, 'mip level') : 'mipmaps generated on the GPU'}`
+      ),
+      field(
+        'Bytes per layer',
+        `${formatBytes(info.layerBytes)}${isCompressed ? ', every level' : ', level 0'}`
+      ),
+      field(
+        'Swappable',
+        info.swappable
+          ? 'yes (setTextureArrayLayer)'
+          : info.origin === 'BUILD'
+            ? 'no (its layers are in its file)'
+            : 'no'
+      ),
+      field('CPU copy', cpuCopy),
+      table(
+        ['#', info.origin === 'BUILD' ? 'Layer' : 'Member', ...(sources ? ['Source (JSON)'] : [])],
+        rows
+      ),
+    ].join('')
+  );
+};
+
+/** The info window's atlas section (p299 D6): the layout and the cell table. */
+const describeTextureAtlas = (texture: THREE.Texture) => {
+  const info = getTextureAtlasInfo(texture);
+  if (!info) return '';
+  const [layoutW, layoutH] = info.size;
+  const dropped = Math.round(Math.log2(layoutW / info.width));
+  const lastLevel = info.levels - 1;
+  const loadedSlots = Object.values(getTextureRegistry())
+    .map(({ resource }) => getTextureAtlasInfo(resource))
+    .filter((slotInfo) => slotInfo?.id === info.id)
+    .map((slotInfo) => slotInfo!.slot)
+    .sort();
+  const rows = Object.entries(info.cells).map(([cellId, cell]) => {
+    const [u0, , , v1] = cell.uv;
+    const [w, h] = cell.size;
+    // Image px from the top left, like the JSON's rects (the UVs are v up)
+    const x = Math.round(u0 * layoutW);
+    const y = Math.round((1 - v1) * layoutH);
+    const uv = cell.uv.map((n) => +n.toFixed(4)).join(', ');
+    const dataRow = cell.data
+      ? `<tr><td></td><td colspan="3" class="${styles.assetsTableSub}">data: ${esc(JSON.stringify(cell.data))}</td></tr>`
+      : '';
+    return `<tr><td>${esc(cellId)}</td><td class="${styles.assetsTableNumber}">${x}, ${y}</td><td class="${styles.assetsTableNumber}">${w} × ${h}</td><td>${uv}</td></tr>${dataRow}`;
+  });
+  return section(
+    'Texture atlas',
+    [
+      field('Atlas', info.id),
+      field('Slot', info.slot),
+      field('Loaded slots', loadedSlots.join(', ')),
+      field('Layout', `${layoutW} × ${layoutH} px, ${info.padding} px of padding (edge extended)`),
+      field(
+        'Levels kept apart',
+        `${info.levels}, down to ${layoutW >> lastLevel} × ${layoutH >> lastLevel}`
+      ),
+      field(
+        'File',
+        `${info.width} × ${info.height}, ${plural(info.storedLevels, 'mip level')}${dropped ? ` (its maxSize dropped the top ${plural(dropped, 'level')})` : ''}`
+      ),
+      field('Cells', Object.keys(info.cells).length),
+      table(['Cell', 'At (px)', 'Size (px)', 'UV rect (v up)'], rows),
+      `<div class="${styles.assetsTableSub}">A cell's content in the layout: its padding surrounds it. UVs are what getAtlasCell and sampleAtlasCell use.</div>`,
+    ].join('')
+  );
+};
+
 const createTextureContent = (id: string) => {
   const entry = getTextureRegistry()[id];
   const texture = entry.resource;
   const importId = texture.userData.importId as string | undefined;
   const declared = findDeclaration('textures', id);
+  // Authoring fields a scene entry leaves out (the JSON's path, an array's layer sources): only
+  // dev data's registry has them
+  const registered = getGeneratedData().textures?.[id];
   const importDeclaration = importId ? findDeclaration('importedAssets', importId) : undefined;
   const importFile = importId ? getImportedAsset(importId)?.fileName : undefined;
   const report = getAssetLoadReport(importId ? `import:${importId}` : `texture:${id}`);
@@ -539,6 +700,8 @@ const createTextureContent = (id: string) => {
     Boolean(importFile)
   );
 
+  const arrayInfo = getTextureArrayInfo(texture);
+  const isArray = Boolean(arrayInfo) || getTextureDepth(texture) > 1;
   let file = '—';
   let urls: string[] = [];
   if (declared?.fileName) {
@@ -546,8 +709,15 @@ const createTextureContent = (id: string) => {
     urls = toUrls(declared.fileName, declared.path);
   } else if (importFile) {
     file = `embedded in ${importFile}`;
+  } else if (declared?.__layers || declared?.__atlas) {
+    // Production data has no JSON paths
+    file =
+      registered?.__sourcePath ??
+      `— (${declared.__layers ? 'a texture array' : 'an atlas slot'} built by the asset pipeline)`;
   } else if (pipeline) {
     file = '— (packed by the asset pipeline)';
+  } else if (arrayInfo?.origin === 'RUNTIME') {
+    file = '— (built at runtime by buildTextureArray)';
   } else {
     // An <img> knows its URL; an ImageBitmap (assets worker) or HDR data doesn't, but the load
     // report does
@@ -602,6 +772,8 @@ ${section(
     field('Est. GPU memory', d.gpuMemory),
   ].join('')
 )}
+${isArray ? describeTextureArray(texture, registered) : ''}
+${describeTextureAtlas(texture)}
 ${pipeline?.sectionHtml ?? ''}
 ${
   importId

@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-3 implemented, Phase 4 sections 1-2
+Status: in progress | Phases 0-3 implemented, Phase 4 sections 1-3
 Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
@@ -657,11 +657,43 @@ the same sphere with the cell's source file by a mean of 7.8 / 255 with the grid
   `textureArrays`, column 6, rows 2-4: the asset's `testTexture` layer as a `colorNode`, its source
   as a `map`, and layer s2 of the runtime array.
 
-#### Section 3: Assets tab sections
+#### Section 3: Assets tab sections — done
 
 Array and atlas byte sizes (Phase 1's: a dropped array shows none, an uncompressed one leaves out
 its layers); an array section (layers, kind, levels, origin, swappable, CPU copy) and an atlas
 section (layout, cell table).
+
+As built (verified in both p299 scenes on WebGPU and WebGL2, the windows' text identical on both:
+every array and slot the scenes register opened from the list; the dropped 4-member KTX2 array
+shows 1.33 MB where it showed none, the uncompressed arrays count every layer, eg. 2 × 256² RGBA8
+with GPU mips 682.7 KB; each atlas slot 341.0 KB, its `__vramBytes.out` of 349,184 B):
+
+- Sizes (`_dbg__AssetStats.ts`): `getTextureByteSize` falls back to `layerBytes × layers` for a
+  runtime array whose CPU copy was dropped (`layerBytes` is measured before the drop), and
+  multiplies an uncompressed texture by `getTextureDepth` (an array's layers, a 3D texture's
+  depth), as three's own sizer does. The GPU memory tab's sizer is unchanged (it sizes at upload,
+  before any drop). `describeTexture` names array and 3D textures, shows the layers in the
+  dimensions and a provided chain's level count (an atlas slot's shortened one).
+- List rows: an array's or a slot's subtitle says what it is: `<id> (array, 3 layers)`,
+  `<id> (atlas slot, 6 cells)`.
+- "Texture array" section, for every array texture: origin, kind, layers, layer size and levels,
+  bytes per layer, swappable, CPU copy, and a layer table (index and member or layer name, plus
+  the JSON's layer source for an asset in dev data). An array without `TextureArrayInfo` (a plain
+  `--layers` KTX2 loaded as a texture) shows its layer count and says it has no member list.
+- "Texture atlas" section, for a slot: atlas, slot, the atlas's loaded slots, layout and padding,
+  the levels kept apart, the file's size and stored levels (and the top levels `maxSize` dropped),
+  and the cell table: each cell's content position in image px from the top left (the JSON's
+  `rect` convention; a padded rect is that plus `padding` on each side, as the scene draws it),
+  its size, its UV rect and its `data`. The packer's grid round-up isn't in the cell table, so it
+  isn't shown.
+- An array or slot's "File" is its JSON's path (from dev data's registry: a scene entry has no
+  `__sourcePath`), and the pipeline section's "Source" says what it was built from instead of
+  "packed from several files". A runtime array's "File" says `buildTextureArray`.
+- The tables use the tab's first style module, `Debug/Assets.module.scss` (section 4 adds the
+  preview's styles there).
+- Not changed: "Used by materials" counts map slots only, so an array or slot sampled through TSL
+  nodes built in code shows 0 (as before; the GPU memory tab's `forEachMaterialTexture` also reads
+  `userData.uniforms`, which code-built nodes aren't in either).
 
 #### Section 4: Previews
 

@@ -1,0 +1,41 @@
+@use '../../styles/variables.scss';
+
+/** The info window's layer and cell tables (texture arrays and atlases, p299 D6) */
+.assetsTable {
+  width: 100%;
+  margin-top: 0.4rem;
+  border-collapse: collapse;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+
+  th {
+    color: variables.$debugTextColorDark;
+    font-weight: normal;
+    text-align: left;
+    vertical-align: bottom;
+  }
+
+  td {
+    padding: 0.15rem 0;
+    vertical-align: top;
+    word-break: break-word;
+  }
+
+  th + th,
+  td + td {
+    padding-left: 0.8rem;
+  }
+
+  td.assetsTableNumber {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  tbody tr:hover {
+    background-color: variables.$debugGuiBackgroundLighter2;
+  }
+}
+
+.assetsTableSub {
+  color: variables.$debugTextColorDark;
+}
