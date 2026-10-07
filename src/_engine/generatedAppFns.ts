@@ -103,6 +103,14 @@ export const sceneFileObjects: {
       }
     ).scene({ sceneData, assets });
   },
+  textureArraySpike: async ({ sceneData, assets }) => {
+    const module = await import('../app/./textureArraySpike.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
   thirdPersonGymScene: async ({ sceneData, assets }) => {
     const module = await import('../app/./scene_thirdPersonGym.ts');
     await (

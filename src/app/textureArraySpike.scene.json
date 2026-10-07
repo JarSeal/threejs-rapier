@@ -1,0 +1,8 @@
+{
+  "$schema": "../.schemas/scene.schema.json",
+  "id": "textureArraySpike",
+  "sceneFile": "./textureArraySpike.ts",
+  "isDebugScene": true,
+  "name": "Texture array spike (p299 Phase 0)",
+  "description": "p299 Phase 0: KTX2 array textures from `ktx create --layers` and assembled at runtime, a layer swap through addLayerUpdate, against the single textures. Files from devTools/assetPipeline/p299ArraySpike.ts."
+}

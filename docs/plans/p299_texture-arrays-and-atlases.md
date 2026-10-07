@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 0 implemented
 Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
@@ -168,7 +168,7 @@ loads them. Until p302 lands, arrays and atlases are used from TSL code (D4).
 
 ## 3. Phases
 
-### Phase 0 — Spike (half a day)
+### Phase 0 — Spike (half a day) — done
 
 1. A two-layer `ktx create --layers` file through `KTX2Loader` on WebGPU and WebGL2: a
    `CompressedArrayTexture` sampled with `texture(arr, uv).depth(layer)`.
@@ -178,6 +178,38 @@ loads them. Until p302 lands, arrays and atlases are used from TSL code (D4).
 4. Does the GPU memory tab count the array's bytes correctly?
 
 **Exit:** a test scene samples layer 0 and 1 of both kinds of array on both backends.
+
+As built (the `textureArraySpike` debug scene, its files from
+`devTools/assetPipeline/p299ArraySpike.ts` in `src/public/debugger/assets/testOptimized/p299/`;
+measured in Chrome on an Apple GPU, where ETC1S transcodes to ETC2 and UASTC to ASTC 4×4 on both
+backends):
+
+1. `ktx create --layers 2 a.png b.png out.ktx2` works with the pinned 4.4.2 (both codecs, full mip
+   chain). `loadTextureAsync` already returns a `CompressedArrayTexture` (`image.depth` 2, colour
+   space from the file) with no engine change, and `texture(arr, uv).depth(layer)` samples it on
+   WebGPU and WebGL2. D2's runtime side is free.
+2. Runtime concatenation (each level's member data appended in layer order, the layout KTX2Loader
+   and both backends use) renders identically to the `--layers` file and to the single textures, on
+   both backends.
+3. Layer updates: r186 has them on both backends (`addLayerUpdate(i)` + `needsUpdate`, consumed by
+   the upload; it writes layer `i` of every level from the array's own `mipmaps[level].data`). So
+   `setTextureArrayLayer` copies the member into the array's CPU levels and flags the layer, which
+   means **the array keeps its CPU mip data** while it can be swapped (Phase 1: an option, or drop
+   it after the first upload when not swappable). GPU assembly is rejected: 16 × 1K UASTC (1.4 MB
+   per layer) took 2.4 ms concat + 12.7 ms upload = 15.1 ms by CPU, 22.2 ms by uploading every
+   member plus a zero-filled array and 176 `copyTextureToTexture` calls (medians of 7, WebGPU;
+   WebGL2: 2.7 + 14.3 ms). It also uploads every member, which D1 avoids.
+4. GPU memory: `installCompressedTextureSizer` counts an array's bytes exactly (counted = CPU mip
+   bytes, both kinds, both backends). Nothing to add for D6.
+
+Found on the way, not this plan's: a Basis file transcoded to uncompressed RGBA32 (a GPU with no
+BC, ETC2 or ASTC; forced with the scene's `?p299Rgba=true`) fails for single textures as much as
+arrays. WebGPU throws in `_copyCompressedBufferToTexture` (`_getBlockData` has no entry for
+`rgba8unorm`), WebGL2 uploads (and counts) the bytes but samples black. Every KTX2 the engine loads
+has this today; it needs its own issue.
+
+Untested: a one-member array (three sets `isArrayTexture` from `image.depth > 1`, so it would bind
+by `isCompressedArrayTexture` alone). Phase 1 tests it or requires two members.
 
 ### Phase 1 — Runtime arrays (D1)
 
