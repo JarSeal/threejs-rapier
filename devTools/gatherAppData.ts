@@ -121,6 +121,45 @@ const expandUnionIssues = (issues: ZodIssue[]): ZodIssue[] =>
     );
   });
 
+// The schema each gathered JSON is validated with
+const GATHERED_SCHEMAS: Record<keyof typeof JSON_ENDING_SIGNATURES, z.ZodType> = {
+  scene: SceneAssetSchema,
+  camera: CameraAssetSchema,
+  light: LightAssetSchema,
+  geometry: GeoAssetSchema,
+  texture: TextureAssetSchema,
+  textureArray: TextureArrayAssetSchema,
+  textureAtlas: TextureAtlasAssetSchema,
+  material: MaterialAssetSchema,
+  mesh: MeshAssetSchema,
+  importedAsset: ImportedAssetSchema,
+  skybox: SkyBoxAssetSchema,
+  postFx: PostFxAssetSchema,
+};
+
+/**
+ * Validates a JSON value against the schema of the gathered type its file name says (the dev
+ * file server's writes, p342), as the gather would. Returns null when it passes or the file isn't
+ * a gathered type, else the issues the gatherer would log.
+ */
+export const validateGatheredJson = (filePath: string, data: unknown) => {
+  const type = (
+    Object.keys(JSON_ENDING_SIGNATURES) as (keyof typeof JSON_ENDING_SIGNATURES)[]
+  ).find((key) => filePath.endsWith(JSON_ENDING_SIGNATURES[key]));
+  if (!type) return null;
+  let value = data;
+  // The gather defaults a sky box's id to its file name before validating
+  if (type === 'skybox' && value && typeof value === 'object' && !('id' in value && value.id)) {
+    value = { ...value, id: path.basename(filePath, JSON_ENDING_SIGNATURES.skybox) };
+  }
+  const validation = GATHERED_SCHEMAS[type].safeParse(value);
+  if (validation.success) return null;
+  return expandUnionIssues(validation.error.issues).map((issue) => ({
+    path: issue.path.map(String).join('.'),
+    message: issue.message,
+  }));
+};
+
 const logValidationError = (msg: string, issues: z.ZodError['issues']) => {
   const errorDetails = expandUnionIssues(issues)
     .map((err) => ` └─ [${err.path.join('.')}]: ${err.message}`)

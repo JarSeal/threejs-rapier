@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, type ViteDevServer } from 'vite';
 import wasm from 'vite-plugin-wasm';
 import basicSsl from '@vitejs/plugin-basic-ssl';
@@ -8,6 +9,10 @@ import pkg from './package.json';
 import { sceneGathererPlugin } from './devTools/sceneGathererPlugin.ts';
 // Ships only the asset pipeline outputs the production data loads
 import { assetOutputsBuildPlugin } from './devTools/assetOutputsBuildPlugin.ts';
+// Lets debug tooling write files into the repo (p342)
+import { devFilesPlugin } from './devTools/devFilesPlugin.ts';
+
+const REPO_ROOT = fileURLToPath(new URL('.', import.meta.url));
 
 // Required for self.crossOriginIsolated/SharedArrayBuffer to be available at all in dev, so
 // worker-thread physics can use the SHARED_MEMORY hot-path transport instead of automatically
@@ -147,8 +152,9 @@ export default defineConfig({
     ],
   },
   server: {
+    // Only the repo is served through /@fs/: the dev server is on the LAN (`--host`)
     fs: {
-      strict: false,
+      allow: [REPO_ROOT],
     },
   },
   plugins: [
@@ -158,6 +164,7 @@ export default defineConfig({
     // (WebGPU, SharedArrayBuffer); a plain http:// LAN address isn't one
     ...(process.env.AEK_DEV_HTTPS === 'true' ? [basicSsl()] : []),
     sceneGathererPlugin(),
+    devFilesPlugin(),
     assetOutputsBuildPlugin(),
     {
       name: 'html-transform',
