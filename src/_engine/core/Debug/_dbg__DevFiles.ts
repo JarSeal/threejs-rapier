@@ -1,5 +1,6 @@
 import {
   DevFilesError,
+  getDevFilesSaveHistorySize,
   type DevFileRead,
   type DevFilesStatus,
   type DevFileWrite,
@@ -135,6 +136,13 @@ export const _writeDevFiles = async (writes: DevFileWrite[]): Promise<DevFilesCo
   if (!Array.isArray(writes) || !writes.length) {
     throw new DevFilesError('BAD_REQUEST', 'writeDevFiles needs at least one write');
   }
+  const historySize = getDevFilesSaveHistorySize();
+  if (!historySize && writes.some((write) => 'saveData' in write)) {
+    throw new DevFilesError(
+      'SAVE_DATA_DISABLED',
+      'Saving into __saveData is off (save history size 0, Debug tools → File server)'
+    );
+  }
   const body: DevFilesCommitRequest = {
     writes: await Promise.all(
       writes.map(async (write) => {
@@ -142,6 +150,13 @@ export const _writeDevFiles = async (writes: DevFileWrite[]): Promise<DevFilesCo
           write.expectedHash !== undefined ? { expectedHash: write.expectedHash } : {};
         if ('blob' in write) {
           return { path: write.path, ...expectedHash, stageId: await stageBlob(write.blob) };
+        }
+        if ('saveData' in write) {
+          return {
+            path: write.path,
+            ...expectedHash,
+            saveData: { ...write.saveData, historySize },
+          };
         }
         return { path: write.path, ...expectedHash, json: write.json };
       })

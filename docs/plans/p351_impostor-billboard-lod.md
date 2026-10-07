@@ -1,8 +1,7 @@
 Status: in progress | Phases 1-3 implemented
 Category: Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 2.2)
-Blocked by: p342_dev-file-server.md (Phase 4's export)
-Related: p299_texture-arrays-and-atlases.md (Phase 4's exported atlases), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
+Related: \_DONE_p342_dev-file-server.md (Phase 4's export writes through it), p299_texture-arrays-and-atlases.md (Phase 4's exported atlases), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
 
 # Impostor & Billboard LOD
 
@@ -103,8 +102,9 @@ breaks shadows and post effects (fog, SSAO) for the transitioning object. Dither
 
 Phase 1 bakes at load, in the asset loading phase, budgeted like p353's priming. A baked atlas is
 a registered texture owned like any other asset. Phase 4 adds a debug "Export impostor" button
-that saves the atlas as PNGs next to an `*.impostor.json` (atlas paths, frame count, bounds); p300
-then encodes it as KTX2, and nothing is baked on the client.
+that writes the atlas as PNGs next to an `*.impostor.json` (atlas paths, frame count, bounds)
+straight into the repo through the dev file server (`_DONE_p342`); p300 then encodes it as KTX2,
+and nothing is baked on the client.
 
 ## 3. Phases
 
@@ -329,8 +329,8 @@ Sections, each reviewed before the next:
    and hemi) and frame bases, the `NORMAL_DEPTH` bake pass, dilation options, the atlases registered
    with their layout, the cache by `id`. No material yet. Checked by drawing the atlases (full,
    hemi, a rock) on WebGPU and WebGL2. — done: `generateOctahedralImpostor(geometry, material,
-   { id, frames = 12, hemi = false, frameSize = 64, gutter = 4 })` returns `{ id, layout, albedo,
-   normalDepth }`. Frames show the bounding sphere (2-texel margin), from directions on an
+{ id, frames = 12, hemi = false, frameSize = 64, gutter = 4 })` returns `{ id, layout, albedo,
+normalDepth }`. Frames show the bounding sphere (2-texel margin), from directions on an
    edge-inclusive `frames × frames` grid of the octahedral square (full: +y at the centre, the
    equator on the diamond, -y at the corners; hemi: the horizon on the square's edge, below it
    clamped onto it). A frame's camera axes are `getOctahedralFrameBasis(dir)`: up is +y on the
@@ -478,6 +478,7 @@ Sections, each reviewed before the next:
    Exit, measured (WebGPU, Apple GPU, 1200×800) on the rock nearest (5, 5) (scale 0.87) with only
    the terrain and the rocks drawn, from 15°, 30°, 60° (each at three azimuths) and straight down,
    forcing each level (`forceLevel`, fades off), its pixels masked against a render without rocks:
+
    - At the impostor's switch distance (where screen size drops below 0.025 × 0.9, 95 m here; the
      rock 18 px tall), against level 0, the mesh it was baked from: mean luma difference 5.6-8.0,
      mask IoU 0.80-0.88, area 0.90-0.99; overhead 5.6 / 0.87 / 0.99. At half that distance
@@ -513,6 +514,7 @@ Sections, each reviewed before the next:
    in the ground, it lost most of each rock (area 0.32 from above: a flat quad through a buried
    centre is underground), so it's for objects standing on the ground. largeWorld keeps the
    default.
+
 6. **Close the phase:** As built, CLAUDE.md's Impostors section, versions and CHANGELOG. — done:
    the versions stay as Phase 1 set them (engine 4.11.0, app 1.6.1: one bump per branch, as in
    Phase 2), and the branch's CHANGELOG entry gets Phase 3. `readme.md`'s cross-quad feature became
@@ -531,7 +533,7 @@ As built:
   5.6, mask IoU 0.87); with the day-night sky box it darkens with the meshes (night / noon
   0.074-0.082 against 0.072-0.080). WebGL2 agrees.
 - `generateOctahedralImpostor(geometry, material, { id, frames = 12, hemi = false, frameSize = 64,
-  gutter = 4, alphaTest = 0.5, shading = 'AUTO', surfaceDepth = true })` in
+gutter = 4, alphaTest = 0.5, shading = 'AUTO', surfaceDepth = true })` in
   `core/Lod/Impostors/OctahedralImpostor.ts`, the maps in `Octahedral.ts` (CPU and TSL, which must
   agree), the nodes in `OctahedralImpostorMaterial.ts`. Sections 1-5's notes have the details.
 - Cost: a 12 × 12 bake 40-115 ms (it scales with the frame count, not the triangles), two 864² atlases of about 4 MB each
@@ -547,6 +549,21 @@ As built:
 Export button, `*.impostor.json` asset type (schema, gatherer suffix), KTX2 through p300. The
 exported atlas uses p299's atlas format (a `*.textureAtlas.json` per impostor, frames as cells
 with a generated cell table), so `*.impostor.json` holds only frame count, bounds and the atlas id.
+
+The export writes through the dev file server (`debug/DevFiles.ts`, `_DONE_p342`), not a
+download:
+
+- The atlases are read back from their render targets and encoded with `encodePNG` (its own
+  encoder is byte-exact for RGBA8 data: the dilated colour of a transparent texel survives, which
+  a canvas encoder loses to premultiplied alpha; `flipY` if a backend's readback is bottom-up).
+- One `writeDevFiles` batch writes the PNGs, the `*.textureAtlas.json` and the `*.impostor.json`
+  (all or nothing; a re-export reads the JSONs first and passes their `expectedHash`). The
+  gather then runs the asset pipeline (the KTX2 encode) and reloads the page with the exported
+  impostor; `onDevDataGathered` reports asset errors before the reload.
+- When `getDevFilesStatus()` is unavailable (a LAN device without `AEK_DEV_FILES_LAN`, a build),
+  the button downloads the files instead, with the paths to put them at.
+- The dev file server has no delete or rename (`_DONE_p342` §5): a re-export with fewer frames
+  keeps one PNG per atlas, not per frame, so it leaves no stale files.
 
 ## 4. Versioning
 

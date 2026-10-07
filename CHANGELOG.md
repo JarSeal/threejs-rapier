@@ -4,6 +4,45 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-07 — dev-server-implementation
+
+### Engine 4.12.0 (Afternoon)
+
+**Added**
+
+- Dev files (`debug/DevFiles.ts`, implementation `core/Debug/_dbg__DevFiles.ts`): debug tooling writes files into the repo while `yarn dev` runs, through the dev server's file routes (see Project). Debug env with the dev server only; in a build, or with the routes off, it reports itself unavailable.
+  - `getDevFilesStatus()`: whether this page can write and why not (`NOT_DEBUG_ENV`, `NO_DEV_SERVER`, `UNREACHABLE`, `NOT_ENABLED`, `NOT_LOCAL`, `NO_TOKEN`), with the server's settings. It never rejects.
+  - `writeDevFiles(writes)`: a batch of `{ path, json }`, `{ path, blob }` and `{ path, saveData: { sceneId, entry } }` writes that all land or none does. Each has an optional `expectedHash` (the hash `readDevFile` returned; `null`: the file must not exist yet), and resolves per file with `created`, `updated` or `unchanged`. A refusal rejects with `DevFilesError` and its code (`CONFLICT` with the hashes on disk, `INVALID_SCHEMA` with the gatherer's issues, …).
+  - A `saveData` write puts a save entry first in an asset JSON's `__saveData[sceneId]` (the older entries after it), stamped with the engine, toolkit and app versions and the date. It keeps `getDevFilesSaveHistorySize()` entries for that scene, and an entry equal to the latest one is `unchanged`.
+  - `readDevFile(path)`: the bytes, the hash and, for a `.json`, the parsed value; `null` for a missing file.
+  - `encodePNG(source, { flipY? })`: `ImageData`, an RGBA8 buffer or a canvas to a PNG `Blob`. Its own encoder keeps a fully transparent pixel's colour (a canvas loses it to premultiplied alpha), for atlases read back from render targets.
+  - `onDevDataGathered(fn)`: how the gather after a write went (`done` / `failed`, the changed files, asset errors, whether the page reloads), before the reload. The reload waits up to 2 s for `fn`'s promise.
+- `AppConfig.devFiles.saveHistorySize` (default 20): the save entries a save keeps per scene; -1 keeps every entry, 0 turns saving into `__saveData` off. Always 0 outside the debug env.
+- The Debug tools tab's "File server" folder: whether this page can write files (on, LAN too, off, or unavailable and why), the save history size (overrides the config's in this browser, saved once changed) and what it means.
+
+### App 1.7.0 (Preschooler)
+
+**Added**
+
+- `src/CONFIG.ts` sets `devFiles.saveHistorySize` (20).
+
+### Project
+
+**Added**
+
+- The dev file server (`devTools/devFilesPlugin.ts`, `devTools/devFiles/`), part of `yarn dev` and never in a build. It serves routes under `/__aek/files/`: `status`, `read`, `stage` (a raw upload, kept 10 minutes) and `commit`.
+  - Security: a token per server start in `index.html`, a `Host` and `Origin` check, and writes from the server's machine only. `AEK_DEV_FILES_LAN=true` allows the LAN (a phone under `yarn dev:https`); `AEK_DEV_FILES=false` turns the routes off.
+  - Paths: only in `src/app/`, `src/toolkit/` and `src/public/` (not the pipeline's `aek-assets/`, `draco/` or `basis/`). No dot folders and no symlinks out; `.json` and image files only, 32 MB per file and 128 MB per batch.
+  - JSON is validated against its gathered schema and written Prettier-formatted.
+  - A commit writes through temporary files and renames, restores every file on a failure, and keeps the last 20 commits' backups in `.cache/dev-files/backup/`. A file whose bytes don't change isn't written.
+  - Save entries are written on the server, which stamps the versions from `package.json` and trims the scene's list.
+- `npx tsx devTools/devFiles/selfCheck.ts`: the dev file server's self-check. It starts its own dev server, or runs against one with `--url`, and covers every refusal, rollback (forced rename failures included) and save entry case, the last ones through a real gather.
+- The scene gatherer's dev server plugin sends the custom HMR event `aek:gather` before each reload, and ignores a commit's temporary files. `gatherAppData.ts` exports `validateGatheredJson` and `hasGatheredSaveData`.
+
+**Changed**
+
+- `vite.config.ts`: `server.fs.strict: false` is now `server.fs.allow: [<repo root>]`. With the dev server on the LAN, any device could read any file the user can through `/@fs/`; now only the repo is served.
+
 ## 2026-10-07 — impostor-billboard-lod
 
 ### Engine 4.11.0 (Afternoon)

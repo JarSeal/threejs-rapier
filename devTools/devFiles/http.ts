@@ -18,6 +18,7 @@ const STATUS_BY_CODE: Record<DevFilesErrorCode, number> = {
   INVALID_JSON: 400,
   INVALID_SCHEMA: 422,
   STAGE_EXPIRED: 410,
+  SAVE_DATA_DISABLED: 422,
   WRITE_FAILED: 500,
 };
 

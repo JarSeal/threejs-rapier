@@ -1,9 +1,11 @@
-import { IS_DEBUG_ENV } from '../core/Config';
+import { getConfig, IS_DEBUG_ENV } from '../core/Config';
 import { loadDebugModuleAsync } from '../utils/helpers';
+import { getDebugToolsState } from './DebugToolsManager';
 import type {
   DevDataGatheredEvent,
   DevFilesCommitBody,
   DevFilesErrorCode,
+  DevFilesSaveData,
   DevFilesStatusBody,
 } from './DevFilesProtocol';
 
@@ -12,6 +14,7 @@ export type {
   DevFilesCommitBody,
   DevFilesConflicts,
   DevFilesErrorCode,
+  DevFilesSaveData,
   DevFilesSchemaIssues,
   DevFilesStatusBody,
   DevFilesWriteStatus,
@@ -30,6 +33,10 @@ export type {
  * write is an ordinary file event: the scene gatherer and the asset pipeline run as for an
  * editor save, and the page reloads after the gather ({@link onDevDataGathered} tells how it
  * went, before the reload).
+ *
+ * A debug override goes into an asset JSON's `__saveData` with a `saveData` write: the server
+ * puts the entry first for its scene, stamps it with the engine, toolkit and app versions and
+ * keeps {@link getDevFilesSaveHistorySize} entries for the scene.
  */
 
 type DevFilesModule = typeof import('../core/Debug/_dbg__DevFiles');
@@ -115,6 +122,20 @@ export type DevFileWrite = {
       /** The file's bytes (eg. a PNG from {@link encodePNG}), uploaded as is */
       blob: Blob;
     }
+  | {
+      /**
+       * A save entry for an existing gathered asset JSON with `__saveData` (not a texture array
+       * or atlas): `entry` (the overrides, in the asset's overrides schema) goes first in
+       * `__saveData[sceneId]`, the older entries after it, so the gatherer applies it in that
+       * scene. The server stamps `entry.__meta` with `engineVersion`, `toolkitVersion`,
+       * `appVersion` and, unless it has one, `date`, then validates and formats the file like a
+       * `json` write. The scene keeps {@link getDevFilesSaveHistorySize} entries, the new one
+       * included (the older ones are dropped); with 0 the batch fails with `SAVE_DATA_DISABLED`
+       * before anything is sent. An entry equal to the scene's latest (its `__meta` aside) is
+       * `unchanged`. A missing file fails with `NOT_FOUND`.
+       */
+      saveData: DevFilesSaveData;
+    }
 );
 
 export type DevFileRead = {
@@ -135,6 +156,27 @@ export type PNGSource =
 export type EncodePNGOpts = {
   /** Writes the rows bottom-up (pixels read back with the first row at the bottom) */
   flipY?: boolean;
+};
+
+/** `AppConfig.devFiles.saveHistorySize`'s default */
+export const DEFAULT_SAVE_HISTORY_SIZE = 20;
+
+const toValidSaveHistorySize = (size: unknown) =>
+  typeof size === 'number' && Number.isFinite(size) ? Math.max(-1, Math.round(size)) : null;
+
+/**
+ * How many `__saveData` entries a `saveData` write keeps per scene, the new one included: the
+ * Debug tools tab's "File server" setting, which defaults to `AppConfig.devFiles.saveHistorySize`
+ * (20). -1: all of them; 0: saving into `__saveData` is off (a tool should disable its save
+ * button). Always 0 outside the debug env.
+ */
+export const getDevFilesSaveHistorySize = (): number => {
+  if (!IS_DEBUG_ENV) return 0;
+  return (
+    toValidSaveHistorySize(getDebugToolsState().devFiles?.saveHistorySize) ??
+    toValidSaveHistorySize(getConfig().devFiles?.saveHistorySize) ??
+    DEFAULT_SAVE_HISTORY_SIZE
+  );
 };
 
 /**

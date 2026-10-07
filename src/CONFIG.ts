@@ -48,6 +48,12 @@ const config: AppConfig = {
       meshes: true,
     },
   },
+  // Debug tools writing into the repo while `yarn dev` runs (debug env only). saveHistorySize:
+  // the `__saveData` entries a save keeps per scene in an asset JSON (-1 = all, 0 = saving off).
+  // The Debug tools tab's "File server" folder overrides it per browser.
+  devFiles: {
+    saveHistorySize: 20,
+  },
   debugCamera: {
     position: { x: 3, y: 3, z: 1.5 },
     target: { x: 0, y: 0, z: 0 },

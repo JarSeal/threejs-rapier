@@ -26,6 +26,7 @@ export type DevFilesErrorCode =
   | 'INVALID_JSON'
   | 'INVALID_SCHEMA'
   | 'STAGE_EXPIRED'
+  | 'SAVE_DATA_DISABLED'
   | 'WRITE_FAILED';
 
 export type DevFilesErrorBody = {
@@ -51,13 +52,22 @@ export type DevFilesStatusBody = {
 /** `PUT stage` */
 export type DevFilesStageBody = { stageId: string; bytes: number; sha256: string };
 
+/** A save entry (p342 §2.6): `entry` goes first in the file's `__saveData[sceneId]`, the older
+ * entries after it, and the server stamps its `__meta` */
+export type DevFilesSaveData = { sceneId: string; entry: Record<string, unknown> };
+
+/** A save entry as a commit sends it: `historySize` is how many entries the scene keeps, the new
+ * one included (-1: all; 0 is refused with `SAVE_DATA_DISABLED`). The client fills it in from
+ * the "File server" setting. */
+export type DevFilesSaveDataWrite = DevFilesSaveData & { historySize: number };
+
 /** One write of a `POST commit` batch */
 export type DevFilesWrite = {
   /** Repo-relative, `/`-separated */
   path: string;
   /** The hash the tool read; null: the file must not exist yet; omitted: overwrite */
   expectedHash?: string | null;
-} & ({ json: unknown } | { stageId: string });
+} & ({ json: unknown } | { stageId: string } | { saveData: DevFilesSaveDataWrite });
 
 export type DevFilesCommitRequest = { writes: DevFilesWrite[] };
 

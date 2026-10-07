@@ -2,7 +2,7 @@ Status: draft | not-implemented
 Category: Rendering, Materials, Procedural
 Blocked by: p302_material-and-texture-system-refactor.md, p303_texture-sets-and-terrain-texture-library.md
 Blocks: p305_terrain-material-generator.md (soft: macro noise and ripple atlas), p307_wet-and-dry-surface-states.md (ripple atlas), p309_terrain-decals.md (procedural decals)
-Related: p342_dev-file-server.md (D5 can write its PNGs into the set's `source/` instead of downloading them)
+Related: \_DONE_p342_dev-file-server.md (D5 writes its PNGs into the set's `source/` through it)
 Epic: p301_terrain-texturing-epic.md
 
 # Procedural Texture Baker
@@ -131,14 +131,13 @@ Tileable baking needs noise with an integer period over the tile:
 ### D5 — Export to PNG (debug only)
 
 - **Where:** in the gallery tab, and as `exportBakedTexture(id, output)` in `_dbg__TextureBaker.ts`.
-- **What:** reads the target back with `renderer.readRenderTargetPixelsAsync` (per mip 0 only; mips are rebuilt by p300) and downloads `<id>_<output>.png` (8-bit; `HALF_FLOAT` outputs are tone-clamped with a warning).
+- **What:** reads the target back with `renderer.readRenderTargetPixelsAsync` (per mip 0 only; mips are rebuilt by p300), encodes it with `encodePNG` (`debug/DevFiles.ts`; `flipY` if the readback is bottom-up) and writes `<id>_<output>.png` (8-bit; `HALF_FLOAT` outputs are tone-clamped with a warning) into the chosen texture set's `source/` with `writeDevFiles` (the dev file server, `_DONE_p342`). Overwriting an existing PNG asks first (it's read with `readDevFile` and its hash passed as `expectedHash`). When `getDevFilesStatus()` is unavailable (a LAN device, a build), it downloads the PNG instead.
 - **Workflow** (documented in `procedural-textures.md`):
 
   1. Tune a generator live in the gallery.
-  2. Export.
-  3. Put the PNGs in a texture set's `source/` (committed, since it's not re-downloadable).
-  4. Write pack recipes.
-  5. `yarn assets`.
+  2. Export into a texture set's `source/` (committed, since it's not re-downloadable).
+  3. Write pack recipes.
+  4. `yarn assets` (the dev server already encodes a set its gather reads; `yarn assets` prunes stale outputs before a commit).
 
   The result is a compressed, imported set born procedural. It is the best of both: unique looks, made in-engine, compressed in VRAM, no bake at load.
 

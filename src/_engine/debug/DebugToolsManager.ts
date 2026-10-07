@@ -40,6 +40,12 @@ export type DebugToolsState = {
     showInMainCamera: boolean;
     roughness: number;
   };
+  /** The "File server" folder (p342). Top-level, as axesGizmo. Its default is
+   * `AppConfig.devFiles`, and it's saved only once changed in the tab. */
+  devFiles: {
+    /** See `AppConfig.devFiles.saveHistorySize` (-1 = all, 0 = saving off) */
+    saveHistorySize: number;
+  };
   helpers: {
     helpersFolderExpanded: boolean;
     showAxesHelper: boolean;
@@ -84,6 +90,10 @@ const defaultDebugToolsState: DebugToolsState = {
     show: true,
     showInMainCamera: false,
     roughness: 0,
+  },
+  // Outside the debug env saving into `__saveData` is off
+  devFiles: {
+    saveHistorySize: 0,
   },
   helpers: {
     helpersFolderExpanded: false,

@@ -11,6 +11,7 @@ import {
 } from '../../debug/DebuggerGUI';
 import { getCurrentSceneId, getGeneratedAppData, getRootScene } from '../../core/Scene';
 import {
+  getConfig,
   getCurrentEnvironment,
   getEnvs,
   IS_DEBUG_ENV,
@@ -45,6 +46,8 @@ import {
 } from '../../debug/AxesGizmo';
 import { openDebugKeyShortcutsDialog } from './_dbg__DebugKeyShortcuts';
 import {
+  DEFAULT_SAVE_HISTORY_SIZE,
+  getDevFilesSaveHistorySize,
   getDevFilesStatus,
   type DevFilesStatus,
   type DevFilesUnavailableReason,
@@ -63,9 +66,17 @@ const TAB_ID = 'debugToolsControls';
 /** The Debug Camera folder's values, synced from the viewport (see onOpen below). */
 let debugCamPanelProxy: DebugCamLSProps | null = null;
 
-/** The "Dev files" row (p342): what getDevFilesStatus said at the tab's last mount. The status
- * changes only with a dev server restart, which reloads the page. */
-const devFilesRow = { text: 'Checking…' };
+/** The "File server" folder's rows (p342): `status` is what getDevFilesStatus said at the tab's
+ * last mount (it changes only with a dev server restart, which reloads the page), `saving` what
+ * the save history size means. */
+const fileServerRows = { status: 'Checking…', saving: '' };
+
+const describeSaveHistorySize = () => {
+  const size = getDevFilesSaveHistorySize();
+  if (size === -1) return 'On, keeps every entry';
+  if (size === 0) return 'Off';
+  return `On, keeps the latest ${size}`;
+};
 
 const DEV_FILES_UNAVAILABLE_TEXTS: Record<DevFilesUnavailableReason, string> = {
   NOT_DEBUG_ENV: 'Unavailable (not debug env)',
@@ -87,7 +98,7 @@ const refreshDevFilesRow = () => {
   getDevFilesStatus()
     .then(describeDevFilesStatus, () => 'Unavailable (failed to load)')
     .then((text) => {
-      devFilesRow.text = text;
+      fileServerRows.status = text;
       updateDebuggerTab(TAB_ID);
     });
 };
@@ -120,6 +131,10 @@ let debugToolsState: DebugToolsState = {
     show: true,
     showInMainCamera: false,
     roughness: 0,
+  },
+  // Saved only once changed here, so until then a CONFIG change applies
+  devFiles: {
+    saveHistorySize: getConfig().devFiles?.saveHistorySize ?? DEFAULT_SAVE_HISTORY_SIZE,
   },
   helpers: {
     helpersFolderExpanded: false,
@@ -162,11 +177,11 @@ const createDebugToolsDebugGUI = () => {
     state: debugToolsState,
     // The nested objects are persisted whole (the same LS shape as before). The *FolderExpanded
     // fields in them are no longer used: folder states are in `${LS_KEY}UI`.
-    persistKeys: ['scenesListing', 'onScreenTools', 'helpers', 'axesGizmo', 'envBall'],
+    persistKeys: ['scenesListing', 'onScreenTools', 'helpers', 'axesGizmo', 'envBall', 'devFiles'],
     // Live-refresh the Debug Camera folder from the viewport (dragging the debug camera with
     // OrbitControls): debugCameraSystem calls this only on frames where OrbitControls reported
     // a change. Unregistered on unmount, so a stale callback never runs against a disposed pane.
-    // The Dev files row asks the dev server again on every mount.
+    // The File server folder's status row asks the dev server again on every mount.
     onOpen: () => {
       setDebugCameraPanelRefresh(refreshDebugCameraPanelFromViewport);
       refreshDevFilesRow();
@@ -446,6 +461,7 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
 
   const undoRedoSettings = getUndoRedoSettings();
   const logActionList = getLogActionList();
+  fileServerRows.saving = describeSaveHistorySize();
 
   return [
     // Key shortcuts
@@ -466,8 +482,6 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
         if (!fitAllDraggableWindowsToScreen()) addDebugToast({ title: 'No open windows' });
       },
     },
-    // Whether debug tools can write files into the repo (p342, debug/DevFiles.ts)
-    { key: 'text', target: devFilesRow, label: 'Dev files', readonly: true, interval: 0 },
     { type: 'separator' },
 
     // Scene listing
@@ -754,6 +768,41 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
             },
           ]
         : [],
+    },
+
+    // File server: debug tools writing files into the repo (p342, debug/DevFiles.ts)
+    {
+      type: 'folder',
+      id: 'fileServer',
+      title: 'File server',
+      expanded: false,
+      content: [
+        {
+          key: 'status',
+          target: fileServerRows,
+          label: 'Dev files',
+          readonly: true,
+          interval: 0,
+        },
+        {
+          // How many __saveData entries a save keeps per scene (-1 = all, 0 = saving off)
+          key: 'devFiles.saveHistorySize',
+          label: 'Save history size (per scene)',
+          min: -1,
+          step: 1,
+          onChange: () => {
+            fileServerRows.saving = describeSaveHistorySize();
+            updateDebuggerTab(TAB_ID);
+          },
+        },
+        {
+          key: 'saving',
+          target: fileServerRows,
+          label: 'Saving into __saveData',
+          readonly: true,
+          interval: 0,
+        },
+      ],
     },
 
     // Logging actions

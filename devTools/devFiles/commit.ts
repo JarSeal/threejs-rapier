@@ -5,9 +5,11 @@ import { format, resolveConfig } from 'prettier';
 import { validateGatheredJson } from '../gatherAppData';
 import { DevFilesError } from './http';
 import { resolveDevFilePath, type DevFilePath } from './paths';
+import { applySaveDataWrite, checkSaveDataRequest } from './saveData';
 import type {
   DevFilesCommitBody,
   DevFilesConflicts,
+  DevFilesSaveDataWrite,
   DevFilesSchemaIssues,
   DevFilesWriteStatus,
 } from '../../src/_engine/debug/DevFilesProtocol';
@@ -17,8 +19,9 @@ import { DEV_FILES_CACHE_DIR, sha256, type DevFilesStage } from './stage';
  * `POST commit` (p342 §2.3): a batch of writes that all land or none does.
  * 1. Every write is checked before anything is written: its path, its content (a JSON value is
  *    validated against its gathered schema and formatted with Prettier; a staged file must not
- *    have expired), the sizes and the `expectedHash`es. A write whose bytes equal the file's is
- *    `unchanged` and isn't written (no file event, no gather).
+ *    have expired; a save entry is put into the file's JSON, `devFiles/saveData.ts`, which is
+ *    then a JSON value), the sizes and the `expectedHash`es. A write whose bytes equal the
+ *    file's is `unchanged` and isn't written (no file event, no gather).
  * 2. Each write goes to a temporary file next to its target, then each existing target is copied
  *    to `.cache/dev-files/backup/<commit>/`, then the temporaries are renamed into place. A
  *    failure before the renames removes the temporaries and the folders the batch created; one
@@ -51,6 +54,7 @@ type RequestedWrite = {
   json?: unknown;
   hasJson: boolean;
   stageId?: string;
+  saveData?: DevFilesSaveDataWrite;
 };
 
 const badRequest = (message: string): never => {
@@ -73,7 +77,10 @@ const parseRequest = (body: unknown): RequestedWrite[] => {
     paths.add(writePath);
     const hasJson = 'json' in w;
     const hasStage = 'stageId' in w;
-    if (hasJson === hasStage) badRequest(`${writePath}: give either json or stageId`);
+    const hasSaveData = 'saveData' in w;
+    if (Number(hasJson) + Number(hasStage) + Number(hasSaveData) !== 1) {
+      badRequest(`${writePath}: give one of json, stageId or saveData`);
+    }
     if (hasStage && typeof w.stageId !== 'string') badRequest(`${writePath}: bad stageId`);
     const expectedHash = w.expectedHash;
     if (
@@ -89,6 +96,7 @@ const parseRequest = (body: unknown): RequestedWrite[] => {
       json: w.json,
       hasJson,
       stageId: w.stageId as string | undefined,
+      saveData: hasSaveData ? checkSaveDataRequest(writePath, w.saveData) : undefined,
     };
   });
 };
@@ -112,17 +120,28 @@ const planWrites = async (requested: RequestedWrite[], stage: DevFilesStage) => 
   const targets = await Promise.all(requested.map((write) => resolveDevFilePath(write.path)));
 
   const schemaIssues: DevFilesSchemaIssues = [];
-  const contents: { data: Buffer; stageId?: string }[] = [];
+  /** `currentHash`: a save entry's file as it was read (else it's read for the conflict check) */
+  const contents: { data: Buffer; stageId?: string; currentHash?: string }[] = [];
   for (let i = 0; i < requested.length; i++) {
     const write = requested[i];
     const target = targets[i];
-    if (write.hasJson !== target.isJson) {
-      badRequest(`${target.repoPath}: a .json file takes json, any other a stageId`);
+    let json = write.json;
+    let currentHash: string | undefined;
+    if (write.saveData) {
+      const result = await applySaveDataWrite(target, write.saveData);
+      currentHash = result.currentHash;
+      if ('unchanged' in result) {
+        contents.push({ data: result.unchanged, currentHash });
+        continue;
+      }
+      json = result.json;
+    } else if (write.hasJson !== target.isJson) {
+      badRequest(`${target.repoPath}: a .json file takes json or saveData, any other a stageId`);
     }
-    if (write.hasJson) {
-      const issues = validateGatheredJson(target.repoPath, write.json);
+    if (write.hasJson || write.saveData) {
+      const issues = validateGatheredJson(target.repoPath, json);
       if (issues) schemaIssues.push({ path: target.repoPath, issues });
-      contents.push({ data: Buffer.from(await formatJson(write.json, target.absPath)) });
+      contents.push({ data: Buffer.from(await formatJson(json, target.absPath)), currentHash });
     } else {
       const entry = stage.get(write.stageId as string);
       contents.push({ data: await fs.readFile(entry.file), stageId: write.stageId });
@@ -157,7 +176,7 @@ const planWrites = async (requested: RequestedWrite[], stage: DevFilesStage) => 
   for (let i = 0; i < requested.length; i++) {
     const target = targets[i];
     const { data, stageId } = contents[i];
-    const currentHash = await readHash(target.absPath);
+    const currentHash = contents[i].currentHash ?? (await readHash(target.absPath));
     const expected = requested[i].expectedHash;
     if (expected !== undefined && expected !== currentHash) {
       conflicts.push({ path: target.repoPath, currentHash });

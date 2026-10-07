@@ -216,6 +216,15 @@ export type AppConfig = {
     /** Max number of history entries kept per scene bucket. Default 50. */
     historySize?: number;
   };
+  /** The dev file server's writes from debug tools (debug env with `yarn dev` only, see
+   * `debug/DevFiles.ts`). */
+  devFiles?: {
+    /** How many `__saveData` entries a save keeps per scene in an asset JSON, the new one
+     * included (older ones are dropped): -1 = all, 0 = saving into `__saveData` is off. The
+     * Debug tools tab's "File server" folder overrides it per browser. Always 0 outside the debug
+     * env. Default 20. */
+    saveHistorySize?: number;
+  };
   /** Keyed by window kind (a window's id when it has no kind) */
   draggableWindows?: {
     [kind: string]: Partial<DraggableWindow> & {
@@ -275,6 +284,9 @@ let config: AppConfig = {
   },
   undoRedo: {
     historySize: 50,
+  },
+  devFiles: {
+    saveHistorySize: 20,
   },
   postFx: {
     enabled: true,
