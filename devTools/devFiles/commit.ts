@@ -177,10 +177,13 @@ const planWrites = async (requested: RequestedWrite[], stage: DevFilesStage) => 
   return planned;
 };
 
+/** A commit's temporary files end with this (the scene gatherer ignores them) */
+export const DEV_FILES_TEMP_SUFFIX = '.aek-tmp';
+
 const tempFileFor = (absPath: string) =>
   path.join(
     path.dirname(absPath),
-    `${path.basename(absPath)}.${randomBytes(6).toString('hex')}.aek-tmp`
+    `${path.basename(absPath)}.${randomBytes(6).toString('hex')}${DEV_FILES_TEMP_SUFFIX}`
   );
 
 const removeQuietly = async (file: string) => {

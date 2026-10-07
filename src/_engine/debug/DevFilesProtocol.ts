@@ -73,3 +73,22 @@ export type DevFilesSchemaIssues = { path: string; issues: { path: string; messa
 
 /** `CONFLICT`'s details: the hashes on disk now (null: no file) */
 export type DevFilesConflicts = { path: string; currentHash: string | null }[];
+
+/** The scene gatherer's custom HMR event (`devTools/sceneGathererPlugin.ts`), sent after each
+ * gather the dev server runs, before its `full-reload` */
+export const AEK_GATHER_EVENT = 'aek:gather';
+
+export type DevDataGatheredEvent = {
+  /** `failed`: the pipeline couldn't start or the gather failed, the generated data is as it was */
+  status: 'done' | 'failed';
+  /** The changed files the run reacted to (asset JSONs and the files they read, gathered JSONs,
+   * `assets.config.json`, `src/CONFIG.ts`), repo-relative */
+  files: string[];
+  /** The assets the pipeline failed to build: the gather used their sources */
+  assetErrors: { id: string; reason: string }[];
+  /** A full reload follows. False after a failure or an asset error: the error overlay shows
+   * instead, and the page keeps the data it has. */
+  willReload: boolean;
+  /** What failed (`failed` only) */
+  message?: string;
+};

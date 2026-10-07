@@ -1,8 +1,14 @@
 import { IS_DEBUG_ENV } from '../core/Config';
 import { loadDebugModuleAsync } from '../utils/helpers';
-import type { DevFilesCommitBody, DevFilesErrorCode, DevFilesStatusBody } from './DevFilesProtocol';
+import type {
+  DevDataGatheredEvent,
+  DevFilesCommitBody,
+  DevFilesErrorCode,
+  DevFilesStatusBody,
+} from './DevFilesProtocol';
 
 export type {
+  DevDataGatheredEvent,
   DevFilesCommitBody,
   DevFilesConflicts,
   DevFilesErrorCode,
@@ -22,7 +28,8 @@ export type {
  * repo-relative and must be in `src/app/`, `src/toolkit/` or `src/public/` (not
  * `src/public/aek-assets/`), with a `.json`, `.png`, `.jpg`, `.jpeg` or `.webp` extension. A
  * write is an ordinary file event: the scene gatherer and the asset pipeline run as for an
- * editor save, and the page reloads after the gather.
+ * editor save, and the page reloads after the gather ({@link onDevDataGathered} tells how it
+ * went, before the reload).
  */
 
 type DevFilesModule = typeof import('../core/Debug/_dbg__DevFiles');
@@ -149,7 +156,8 @@ export const getDevFilesStatus = async (): Promise<DevFilesStatus> => {
  * Writes a batch of files into the repo: every write lands or none does. A blob is uploaded
  * (staged) first, then the batch is committed.
  * @returns per file its `sha256` and whether it was `created`, `updated` or `unchanged` (an
- * unchanged file isn't written, so it sets off no gather)
+ * unchanged file isn't written, so it sets off no gather: a batch of unchanged files gets no
+ * {@link onDevDataGathered} event)
  * @throws {@link DevFilesError}
  */
 export const writeDevFiles = async (writes: DevFileWrite[]): Promise<DevFilesCommitBody> =>
@@ -172,3 +180,27 @@ export const readDevFile = async (path: string): Promise<DevFileRead | null> =>
  */
 export const encodePNG = async (source: PNGSource, opts?: EncodePNGOpts): Promise<Blob> =>
   (await requireDevFiles())._encodePNG(source, opts);
+
+/**
+ * Calls `fn` after each gather the dev server runs (a dev files write, an editor save), with how
+ * it went, the changed files and whether the page reloads next. A tool finds its own write by
+ * one of the paths it wrote in `files`. The reload waits for a promise `fn` returns, up to 2 s
+ * (eg. to save a note that survives it). Debug env with the dev server only, else a no-op.
+ * @returns a function that removes the listener
+ */
+export const onDevDataGathered = (
+  fn: (event: DevDataGatheredEvent) => void | Promise<void>
+): (() => void) => {
+  let isRemoved = false;
+  let remove: (() => void) | null = null;
+  loadDevFiles().then(
+    (module) => {
+      if (module && !isRemoved) remove = module._onDevDataGathered(fn);
+    },
+    () => undefined // loadDebugModuleAsync logged it
+  );
+  return () => {
+    isRemoved = true;
+    remove?.();
+  };
+};

@@ -7,16 +7,19 @@ import {
   type PNGSource,
 } from '../../debug/DevFiles';
 import {
+  AEK_GATHER_EVENT,
   DEV_FILES_HASH_HEADER,
   DEV_FILES_ROUTE_BASE,
   DEV_FILES_TOKEN_HEADER,
   DEV_FILES_TOKEN_META,
   type DevFilesCommitBody,
+  type DevDataGatheredEvent,
   type DevFilesCommitRequest,
   type DevFilesErrorBody,
   type DevFilesStageBody,
   type DevFilesStatusBody,
 } from '../../debug/DevFilesProtocol';
+import { lerror } from '../../utils/Logger';
 import { encodeRGBA8PNG } from './_dbg__PNGEncoder';
 
 /** The dev files' browser side (p342 §2.4); the public API is `debug/DevFiles.ts`. */
@@ -210,4 +213,39 @@ export const _encodePNG = async (source: PNGSource, opts?: EncodePNGOpts) => {
     );
   }
   return encodeRGBA8PNG(data, width, height, flipY);
+};
+
+// The gatherer's event (§2.5)
+
+/** How long the reload after a gather waits for the listeners' promises */
+const GATHER_LISTENERS_TIMEOUT_MS = 2000;
+
+const gatherListeners = new Set<(event: DevDataGatheredEvent) => unknown>();
+
+/** Vite's client handles the next message (the `full-reload`) once this settles */
+const dispatchGatherEvent = async (event: DevDataGatheredEvent) => {
+  const settled = Promise.all(
+    [...gatherListeners].map(async (fn) => {
+      try {
+        await fn(event);
+      } catch (err) {
+        lerror('A dev data gathered listener failed', err);
+      }
+    })
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, GATHER_LISTENERS_TIMEOUT_MS);
+  });
+  await Promise.race([settled, timeout]);
+  clearTimeout(timer);
+};
+
+import.meta.hot?.on(AEK_GATHER_EVENT, dispatchGatherEvent);
+
+export const _onDevDataGathered = (fn: (event: DevDataGatheredEvent) => unknown) => {
+  gatherListeners.add(fn);
+  return () => {
+    gatherListeners.delete(fn);
+  };
 };
