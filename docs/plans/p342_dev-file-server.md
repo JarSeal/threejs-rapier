@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Dev tooling, Debug
 Blocks: p351_impostor-billboard-lod.md (Phase 4's export)
 Related: p304_procedural-texture-baker.md (D5's PNG export), \_DONE_p085_material-editor-params-and-persistence.md (overrides that could go into the JSON), \_DONE_p069_character-live-config-editing.md, \_DONE_p300_asset-optimization-pipeline-plan.md (encodes what is written)
@@ -182,7 +182,7 @@ As built:
   (the forced rename failures); `--url http://localhost:8080` runs against a running `yarn dev`
   and skips those. It writes into `src/app/__devFilesSelfCheck__/` and removes it.
 
-### Phase 2 — Client API and gatherer event
+### Phase 2 — Client API and gatherer event — done
 
 §2.4 and §2.5: `debug/DevFiles.ts`, `_dbg__DevFiles.ts`, `encodePNG`, the `aek:gather` event, and
 a "Dev files" row in the Debug tools tab (on, localhost only, off, unavailable).
@@ -191,6 +191,42 @@ a "Dev files" row in the Debug tools tab (on, localhost only, off, unavailable).
 `encodePNG`; the pipeline encodes it, `onDevDataGathered` reports it, the page reloads and the
 texture loads from its KTX2. A write in production and with `AEK_DEV_FILES=false` reports
 unavailable.
+
+As built:
+
+- The protocol (route names, headers, the bodies, the `aek:gather` event) moved from
+  `devTools/devFiles/protocol.ts` to `src/_engine/debug/DevFilesProtocol.ts`: the engine's public
+  API needs its types, and imports go from `devTools/` to `src/`, never back. It has no imports,
+  so Node loads it too.
+- `getDevFilesStatus()` never rejects: `{ available: true, server }` or
+  `{ available: false, reason, message, server }`, the reasons `NOT_DEBUG_ENV`, `NO_DEV_SERVER`,
+  `UNREACHABLE`, `NOT_ENABLED`, `NOT_LOCAL`, `NO_TOKEN`. `DevFilesError` adds two client codes:
+  `UNAVAILABLE` (not the debug env, no dev server, no token in the page) and `NETWORK`.
+- `writeDevFiles(writes)` has no `opts`. `readDevFile(path)` resolves `null` for a missing file
+  and always returns `bytes`, plus `json` for a `.json` path.
+- `encodePNG(source, { flipY? })` encodes `ImageData` and RGBA8 buffers with its own encoder
+  (`core/Debug/_dbg__PNGEncoder.ts`: libpng's filter heuristic, `CompressionStream` deflate), not
+  `convertToBlob`: a canvas stores premultiplied alpha and loses a transparent pixel's colour,
+  which an impostor atlas's dilation writes (p351). Canvases go through their own encoder.
+- `aek:gather` carries `willReload` and, when `failed`, `message`. Every gather that wrote the
+  generated data reloads the page, asset errors too (Vite reloads on the change of
+  `generatedAppData.json`, which nothing accepts; the asset error overlay the gatherer shows
+  doesn't survive it, which predates this plan). Only a `failed` gather keeps the page. `files`
+  lists the changed files the run reacted to, so a new PNG that no asset reads yet isn't in it;
+  a batch of `unchanged` files sets off no gather and no event.
+- `onDevDataGathered(fn)` returns its remover. Vite's client handles the `full-reload` only after
+  the listeners of the message before it settled, so the reload waits for `fn`'s promise (capped
+  at 2 s).
+- The gatherer ignores a commit's `*.aek-tmp` files (after a failed gather every added file
+  queues a run).
+- Phase 1 fix: chokidar reads a new folder before it watches it, so the files a commit renames
+  into a folder it created were never reported (the read saw the temporaries). The commit returns
+  them and the plugin emits `add` for each on `server.watcher`.
+- The row's texts: `On (localhost only)`, `On (LAN too)`, `Off (AEK_DEV_FILES)` and
+  `Unavailable (…)` with the reason. It asks the server on every mount of the tab.
+- Testing from a page: after a gather the app runs the invalidated modules (`Scene.ts` and its
+  importers) under `?t=` URLs, so an `import('/_engine/...')` from the test gets fresh copies of
+  them; drive the UI instead.
 
 ### Phase 3 — `__saveData` writes
 

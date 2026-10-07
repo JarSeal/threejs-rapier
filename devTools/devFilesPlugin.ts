@@ -116,13 +116,16 @@ export const devFilesPlugin = (): Plugin => {
           sendJson(res, 200, await stage.add(body));
         } else if (route.name === 'commit' && method === 'POST') {
           const body = await readBody(req, MAX_BATCH_BYTES + COMMIT_BODY_SLACK_BYTES);
-          const result = await commitDevFiles(parseJsonBody(body), {
+          const { body: result, filesInNewFolders } = await commitDevFiles(parseJsonBody(body), {
             stage,
             faults: areFaultsOn ? parseFaults(req) : undefined,
           });
           console.log(
             `\x1b[36m[Dev files]\x1b[0m commit: ${result.results.map((write) => `${write.status} ${write.path}`).join(', ')}`
           );
+          // chokidar may have missed them (commitDevFiles); a duplicate 'add' is harmless: the
+          // gatherer's debounce merges it
+          for (const file of filesInNewFolders) server.watcher.emit('add', file);
           sendJson(res, 200, result);
         } else {
           throw new DevFilesError('NOT_FOUND', `No route ${method} ${route.name}`);

@@ -221,11 +221,12 @@ export const sceneGathererPlugin = (): Plugin => ({
           'Check the terminal for the gatherer’s errors.'
         );
       } else if (assetErrors.length) {
-        // The gather is done (the asset falls back to its source), but the error needs a look
+        // The gather is done (the asset falls back to its source), but the error needs a look.
+        // Vite reloads the page anyway: it changed the generated data, which nothing accepts
         sendGatherEvent(server, work, {
           status: 'done',
           assetErrors: toAssetErrors(assetErrors),
-          willReload: false,
+          willReload: true,
         });
         sendError(server, '[Asset Pipeline Error] An asset failed', formatAssetErrors(assetErrors));
       } else {

@@ -44,6 +44,11 @@ import {
   setAxesGizmoVisible,
 } from '../../debug/AxesGizmo';
 import { openDebugKeyShortcutsDialog } from './_dbg__DebugKeyShortcuts';
+import {
+  getDevFilesStatus,
+  type DevFilesStatus,
+  type DevFilesUnavailableReason,
+} from '../../debug/DevFiles';
 
 export { openDebugKeyShortcutsDialog as _openDebugKeyShortcutsDialog };
 import {
@@ -57,6 +62,35 @@ const LS_KEY = 'AEK_debugTools';
 const TAB_ID = 'debugToolsControls';
 /** The Debug Camera folder's values, synced from the viewport (see onOpen below). */
 let debugCamPanelProxy: DebugCamLSProps | null = null;
+
+/** The "Dev files" row (p342): what getDevFilesStatus said at the tab's last mount. The status
+ * changes only with a dev server restart, which reloads the page. */
+const devFilesRow = { text: 'Checking…' };
+
+const DEV_FILES_UNAVAILABLE_TEXTS: Record<DevFilesUnavailableReason, string> = {
+  NOT_DEBUG_ENV: 'Unavailable (not debug env)',
+  NO_DEV_SERVER: 'Unavailable (no dev server)',
+  UNREACHABLE: 'Unavailable (no answer)',
+  NOT_ENABLED: 'Off (AEK_DEV_FILES)',
+  NOT_LOCAL: 'Unavailable (LAN device)',
+  NO_TOKEN: 'Unavailable (reload page)',
+};
+
+const describeDevFilesStatus = (status: DevFilesStatus) => {
+  if (status.available) {
+    return status.server.writesFromLAN ? 'On (LAN too)' : 'On (localhost only)';
+  }
+  return DEV_FILES_UNAVAILABLE_TEXTS[status.reason];
+};
+
+const refreshDevFilesRow = () => {
+  getDevFilesStatus()
+    .then(describeDevFilesStatus, () => 'Unavailable (failed to load)')
+    .then((text) => {
+      devFilesRow.text = text;
+      updateDebuggerTab(TAB_ID);
+    });
+};
 
 let firstDebugToolsStateLoaded = false;
 let debugToolsState: DebugToolsState = {
@@ -132,8 +166,10 @@ const createDebugToolsDebugGUI = () => {
     // Live-refresh the Debug Camera folder from the viewport (dragging the debug camera with
     // OrbitControls): debugCameraSystem calls this only on frames where OrbitControls reported
     // a change. Unregistered on unmount, so a stale callback never runs against a disposed pane.
+    // The Dev files row asks the dev server again on every mount.
     onOpen: () => {
       setDebugCameraPanelRefresh(refreshDebugCameraPanelFromViewport);
+      refreshDevFilesRow();
       return () => setDebugCameraPanelRefresh(null);
     },
     content: () => [{ pane: true, content: buildDebugToolsItems() }],
@@ -430,6 +466,8 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
         if (!fitAllDraggableWindowsToScreen()) addDebugToast({ title: 'No open windows' });
       },
     },
+    // Whether debug tools can write files into the repo (p342, debug/DevFiles.ts)
+    { key: 'text', target: devFilesRow, label: 'Dev files', readonly: true, interval: 0 },
     { type: 'separator' },
 
     // Scene listing

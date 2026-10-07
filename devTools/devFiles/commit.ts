@@ -201,7 +201,10 @@ const writeFailed = (message: string, err: unknown, details?: unknown): never =>
   throw new DevFilesError('WRITE_FAILED', `${message}: ${(err as Error).message}`, details);
 };
 
-/** Writes the batch's changed files, all or none */
+/**
+ * Writes the batch's changed files, all or none.
+ * @returns the files written into a folder the batch created
+ */
 const applyWrites = async (writes: PlannedWrite[], faults: CommitFaults) => {
   const commitId = `${Date.now()}-${randomBytes(4).toString('hex')}`;
   const backupDir = path.join(BACKUP_DIR, commitId);
@@ -268,28 +271,44 @@ const applyWrites = async (writes: PlannedWrite[], faults: CommitFaults) => {
     writeFailed('The batch failed, every file was restored', err);
   }
   await pruneBackups();
+  return writes
+    .map((write) => write.target.absPath)
+    .filter((file) => createdDirs.some((dir) => file.startsWith(dir + path.sep)));
 };
 
 /** One commit at a time: two batches never interleave their checks and renames */
 let queue: Promise<unknown> = Promise.resolve();
 
+export type DevFilesCommitOutcome = {
+  body: DevFilesCommitBody;
+  /**
+   * The files written into a folder the batch created (absolute). The file watcher may never
+   * report them: chokidar reads a new folder before it watches it, and a rename in between is
+   * missed (it saw the temporary file). The plugin reports them itself.
+   */
+  filesInNewFolders: string[];
+};
+
 export const commitDevFiles = (
   body: unknown,
   opts: { stage: DevFilesStage; faults?: CommitFaults }
-): Promise<DevFilesCommitBody> => {
+): Promise<DevFilesCommitOutcome> => {
   const run = async () => {
     const planned = await planWrites(parseRequest(body), opts.stage);
     const changed = planned.filter((write) => write.status !== 'unchanged');
-    if (changed.length) await applyWrites(changed, opts.faults ?? {});
+    const filesInNewFolders = changed.length ? await applyWrites(changed, opts.faults ?? {}) : [];
     for (const write of planned) {
       if (write.stageId) opts.stage.remove(write.stageId);
     }
     return {
-      results: planned.map((write) => ({
-        path: write.target.repoPath,
-        sha256: write.sha256,
-        status: write.status,
-      })),
+      body: {
+        results: planned.map((write) => ({
+          path: write.target.repoPath,
+          sha256: write.sha256,
+          status: write.status,
+        })),
+      },
+      filesInNewFolders,
     };
   };
   const result = queue.then(run, run);
