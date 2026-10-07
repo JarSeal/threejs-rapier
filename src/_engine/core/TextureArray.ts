@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { int, texture } from 'three/tsl';
 import { retagAssetOwner } from './Assets/AssetOwners';
 import { getRenderer } from './Renderer';
 import { getGeneratedAppData } from './Scene';
@@ -69,6 +70,7 @@ export type TextureArrayInfo = {
 };
 
 type MipLevel = { data: Uint8Array | Uint16Array; width: number; height: number };
+type TextureUV = Parameters<typeof texture>[1];
 
 type LoadedMember = {
   key: string;
@@ -419,6 +421,63 @@ export const getTextureArray = (id: string) => {
 /** What an array was built from (see {@link TextureArrayInfo}), or undefined for other textures. */
 export const getTextureArrayInfo = (texture: THREE.Texture) =>
   texture.userData.textureArray as TextureArrayInfo | undefined;
+
+/**
+ * The layer a member is in: an index into {@link TextureArrayInfo}'s `members` (a runtime
+ * array's member ids or file names, a texture array asset's layer names). Undefined when the
+ * array isn't registered, wasn't built by the engine, or has no such member.
+ * @param array the array's registry id, or the array texture
+ * @param member the member's id or file name, or the asset's layer name
+ */
+export const getArrayLayerIndex = (array: string | THREE.Texture, member: string) => {
+  const tex = typeof array === 'string' ? getTexture(array) : array;
+  const index = (tex && getTextureArrayInfo(tex)?.members.indexOf(member)) ?? -1;
+  return index < 0 ? undefined : index;
+};
+
+/** The array's layer index node, checked against its layers when given as a number or name. */
+const toLayerNode = (array: THREE.Texture, layer: number | string | THREE.Node) => {
+  if (typeof layer === 'object') return layer;
+  const arrayId = array.userData.id ?? array.uuid;
+  if (typeof layer === 'string') {
+    const index = getArrayLayerIndex(array, layer);
+    if (index === undefined) {
+      const members = getTextureArrayInfo(array)?.members;
+      throw new Error(
+        `sampleArrayLayer: texture array "${arrayId}" has no member "${layer}"${members ? ` (members: ${members.join(', ')})` : ': it has no member list (not built by buildTextureArray nor a texture array asset)'}.`
+      );
+    }
+    return int(index);
+  }
+  const depth = (array.image as { depth?: number }).depth ?? 1;
+  if (!Number.isInteger(layer) || layer < 0 || layer >= depth) {
+    throw new Error(
+      `sampleArrayLayer: texture array "${arrayId}" has layers 0-${depth - 1}, not ${layer}.`
+    );
+  }
+  return int(layer);
+};
+
+/**
+ * Samples one layer of an array texture (`texture(array, uv).depth(layer)`). Returns the texture
+ * node, so `.level()`, `.bias()` or `.grad()` can follow.
+ * @param array an array texture (buildTextureArray, a texture array asset, any `--layers` KTX2)
+ * @param uvNode the UV, eg. the mesh's `uv()`: each layer wraps and mips on its own
+ * @param layer the layer's index, its member's name (see {@link getArrayLayerIndex}), or an int
+ * node (eg. a per-instance attribute: one material for many layers)
+ */
+export const sampleArrayLayer = (
+  array: THREE.Texture,
+  uvNode: THREE.Node<'vec2'>,
+  layer: number | string | THREE.Node
+) => {
+  if (!isArrayTexture(array)) {
+    throw new Error(
+      `sampleArrayLayer: texture "${array.userData.id ?? array.uuid}" isn't an array texture.`
+    );
+  }
+  return texture(array, uvNode as unknown as TextureUV).depth(toLayerNode(array, layer));
+};
 
 const swapLayer = async (array: TextureArray, layer: number, member: TextureArrayMember) => {
   const info = getTextureArrayInfo(array)!;

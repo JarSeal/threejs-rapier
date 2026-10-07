@@ -17,7 +17,9 @@ import {
 } from '../_engine/core/Texture';
 import {
   buildTextureArray,
+  getArrayLayerIndex,
   getTextureArrayInfo,
+  sampleArrayLayer,
   setTextureArrayLayer,
   type TextureArray,
 } from '../_engine/core/TextureArray';
@@ -36,9 +38,11 @@ import { lerror } from '../_engine/utils/Logger';
  *   layer 1 → s2 (red, blue), PNG [l0, l1] with layer 0 → l3 (yellow, green).
  * - row 4: `ktx create --layers` files loaded by loadTextureAsync (Phase 2's runtime side).
  * - column 4, rows 2-4: the layers of the `p299TestArray` asset (`*.textureArray.json`, loaded by
- *   the scene loader), column 5 the files they were built from (resized to 512² for the array).
+ *   the scene loader), picked by layer name, column 5 the files they were built from (resized to
+ *   512² for the array).
  * - column 5, rows 0-1: the one-layer `p299TestArray1` asset, then its file.
- * `window.__textureArrays` holds the checks' results and `project()` for the harness.
+ * Every array quad samples through `sampleArrayLayer` (Phase 4). `window.__textureArrays` holds the
+ * checks' results and `project()` for the harness.
  */
 
 const URL_BASE = '/debugger/assets/testOptimized/p299';
@@ -105,20 +109,21 @@ const addLayerRow = (name: string, array: TextureArray, row: number) => {
   const cellUv = vec2(x.sub(cell.mul(CELL)), meshUv().y);
   // The gradients of the continuous coordinate: cellUv jumps at each cell's edge
   const continuous = vec2(x, meshUv().y);
-  const sampled = sampleTexture(array, cellUv)
-    .depth(int(cell) as unknown as Node)
-    .grad(dFdx(continuous) as unknown as Node, dFdy(continuous) as unknown as Node);
+  const sampled = sampleArrayLayer(array, cellUv, int(cell) as unknown as Node).grad(
+    dFdx(continuous) as unknown as Node,
+    dFdy(continuous) as unknown as Node
+  );
   const mat = addQuad(name, sampled as unknown as Node<'vec4'>, row, 0, true);
   mat.maskNode = cellUv.x.lessThanEqual(1) as unknown as Node;
 };
 
-const addLayerQuad = (name: string, tex: THREE.Texture, layer: number, row: number, col: number) =>
-  addQuad(
-    name,
-    sampleTexture(tex, meshUv()).depth(int(layer) as unknown as Node) as unknown as Node<'vec4'>,
-    row,
-    col
-  );
+const addLayerQuad = (
+  name: string,
+  tex: THREE.Texture,
+  layer: number | string,
+  row: number,
+  col: number
+) => addQuad(name, sampleArrayLayer(tex, meshUv(), layer) as unknown as Node<'vec4'>, row, col);
 
 const nextFrames = (count: number) =>
   new Promise<void>((resolve) => {
@@ -180,8 +185,9 @@ const buildAssetColumns = async (assets: ScenePrimitiveAssets) => {
     `${URL_BASE}/l1.png`,
     '/debugger/assets/testTextures/cubemap01_positive_y.png',
   ];
+  const layerNames = getTextureArrayInfo(arrays.asset)!.members;
   for (const [layer, fileName] of sources.entries()) {
-    addLayerQuad(`asset_L${layer}`, arrays.asset, layer, 2 + layer, 4);
+    addLayerQuad(`asset_L${layer}`, arrays.asset, layerNames[layer], 2 + layer, 4);
     const source = await loadSourceFile(`assetSource${layer}`, fileName);
     addQuad(`assetSource${layer}`, sampleTexture(source, meshUv()), 2 + layer, 5);
   }
@@ -215,6 +221,36 @@ const buildAssetColumns = async (assets: ScenePrimitiveAssets) => {
     ),
     notSwappable: await expectError(() => setTextureArrayLayer('p299TestArray', 0, file('l0.png'))),
     asMember: await expectError(() => buildTextureArray({ members: ['p299TestArray'] })),
+  };
+};
+
+/** Phase 4's lookups and sampleArrayLayer's errors. */
+const checkHelpers = (memberIds: string[], plainTexture: THREE.Texture) => {
+  const { results, arrays } = state;
+  results.layerIndex = {
+    assetByName: ['testTexture', 'l1', 'cubemap01_positive_y'].map((name) =>
+      getArrayLayerIndex('p299TestArray', name)
+    ),
+    assetOneLayer: getArrayLayerIndex(arrays.assetOneLayer, 'l2'),
+    runtimeById: memberIds.map((id) => getArrayLayerIndex(arrays.registered, id)),
+    runtimeByFile: getArrayLayerIndex('textureArrays/swapPng', `${URL_BASE}/l1.png`),
+    unknownMember: getArrayLayerIndex('p299TestArray', 'noSuchLayer') ?? null,
+    unknownArray: getArrayLayerIndex('noSuchArray', 'l1') ?? null,
+    notAnArray: getArrayLayerIndex(plainTexture, 'l1') ?? null,
+  };
+  const expectSampleError = (fn: () => unknown) => {
+    try {
+      fn();
+      return 'FAILED: did not throw';
+    } catch (error) {
+      return (error as Error).message;
+    }
+  };
+  results.sampleErrors = {
+    unknownName: expectSampleError(() => sampleArrayLayer(arrays.asset, meshUv(), 'noSuchLayer')),
+    outOfRange: expectSampleError(() => sampleArrayLayer(arrays.asset, meshUv(), 3)),
+    notInteger: expectSampleError(() => sampleArrayLayer(arrays.asset, meshUv(), 1.5)),
+    notAnArray: expectSampleError(() => sampleArrayLayer(plainTexture, meshUv(), 0)),
   };
 };
 
@@ -288,6 +324,7 @@ const build = async (assets: ScenePrimitiveAssets) => {
   }
 
   await buildAssetColumns(assets);
+  checkHelpers(memberIds, testTexture);
 
   // The errors a bad member list gets
   results.errors = {

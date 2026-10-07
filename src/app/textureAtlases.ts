@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { float, fwidth, max, mix, step, texture, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { float, fwidth, max, mix, step, texture, uv, vec3, vec4 } from 'three/tsl';
 // The real generic `Node<T>` typings (the `three/tsl` `Node` is a loose local shim)
 import type { Node, TextureNode } from 'three/webgpu';
 import { createCameraEntity, getActiveCamera } from '../_engine/core/CameraManager';
@@ -15,7 +15,12 @@ import {
   loadTextureAsync,
   type TextureProps,
 } from '../_engine/core/Texture';
-import { getTextureAtlasInfo, type TextureAtlasInfo } from '../_engine/core/TextureAtlas';
+import {
+  getAtlasCell,
+  getTextureAtlasInfo,
+  sampleAtlasCell,
+  type TextureAtlasInfo,
+} from '../_engine/core/TextureAtlas';
 import { lerror } from '../_engine/utils/Logger';
 
 /**
@@ -25,9 +30,11 @@ import { lerror } from '../_engine/utils/Logger';
  * - row 0: the whole slot at each mip level its file has (`.level(n)`), the cells' content rects
  *   outlined in magenta and their padded rects in cyan.
  * - rows 1…levels: each cell (a column per cell, in the cell table's order) sampled through its
- *   UV rect at level 0…levels-1, bilinear. The last row is the phase's exit: no neighbour at the
- *   cell's edges.
- * - the last row: each cell's source file in that slot (empty: the cell has none, its fill).
+ *   UV rect at level 0…levels-1, bilinear (`sampleAtlasCell`, clamped to the cell). The last of
+ *   them is Phase 3's exit: no neighbour at the cell's edges.
+ * - row levels + 1: each cell's source file in that slot (empty: the cell has none, its fill).
+ * - rows levels + 2 and + 3: each cell at level 0 with the UVs overscanned to -0.25..1.25, clamped
+ *   to the cell (its edge texels stretched out) and not (its padding, then its neighbours).
  * A cell's quads have its content's aspect. `window.__textureAtlases` holds the checks' results
  * and `screenRect(name)` for the harness.
  */
@@ -37,7 +44,7 @@ const SLOTS = ['albedo', 'mask'] as const;
 const CELL = 1.2;
 const SLOT_COLUMNS = 7;
 const X0 = -CELL * 6;
-const Y0 = CELL * 3;
+const Y0 = CELL * 3.5;
 /** In front of the debug helpers at the world origin */
 const Z = 2;
 
@@ -148,11 +155,18 @@ const atlasLevelNode = (tex: THREE.Texture, info: TextureAtlasInfo, level: numbe
   return vec4(mix(withPadded, vec3(1, 0, 1), content), 1) as unknown as Node<'vec4'>;
 };
 
-/** One cell at mip `level`: the mesh UV remapped into its content rect */
-const cellLevelNode = (tex: THREE.Texture, rect: number[], level: number) => {
-  const cellUv = mix(vec2(rect[0], rect[1]), vec2(rect[2], rect[3]), meshUv());
+/** One cell at mip `level`, sampled by `sampleAtlasCell` with the mesh UV scaled by `overscan`
+ * around the cell's centre (1: the cell, 1.5: a quarter of it more on each side) */
+const cellLevelNode = (
+  tex: THREE.Texture,
+  cellId: string,
+  level: number,
+  { overscan = 1, clampToCell = true } = {}
+) => {
+  const cellUv = meshUv().sub(0.5).mul(overscan).add(0.5) as unknown as Node<'vec2'>;
   return vec4(
-    sampleTexture(tex, cellUv as unknown as Node).level(float(level) as unknown as Node).rgb,
+    sampleAtlasCell(tex, cellUv, cellId, { clampToCell }).level(float(level) as unknown as Node)
+      .rgb,
     1
   ) as unknown as Node<'vec4'>;
 };
@@ -226,8 +240,17 @@ const buildSlot = async (tex: THREE.Texture, slotIndex: number) => {
     for (let level = 0; level < info.storedLevels; level++) {
       addQuad(
         `${slot}_${cellId}_L${level}`,
-        cellLevelNode(tex, cell.uv, level),
+        cellLevelNode(tex, cellId, level),
         1 + level,
+        col0 + c,
+        aspect
+      );
+    }
+    for (const [i, clampToCell] of [true, false].entries()) {
+      addQuad(
+        `${slot}_${cellId}_overscan${clampToCell ? 'Clamped' : 'Unclamped'}`,
+        cellLevelNode(tex, cellId, 0, { overscan: 1.5, clampToCell }),
+        2 + info.storedLevels + i,
         col0 + c,
         aspect
       );
@@ -290,6 +313,39 @@ const checkErrors = async () => {
   };
 };
 
+/** Phase 4's lookups and sampleAtlasCell's errors. */
+const checkHelpers = (albedo: THREE.Texture) => {
+  const { results } = state;
+  const plain = getTexture('textureAtlases/albedo_red')!;
+  results.cellLookups = {
+    byAtlasId: getAtlasCell(ATLAS_ID, 'metal') ?? null,
+    bySlotId: getAtlasCell(`${ATLAS_ID}.mask`, 'metal') ?? null,
+    bySlotTexture: getAtlasCell(albedo, 'metal') ?? null,
+    unknownCell: getAtlasCell(ATLAS_ID, 'noSuchCell') ?? null,
+    unknownAtlas: getAtlasCell('noSuchAtlas', 'metal') ?? null,
+    notAnAtlas: getAtlasCell(plain, 'metal') ?? null,
+  };
+  const expectSampleError = (fn: () => unknown) => {
+    try {
+      fn();
+      return 'FAILED: did not throw';
+    } catch (error) {
+      return (error as Error).message;
+    }
+  };
+  results.sampleErrors = {
+    unknownCell: expectSampleError(() => sampleAtlasCell(albedo, meshUv(), 'noSuchCell')),
+    notAnAtlas: expectSampleError(() => sampleAtlasCell(plain, meshUv(), 'metal')),
+  };
+  // A rect works on any texture
+  try {
+    sampleAtlasCell(plain, meshUv(), [0, 0, 0.5, 0.5]);
+    results.rectOnPlainTexture = 'ok';
+  } catch (error) {
+    results.rectOnPlainTexture = (error as Error).message;
+  }
+};
+
 const build = async (assets: ScenePrimitiveAssets) => {
   const { results } = state;
   results.sceneTextureIds = Object.keys(assets.textures);
@@ -301,6 +357,7 @@ const build = async (assets: ScenePrimitiveAssets) => {
     await buildSlot(tex, i);
   }
   await checkErrors();
+  checkHelpers(slotTextures[0]);
   return slotTextures;
 };
 

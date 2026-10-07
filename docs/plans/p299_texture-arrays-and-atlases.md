@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-3 implemented
+Status: in progress | Phases 0-3 implemented, Phase 4 section 1
 Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
@@ -569,8 +569,69 @@ gone, and section 4's checks give the same figures):
 
 ### Phase 4 — Helpers and debug (D4, D6)
 
-**Exit:** a mesh remapped into an atlas cell and a mesh sampling an array layer render in
-`debugScene`; the Assets tab shows layers and cells.
+**Exit:** a mesh remapped into an atlas cell renders in the `textureAtlases` scene and a mesh
+sampling an array layer in the `textureArrays` scene; the Assets tab shows layers and cells.
+
+Decided before it started:
+
+- **The exit scenes** are the p299 scenes, not `debugScene` (p300's asset check scene, which lists
+  no textures): they already load the array and atlas assets and have the harness hooks.
+- **Previews** show one mip level at a time, picked in the info window (a thumbnail per layer, or
+  the slot image), not every layer × level: a 16-layer array of 11 levels would be 176 renders.
+- **Lookups:** an atlas has no runtime object, so `getAtlasCell` reads the cell table of a
+  registered slot (undefined until one has loaded). `__layers` is a list (Phase 2), so
+  `getArrayLayerIndex` is an `indexOf` over `TextureArrayInfo.members`, both origins.
+- **Thumbnails** of KTX2 textures can't go through a 2D canvas: they are rendered on the GPU and
+  read back (`readRenderTargetPixelsAsync`, a first in the engine).
+
+#### Section 1: Lookups and TSL helpers — done
+
+`getAtlasCell`, `getArrayLayerIndex`, `sampleArrayLayer` and `sampleAtlasCell` (a cell by id, a
+rect, or a `vec4` node for a per-instance rect; `clampToCell` keeps the sample half a level-0
+texel inside the content rect). The p299 scenes sample through them.
+
+As built (verified in both p299 scenes on WebGPU and WebGL2, the same results on both and the
+atlas scene the same to a mean of 0.003 / 255: the asset's layers picked by name differ from their
+source files by a mean of 0.7-1.8 / 255; clamped overscan stretches each cell's edge texels where
+unclamped shows its padding, then its neighbours):
+
+- `getAtlasCell(atlas, cellId)` (`core/TextureAtlas.ts`) takes the atlas id, a slot's id or a slot
+  texture and returns the cell table entry (`uv`, `size`, `data`), or undefined: an unknown cell or
+  atlas, a texture that isn't a slot, or no slot loaded yet. `TextureAtlas.ts` now imports
+  `Texture.ts` at runtime (`Texture.ts` imports it as types only, so no cycle).
+- `sampleAtlasCell(slot, uv, cell, { clampToCell = true })`: `cell` is a cell id (the slot's table;
+  an unknown id throws, listing the cells), an `AtlasCellRect` (`[u0, v0, u1, v1]`, any texture)
+  or a `vec4` node. The clamp's half texel comes from the file's size on the CPU
+  (`TextureAtlasInfo.width`, else `texture.image`), not a `textureSize` node. Returns the texture
+  node for `.level()` / `.grad()`.
+- `getArrayLayerIndex(array, member)` (`core/TextureArray.ts`) takes an id or the texture; a
+  runtime array's member is its id or file name (`getMemberKey`), an asset's its layer name.
+- `sampleArrayLayer(array, uv, layer)`: `layer` is an index (checked against `image.depth`, so a
+  plain `--layers` KTX2 without a member list works too), a member name or a node. A texture that
+  isn't an array, an unknown name or a bad index throws.
+- Both helpers take the UV explicitly (no default `uv()`), like the plan's signatures.
+- The scenes: `textureArrays` samples every array quad through `sampleArrayLayer` (the asset
+  column by layer name) and reports `layerIndex` and `sampleErrors`; `textureAtlases` samples its
+  cell rows through `sampleAtlasCell` (clamped), adds two overscan rows (UVs -0.25..1.25, clamped
+  and not) and reports `cellLookups`, `sampleErrors` and `rectOnPlainTexture`. Its grid moved up
+  half a cell (`Y0`) for them.
+
+#### Section 2: `remapUVsToAtlasCell` and the exit meshes
+
+A deep clone by default (three r186 frees shared GPU buffers when either geometry is disposed, as
+with LOD chains), `inPlace` rewrites the given one; UVs outside 0..1 warn. A lit mesh remapped
+into a cell (`textureAtlases`) and a lit mesh sampling an array layer (`textureArrays`).
+
+#### Section 3: Assets tab sections
+
+Array and atlas byte sizes (Phase 1's: a dropped array shows none, an uncompressed one leaves out
+its layers); an array section (layers, kind, levels, origin, swappable, CPU copy) and an atlas
+section (layout, cell table).
+
+#### Section 4: Previews
+
+The GPU preview renderer; layer thumbnails and the atlas slot image with the content and padded
+rects and the cell ids on hover, at a picked level. This phase's "As built" and the status line.
 
 ### Phase 5 — JSON binding (D5, after p302 D4)
 
