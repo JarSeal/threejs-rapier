@@ -2389,7 +2389,17 @@
         "testTexture",
         "l1",
         "cubemap01_positive_y"
-      ]
+      ],
+      "__url": "/aek-assets/app/textures/p299TestArray.array.5c60d088.ktx2",
+      "__bytes": {
+        "in": 4471280,
+        "out": 446409
+      },
+      "__vramBytes": {
+        "in": 4194300,
+        "out": 1048656
+      },
+      "__codec": "uastc"
     }
   },
   "materials": {

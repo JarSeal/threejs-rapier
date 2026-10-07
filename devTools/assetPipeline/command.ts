@@ -243,7 +243,8 @@ export type AssetsCommandOpts = {
    * Re-runs the assets that got no output for want of `ktx` with their textures side off, so they
    * pass through as unoptimized outputs (a production build under `AEK_ASSETS_ALLOW_UNOPTIMIZED`,
    * which has no `__sourceUrl` to fall back to). Not cached: the lock keeps the real settings'
-   * entries only. Default: false.
+   * entries only. Not a texture array (p299 D2): it is only ever a KTX2 file, so it stays
+   * `encoderMissing`. Default: false.
    */
   isUnoptimizedFallback?: boolean;
 };
@@ -325,7 +326,9 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
   if (opts.isUnoptimizedFallback) {
     const missing = new Map(
       [...pipelineRun.results].flatMap(([key, result]) =>
-        result.status === 'encoderMissing' ? [[key, result.asset] as const] : []
+        result.status === 'encoderMissing' && result.asset.type !== 'textureArray'
+          ? [[key, result.asset] as const]
+          : []
       )
     );
     if (missing.size) {

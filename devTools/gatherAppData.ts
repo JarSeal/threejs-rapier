@@ -38,6 +38,8 @@ import {
   GENERATED_FIELD_KEYS,
   getAssetResult,
   getGeneratedFields,
+  getTextureArrayGeneratedFields,
+  getTextureArrayResult,
   isMissingOutput,
 } from './assetPipeline/generated';
 import type { PipelineRun, PipelineRunResult } from './assetPipeline/run';
@@ -326,14 +328,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
   // using an asset without one, or over its budget
   const missingOutputs = new Map<PipelineRunResult, Set<string>>();
   const overBudget = new Map<PipelineRunResult, Set<string>>();
-  const checkShippedOutput = (
-    data: Parameters<typeof getGeneratedFields>[3],
-    type: 'texture' | 'importedAsset',
-    jsonFile: string,
-    sceneId: string
-  ) => {
-    if (!isProduction || !opts.pipeline) return;
-    const result = getAssetResult(opts.pipeline, type, jsonFile, data);
+  const checkShippedResult = (result: PipelineRunResult | null, sceneId: string) => {
     if (!result) return;
     const failed = isMissingOutput(result)
       ? missingOutputs
@@ -341,6 +336,19 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
         ? overBudget
         : null;
     failed?.set(result, (failed.get(result) ?? new Set()).add(sceneId));
+  };
+  const checkShippedOutput = (
+    data: Parameters<typeof getGeneratedFields>[3],
+    type: 'texture' | 'importedAsset',
+    jsonFile: string,
+    sceneId: string
+  ) => {
+    if (!isProduction || !opts.pipeline) return;
+    checkShippedResult(getAssetResult(opts.pipeline, type, jsonFile, data), sceneId);
+  };
+  const checkShippedArray = (jsonFile: string, sceneId: string) => {
+    if (!isProduction || !opts.pipeline) return;
+    checkShippedResult(getTextureArrayResult(opts.pipeline, jsonFile), sceneId);
   };
 
   const srcDir = path.resolve(__dirname, '../src');
@@ -664,6 +672,8 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
         ids.textures.push(arrayId);
         arrayJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         arrayJSON.__layers = layers.map((layer) => layer.key);
+        for (const key of GENERATED_FIELD_KEYS) delete (arrayJSON as Record<string, unknown>)[key];
+        Object.assign(arrayJSON, getTextureArrayGeneratedFields(opts.pipeline, fullPath));
         arrayJSON.id = arrayId;
         delete arrayJSON.$schema;
         arrayRegistry[arrayId] = arrayJSON;
@@ -1136,9 +1146,11 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
             return texData;
           }
           if (arrayRegistry[texId]) {
-            // Build time only: the runtime loads the encoded array
+            // Build time only: the runtime loads the encoded array (its generated fields, from
+            // the registry entry: an array has no scene entries)
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { layers, size, optimize, __sourcePath, ...arrayData } = arrayRegistry[texId];
+            checkShippedArray(__sourcePath || '', sceneId);
             if (isProduction) delete arrayData.debugData;
             return arrayData;
           }
@@ -1320,12 +1332,30 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
         const { asset } = result;
         const source = asset.source.kind === 'remote' ? asset.source.url : asset.source.repoPath;
         // The run's one ktx setup failure, and its fix, are printed by the [Assets] lines above
-        const reason = result.status === 'error' ? `failed: ${result.reason}` : 'encoder missing';
+        const reason =
+          result.status === 'error'
+            ? `failed: ${result.reason}`
+            : result.status === 'skipped'
+              ? `no output: ${result.reason}`
+              : 'encoder missing';
         console.error(`  ${asset.id} (${source}; ${[...sceneIds].join(', ')}): ${reason}`);
       }
-      if (results.some((result) => result.status === 'encoderMissing')) {
+      const isArray = (result: PipelineRunResult) => result.asset.type === 'textureArray';
+      const encoderMissing = results.filter((result) => result.status === 'encoderMissing');
+      if (encoderMissing.length) {
+        const unoptimized = encoderMissing.some((result) => !isArray(result))
+          ? ` Or ship them unoptimized in this build: ${ALLOW_UNOPTIMIZED_ENV_KEY}=true yarn build`
+          : '';
+        const arrays = encoderMissing.some(isArray)
+          ? ` A texture array has no unoptimized form: it needs ktx, even with ${ALLOW_UNOPTIMIZED_ENV_KEY}.`
+          : '';
         console.error(
-          `  Without ktx: set it up (see [Assets] above), run yarn assets, and commit src/public/aek-assets/ and assets.lock.json. Or ship them unoptimized in this build: ${ALLOW_UNOPTIMIZED_ENV_KEY}=true yarn build`
+          `  Without ktx: set it up (see [Assets] above), run yarn assets, and commit src/public/aek-assets/ and assets.lock.json.${unoptimized}${arrays}`
+        );
+      }
+      if (results.some((result) => result.status === 'skipped' && isArray(result))) {
+        console.error(
+          `  A texture array is only ever its KTX2 output, and it has none while its textures side is off (a rule's "textures": false, the project switches): turn it on for the array, or don't use the array in a shipped scene.`
         );
       }
       if (results.some((result) => result.status === 'error')) {

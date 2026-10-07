@@ -117,9 +117,14 @@ const loadMember = async (member: TextureArrayMember): Promise<LoadedMember> => 
   const registered = typeof member === 'string' || member.id ? getTexture(key) : undefined;
   if (registered) return { key, texture: registered, isBorrowed: true };
 
+  // Production data has only the scenes, no texture registry
   const props =
     typeof member === 'string'
-      ? (getGeneratedAppData().textures as Record<string, TextureProps | undefined>)[member]
+      ? (
+          getGeneratedAppData() as unknown as {
+            textures?: Record<string, TextureProps | undefined>;
+          }
+        ).textures?.[member]
       : member;
   if (!props) {
     throw new Error(

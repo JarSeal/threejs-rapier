@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-1 implemented, Phase 2 sections 1-2 implemented
+Status: in progress | Phases 0-1 implemented, Phase 2 sections 1-3 implemented
 Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
@@ -295,12 +295,31 @@ As built:
   `CompressedTexture` (it builds a `CompressedArrayTexture` only for `layerCount > 1`): section 4
   wraps it or requires two layers.
 
-#### Section 3: Generated data and budgets
+#### Section 3: Generated data and budgets — done
 
 `__url`, `__bytes`, `__vramBytes` and `__codec` on the gathered array (`generated.ts`, keyed by
 `getTextureArrayAssetKey`); the production gather's missing-output and budget checks for the
 arrays shipped scenes use, including a `skipped` array (no output to ship);
 `assetOutputsBuildPlugin.ts` ships its output.
+
+As built (verified with the test array listed in a shipped scene for the run: a production gather
+and `yarn build` ship it; over budget, `AEK_ASSETS_OPTIMIZE=false` and no `ktx` each fail the
+build, naming the array):
+
+- `getTextureArrayGeneratedFields` / `getTextureArrayResult` (`generated.ts`) share
+  `getOutputFields` with the textures. The fields go on the registry entry (dev data) and reach
+  the scene entry with it: an array has no scene entries. No `__sourceUrl`: no single file
+  stands in for the layers.
+- `isMissingOutput` counts a `skipped` array (its textures side off) as missing, unlike a
+  texture's `skipped`, which ships as before the pipeline.
+- `AEK_ASSETS_ALLOW_UNOPTIMIZED` leaves arrays out of its fallback (`command.ts`): they stay
+  `encoderMissing`, and the gather says an array needs `ktx` even with it.
+- `assetOutputsBuildPlugin.ts` needed no change: it keeps every `__url` in the bundled data.
+- Fixed on the way (Phase 1): `TextureArray.ts` and `app/textureArrays.ts` read
+  `getGeneratedAppData().textures`, which production data doesn't have, so `yarn build`'s `tsc`
+  failed (the Stop hook type-checks dev data). At runtime, a member given by `*.texture.json` id
+  now fails with its own error in production, not a `TypeError`. Such a member still resolves in
+  dev data only, though: production data has no texture registry (section 4 or Phase 5).
 
 #### Section 4: Runtime load and verification
 

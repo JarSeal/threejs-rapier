@@ -183,8 +183,8 @@ const build = async () => {
   });
   addLayerQuad('oneMember', arrays.oneMember, 0, 0, 4);
   const testTextureProps = (
-    getGeneratedAppData().textures as unknown as Record<string, TextureProps>
-  ).testTexture;
+    getGeneratedAppData() as unknown as { textures: Record<string, TextureProps> }
+  ).textures.testTexture;
   const testTexture = await loadTextureAsync({ ...testTextureProps, throwOnError: true });
   addQuad('testTexture', sampleTexture(testTexture, meshUv()), 1, 4);
 

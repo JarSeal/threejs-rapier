@@ -3,7 +3,12 @@ import type {
   GeneratedAssetFields,
   TextureCodec,
 } from '../../src/_engine/schemas/assetsConfigSchema';
-import { getPipelineAssetKey, resolveAssetUse, type PipelineAssetType } from './assets';
+import {
+  getPipelineAssetKey,
+  getTextureArrayAssetKey,
+  resolveAssetUse,
+  type PipelineAssetType,
+} from './assets';
 import type { PipelineRun, PipelineRunResult } from './run';
 import { PUBLIC_DIR, SRC_DIR, type AssetSource, type PackSource } from './sources';
 import type { EncodedTexture } from './textures';
@@ -113,14 +118,42 @@ export const getAssetResult = (
 };
 
 /**
+ * The run's result for a texture array (p299 D2), for the production gather's checks. Null when
+ * the run has none (its layers don't resolve: the gatherer reports that).
+ * @param jsonFile The array's JSON, absolute or relative to the repo root
+ */
+export const getTextureArrayResult = (run: PipelineRun, jsonFile: string) =>
+  run.results.get(getTextureArrayAssetKey(jsonFile)) ?? null;
+
+/**
  * A result a production build can't ship (Phase 3 step 4): its source is local, but the run has
  * no output for it (`encoderMissing`, `error`), and production data has no `__sourceUrl` to fall
  * back to. A relative source or a pack wouldn't load at all, and a public one would load
  * unoptimized. A remote file, or a public file that doesn't exist, ships as it did before the
- * pipeline (`skipped`).
+ * pipeline (`skipped`). A texture array (p299 D2) is its output alone, so a `skipped` one (its
+ * textures side off) has nothing to ship either.
  */
 export const isMissingOutput = (result: PipelineRunResult) =>
-  result.status === 'encoderMissing' || result.status === 'error';
+  result.status === 'encoderMissing' ||
+  result.status === 'error' ||
+  (result.status === 'skipped' && result.asset.type === 'textureArray');
+
+/** An output's fields: none for a result without one */
+const getOutputFields = (
+  type: PipelineAssetType,
+  result: PipelineRunResult | undefined
+): GeneratedAssetFields => {
+  const figures = result && getResultFigures(result);
+  if (!result || !figures || (result.status !== 'optimized' && result.status !== 'passThrough')) {
+    return {};
+  }
+  const fields: GeneratedAssetFields = { __url: result.output.url, __bytes: figures.bytes };
+  if (result.status === 'passThrough') return fields;
+  fields.__vramBytes = figures.vramBytes;
+  if (type !== 'importedAsset' && result.textures[0]) fields.__codec = result.textures[0].codec;
+  if (result.lodChains?.length) fields.__lodChain = result.lodChains;
+  return fields;
+};
 
 /**
  * The generated fields of an asset's data (the JSON, or merged with a scene's latest entry)
@@ -139,18 +172,20 @@ export const getGeneratedFields = (
   const use = resolveAssetUse(jsonFile, data);
   if (!use || 'error' in use) return {};
   const sourceUrl = opts.isProduction ? undefined : getSourceUrl(use.source);
-  const fields: GeneratedAssetFields = sourceUrl ? { __sourceUrl: sourceUrl } : {};
-  const result = run.results.get(getPipelineAssetKey(type, jsonFile, use));
-  const figures = result && getResultFigures(result);
-  if (!result || !figures || (result.status !== 'optimized' && result.status !== 'passThrough')) {
-    return fields;
-  }
-
-  fields.__url = result.output.url;
-  fields.__bytes = figures.bytes;
-  if (result.status === 'passThrough') return fields;
-  fields.__vramBytes = figures.vramBytes;
-  if (type === 'texture' && result.textures[0]) fields.__codec = result.textures[0].codec;
-  if (result.lodChains?.length) fields.__lodChain = result.lodChains;
-  return fields;
+  return {
+    ...(sourceUrl ? { __sourceUrl: sourceUrl } : {}),
+    ...getOutputFields(type, run.results.get(getPipelineAssetKey(type, jsonFile, use))),
+  };
 };
+
+/**
+ * A texture array's generated fields (p299 D2): its output's `__url`, `__bytes`, `__vramBytes`
+ * (every layer) and `__codec`. No `__sourceUrl`: its layers have no single file to load instead.
+ * None without a run, or for an array the run has no output for.
+ * @param jsonFile The array's JSON, absolute or relative to the repo root
+ */
+export const getTextureArrayGeneratedFields = (
+  run: PipelineRun | undefined,
+  jsonFile: string
+): GeneratedAssetFields =>
+  run ? getOutputFields('textureArray', run.results.get(getTextureArrayAssetKey(jsonFile))) : {};
