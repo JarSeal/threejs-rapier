@@ -153,3 +153,23 @@ Add dynamic tier size changing during run time for physics simulation tier sizes
 - Longer term, add count caps to the rings (maxMembers per tier, like Mass LOD). That gives you per-area behaviour without authoring zones. Per-area overrides proper belong with p352's Phase 5, cell driving with p353.
 
 ************************************
+
+Create "Toolkit and asset housekeeping" plan in docs/plans/p450_toolkit-and-asset-housekeeping.md
+
+Category: Toolkit, Assets
+
+We should reorganize where these assets are located. Currently they are located at the public directory under aek-assets but I would like for them to be in the toolkit, but I am not sure how to make it work with Vite. Please study and suggest a solution. In the public folder should only exist static assets that will be shipped with the app/game. Basically now there should be the favicons (3 files) and the stripe-pattern-24x24.png.
+
+The toolkit should have a logical folder structure. In the toolkits root there should be all the different categories "ecs", "geometryUtils" (now named "geometry"), "materials", "textures", "models", "skyboxes", what else? Under each sub-folder there should be a folder describing what it is and the relevant files there.
+- In the "ecs" folder there is the InstancedMeshPool (+ types), do we still need this here? I though we made this into a core system? If it isn't needed, then remove those 2 files. If you think the "effects" folder should be renamed, you can do that and if you think they should have their own (or some kind of different) folder structure, you can do that.
+- The "geometryUtils" should at least have a "generate" folder where all generating scripts should be at. I am not sure if the seededRandom should be a engine core util, but I will move it there if I need it in the core code. For the rest you can create separate folder (maybe "scatter" and "utils" or if you think something better, go for it).
+- The "materials" folder should have a sub-folder for each material.
+- The "textures" folder should have a sub-folder for each texture.
+- The "models" folder should have sub-folders for each category and then a sub-folder for each model because some of the models will have packed and unpacked versions.
+- The "skyboxes" folder should have a sub-folder for each skybox texture. 
+
+We should also get 5-10 high quality PBR textures (with normal maps, AO maps, etc.). These can be all kinds of (semi-random) textures.
+
+I was wondering that we should probably create another test scene for the LOD. But before we do that I would like to have better assets for the scene. I would like to have some objects in the scene like a high poly tree, Standford bunny, the dragon that Three.js uses a lot in their examples, the famous 3d teapot, Suzanne (I already have that but it is not Draco encoded). I would like to have all of those as Draco encoded GLTF objects in my project. The test scene could be a plane with all of the different objects having their own "lane". Make the plane use the triplanar grid with 1x1m base grid and one smaller line in between the grids. Make the models use the new PBR materials (each should have a different material). Add a nice sunny skybox. Each lane would have the different LOD levels showing at the same time so that model has them in a row going from level 0 to the last level. We can have a quite many levels to show how the meshoptimizer works. Then after that there would be a small gap and it would show the fully working LOD model so that if viewed closely it would show the full mesh and if viewed from far away, it would show the approriate LOD level mesh.
+
+If you cannot retrieve the assets (models and textures) from somewhere, give me clear instructions on how and where to get them. Also suggest other models to add to the toolkit for better testing of Aekasha's existing and upcoming systems.
