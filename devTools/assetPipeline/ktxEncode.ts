@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { encodePng, type Img } from './images';
+import { encodePng, toChannels, type Img } from './images';
 import { ensureKtx, getKtxEnv, type KtxTool } from './ktxTool';
 import type { ResolvedTextureSettings } from './settings';
 import { ROOT } from './sources';
@@ -36,10 +36,14 @@ export const createKtxProvider = (log?: (message: string) => void): KtxProvider 
     }));
 };
 
-/** The `ktx create` options for an image with `channels` (3 or 4) channels. */
+/**
+ * The `ktx create` options for an image with `channels` (3 or 4) channels.
+ * @param opts.generateMipmap Default: `settings.mipmaps`. False when the inputs are the levels
+ * (`--levels`, {@link encodeKtx2Levels})
+ */
 export const getKtxCreateArgs = (
   settings: KtxSettings,
-  opts: { channels: 3 | 4; isSrgb: boolean; isNormal: boolean }
+  opts: { channels: 3 | 4; isSrgb: boolean; isNormal: boolean; generateMipmap?: boolean }
 ) => {
   const { isSrgb } = opts;
   return [
@@ -49,7 +53,7 @@ export const getKtxCreateArgs = (
     isSrgb ? 'srgb' : 'linear',
     '--assign-primaries',
     isSrgb ? 'bt709' : 'none',
-    ...(settings.mipmaps ? ['--generate-mipmap'] : []),
+    ...(opts.generateMipmap ?? settings.mipmaps ? ['--generate-mipmap'] : []),
     ...(opts.isNormal ? ['--normalize'] : []),
     ...(settings.normalMode ? ['--normal-mode'] : []),
     ...(settings.codec === 'etc1s'
@@ -74,6 +78,41 @@ const toRgb = (img: Img): Img => {
 };
 
 /**
+ * Writes the inputs into a temp folder (each `writeInput` returns its PNG's bytes), runs
+ * `ktx create` on them and returns the KTX2. The folder is removed either way.
+ */
+const runKtxCreate = async (
+  tool: KtxTool,
+  args: string[],
+  inputCount: number,
+  writeInput: (index: number) => Promise<Uint8Array>
+): Promise<Uint8Array> => {
+  fs.mkdirSync(TMP_DIR, { recursive: true });
+  const dir = fs.mkdtempSync(path.join(TMP_DIR, 'ktx-'));
+  try {
+    const inputFiles: string[] = [];
+    for (let i = 0; i < inputCount; i++) {
+      const inputFile = path.join(dir, inputCount === 1 ? 'input.png' : `input${i}.png`);
+      fs.writeFileSync(inputFile, await writeInput(i));
+      inputFiles.push(inputFile);
+    }
+    const outputFile = path.join(dir, 'output.ktx2');
+    try {
+      await promisify(execFile)(tool.path, ['create', ...args, ...inputFiles, outputFile], {
+        env: getKtxEnv(tool),
+        maxBuffer: 16 * 1024 * 1024,
+      });
+    } catch (error) {
+      const { stderr, stdout, message } = error as { stderr?: string; stdout?: string } & Error;
+      throw new Error(`ktx create ${args.join(' ')} failed: ${stderr || stdout || message}`);
+    }
+    return new Uint8Array(fs.readFileSync(outputFile));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+/**
  * Encodes linear float channels (already resized and flipped as they should be stored) as KTX2.
  * Throws {@link EncoderMissingError} without `ktx`, and an Error when `ktx create` fails.
  */
@@ -89,23 +128,48 @@ export const encodeKtx2 = async (
     isSrgb: opts.isSrgb,
     isNormal: opts.isNormal,
   });
-  fs.mkdirSync(TMP_DIR, { recursive: true });
-  const dir = fs.mkdtempSync(path.join(TMP_DIR, 'ktx-'));
-  try {
-    const inputFile = path.join(dir, 'input.png');
-    const outputFile = path.join(dir, 'output.ktx2');
-    fs.writeFileSync(inputFile, await encodePng(input, opts.isSrgb));
-    try {
-      await promisify(execFile)(tool.path, ['create', ...args, inputFile, outputFile], {
-        env: getKtxEnv(tool),
-        maxBuffer: 16 * 1024 * 1024,
-      });
-    } catch (error) {
-      const { stderr, stdout, message } = error as { stderr?: string; stdout?: string } & Error;
-      throw new Error(`ktx create ${args.join(' ')} failed: ${stderr || stdout || message}`);
-    }
-    return new Uint8Array(fs.readFileSync(outputFile));
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  return runKtxCreate(tool, args, 1, async () => encodePng(input, opts.isSrgb));
+};
+
+/**
+ * Encodes `layerCount` images as one KTX2 array texture (`ktx create --layers`, p299 D2), layer
+ * `i` from `readLayer(i)`: linear float channels, at the array's size and flipped as they should
+ * be stored. Each layer is written out before the next is read, so only one is in memory.
+ * `channels` is the array's (every layer is converted to it). Throws like {@link encodeKtx2}.
+ */
+export const encodeKtx2Layers = async (
+  layerCount: number,
+  readLayer: (index: number) => Promise<Img>,
+  settings: KtxSettings,
+  opts: { channels: 3 | 4; isSrgb: boolean; isNormal: boolean; getKtx: KtxProvider }
+): Promise<Uint8Array> => {
+  const tool = await opts.getKtx();
+  const args = [...getKtxCreateArgs(settings, opts), '--layers', String(layerCount)];
+  return runKtxCreate(tool, args, layerCount, async (index) =>
+    encodePng(toChannels(await readLayer(index), opts.channels), opts.isSrgb)
+  );
+};
+
+/**
+ * Encodes a texture with the mip levels given (`ktx create --levels`, no `--generate-mipmap`;
+ * p299 D3's atlas slots, whose chain stops where its layout does): level `i` from
+ * `readLevel(i)`, level 0 first, each exactly half the one before (rounded down, at least 1),
+ * linear float channels flipped as they should be stored. Each level is written out before the
+ * next is read. `settings.mipmaps` isn't read: the level count is. Throws like {@link encodeKtx2}.
+ */
+export const encodeKtx2Levels = async (
+  levelCount: number,
+  readLevel: (index: number) => Promise<Img>,
+  settings: KtxSettings,
+  opts: { channels: 3 | 4; isSrgb: boolean; isNormal: boolean; getKtx: KtxProvider }
+): Promise<Uint8Array> => {
+  const tool = await opts.getKtx();
+  const args = [
+    ...getKtxCreateArgs(settings, { ...opts, generateMipmap: false }),
+    '--levels',
+    String(levelCount),
+  ];
+  return runKtxCreate(tool, args, levelCount, async (index) =>
+    encodePng(toChannels(await readLevel(index), opts.channels), opts.isSrgb)
+  );
 };

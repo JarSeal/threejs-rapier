@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../.schemas/textureArray.schema.json",
+  "id": "p299TestArray",
+  "layers": [
+    "testTexture",
+    "/debugger/assets/testOptimized/p299/l1.png",
+    "/debugger/assets/testTextures/cubemap01_positive_y.png"
+  ],
+  "size": [512, 512],
+  "texOpts": { "colorSpace": "srgb", "wrapS": 1000, "wrapT": 1000 },
+  "optimize": { "slot": "baseColor" },
+  "debugData": {
+    "name": "p299 test array",
+    "description": "p299 Phase 2: a build-time array of three layers of mixed sizes (a texture asset's 2048² source, a 256² and a 2048² file), resized to 512²."
+  }
+}

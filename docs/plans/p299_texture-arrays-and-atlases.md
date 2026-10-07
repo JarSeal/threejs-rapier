@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phases 0-4 implemented
 Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
@@ -168,7 +168,7 @@ loads them. Until p302 lands, arrays and atlases are used from TSL code (D4).
 
 ## 3. Phases
 
-### Phase 0 — Spike (half a day)
+### Phase 0 — Spike (half a day) — done
 
 1. A two-layer `ktx create --layers` file through `KTX2Loader` on WebGPU and WebGL2: a
    `CompressedArrayTexture` sampled with `texture(arr, uv).depth(layer)`.
@@ -179,26 +179,564 @@ loads them. Until p302 lands, arrays and atlases are used from TSL code (D4).
 
 **Exit:** a test scene samples layer 0 and 1 of both kinds of array on both backends.
 
-### Phase 1 — Runtime arrays (D1)
+As built (a spike scene, since turned into Phase 1's `textureArrays` scene; its files from
+`devTools/assetPipeline/p299ArraySpike.ts` in `src/public/debugger/assets/testOptimized/p299/`;
+measured in Chrome on an Apple GPU, where ETC1S transcodes to ETC2 and UASTC to ASTC 4×4 on both
+backends):
+
+1. `ktx create --layers 2 a.png b.png out.ktx2` works with the pinned 4.4.2 (both codecs, full mip
+   chain). `loadTextureAsync` already returns a `CompressedArrayTexture` (`image.depth` 2, colour
+   space from the file) with no engine change, and `texture(arr, uv).depth(layer)` samples it on
+   WebGPU and WebGL2. D2's runtime side is free.
+2. Runtime concatenation (each level's member data appended in layer order, the layout KTX2Loader
+   and both backends use) renders identically to the `--layers` file and to the single textures, on
+   both backends.
+3. Layer updates: r186 has them on both backends (`addLayerUpdate(i)` + `needsUpdate`, consumed by
+   the upload; it writes layer `i` of every level from the array's own `mipmaps[level].data`). So
+   `setTextureArrayLayer` copies the member into the array's CPU levels and flags the layer, which
+   means **the array keeps its CPU mip data** while it can be swapped (Phase 1: an option, or drop
+   it after the first upload when not swappable). GPU assembly is rejected: 16 × 1K UASTC (1.4 MB
+   per layer) took 2.4 ms concat + 12.7 ms upload = 15.1 ms by CPU, 22.2 ms by uploading every
+   member plus a zero-filled array and 176 `copyTextureToTexture` calls (medians of 7, WebGPU;
+   WebGL2: 2.7 + 14.3 ms). It also uploads every member, which D1 avoids.
+4. GPU memory: `installCompressedTextureSizer` counts an array's bytes exactly (counted = CPU mip
+   bytes, both kinds, both backends). Nothing to add for D6.
+
+Found on the way, not this plan's: a Basis file transcoded to uncompressed RGBA32 (a GPU with no
+BC, ETC2 or ASTC; forced in the spike with a loader whose `workerConfig` was all false) fails for single textures as much as
+arrays. WebGPU throws in `_copyCompressedBufferToTexture` (`_getBlockData` has no entry for
+`rgba8unorm`), WebGL2 uploads (and counts) the bytes but samples black. Every KTX2 the engine loads
+has this today; it needs its own issue.
+
+Untested: a one-member array (three sets `isArrayTexture` from `image.depth > 1`, so it would bind
+by `isCompressedArrayTexture` alone). Phase 1 tests it or requires two members.
+
+### Phase 1 — Runtime arrays (D1) — done
 
 `core/TextureArray.ts`, registry integration, ref counting, layer swap. **Exit:** an array of 4
 KTX2 members renders identically to the 4 separate textures, with one binding.
 
-### Phase 2 — Build-time arrays (D2)
+As built (verified in the `textureArrays` debug scene on WebGPU and WebGL2: the 4-layer array,
+drawn by one quad with one material, differs from the 4 single textures by at most 1/255):
+
+1. API: `buildTextureArray({ id?, members, colorSpace?, texOpts?, swappable?, isPersistent?,
+debugData? })`, `setTextureArrayLayer(id, layer, member)` (async; swaps of one array run in call
+   order), `getTextureArray(id)`, `getTextureArrayInfo(texture)` (`userData.textureArray`: members
+   per layer, kind, size, levels, bytes per layer, `swappable`, `cpuDataReleased`).
+2. A member is a registered texture's id (read and left alone), a `*.texture.json` id or
+   `TextureProps`. The last two are loaded for the array alone through `loadTextureFileAsync` and
+   `resolveTextureUrl`, split out of `loadTextureAsync` (`core/Texture.ts`, which now uses them):
+   never registered nor uploaded, their asset's `texOpts` applied as `loadTextureAsync` would, and
+   dropped after assembly.
+3. Ownership: an array holds a copy of its members' data, so it is self-contained: a registered
+   texture owned by the scene that built it, released at that scene's exit like any texture
+   (verified). "Members as dependencies for scene ownership" is only a JSON concern (p302 D6's
+   closure, Phase 5); nothing ties a member's lifecycle to the array at runtime. Texture ref counts
+   aren't used by the engine (release goes by owner and material use), so neither do arrays.
+4. Ids: a non-swappable array without an id gets `arr:<hash>` of its members, colour space and
+   texOpts, so two builds share one. A swappable one gets a unique id: a swap must never change an
+   array someone else shares.
+5. The CPU copy: kept for a swappable array, else dropped right after the first upload, in a
+   microtask after `onUpdate` (three sizes a texture from its data after calling `onUpdate`).
+   `buildTextureArray` uploads at once (`initTexture`), so the load pays for it. A dropped array
+   can't be re-uploaded (`needsUpdate` would fail). The Assets tab sizes compressed textures from
+   their mip data, so it shows no size for a dropped array (and an uncompressed array's size
+   leaves out its layers): Phase 4's D6 fixes both. The GPU memory tab counts arrays right.
+6. Uncompressed path: image members are drawn into an `OffscreenCanvas` (flipped when the texture
+   has `flipY`), into a `DataArrayTexture` with GPU mipmaps. Its colour space comes from
+   `colorSpace` or the members' asset `texOpts`. A mix of KTX2 and image members throws, and the
+   message points at `yarn assets` (an asset without pipeline output loads its source image).
+7. One-member arrays work on both backends (`isArrayTexture` is false for every
+   `CompressedArrayTexture` in r186, since its depth is set after the base constructor; binding goes
+   by `isCompressedArrayTexture`). No two-member rule.
+8. Mismatches throw with the member, its layer and both values: format (codec), size, mip count,
+   colour space, kind; an unknown member; a swap of a non-swappable array; a layer out of range.
+
+### Phase 2 — Build-time arrays (D2) — done
 
 Schema, gatherer suffix, pipeline step (resize + `--layers` encode), lock and budget, runtime
 load. **Exit:** `yarn assets --only <array>` builds a 3-layer array from mixed-size sources; a
 clone with `assets.lock.json` and no `ktx` loads it from the cache.
 
-### Phase 3 — Atlases (D3)
+As built (exit verified: in a fresh clone, no `.tools/` and no `.cache/` store, `AEK_KTX` set to a
+missing binary, the gather took every asset from the lock and gave `p299TestArray` its `__url`;
+there, with the output deleted, `yarn assets --only p299TestArray` rebuilt it from its 2048² JPEG,
+256² PNG and 2048² PNG layers byte-identical to the committed file). The sections' own lists
+follow.
+
+#### Section 1: Schema, gatherer suffix, layer resolution — done
+
+`schemas/textureArraySchema.ts`, the `.textureArray.json` suffix in `gatherAppData.ts` (arrays
+share the textures' registry and id space) and `devTools/assetPipeline/textureArrays.ts`'s
+`resolveTextureArrayLayers`. Test asset: `src/app/textures/p299TestArray.textureArray.json`.
+
+As built:
+
+- `__layers` is an array of layer names in layer order (a texture's id, or a file's name without
+  its extension), not D2's id → index map. Two layers with the same name fail the gather.
+- A texture layer is its source (its file or pack recipe), never its output, its `optimize` or a
+  scene's override of it.
+
+#### Section 2: Pipeline step (resize + `--layers` encode, cache and lock) — done
+
+A `textureArray` pipeline asset type with an `ArraySource` (`textureArrays.ts`), through
+`collectPipelineAssets`, `processAsset`, the cache and the lock. `encodeKtx2Layers`
+(`ktxEncode.ts`) writes one PNG per layer before reading the next, then runs
+`ktx create --layers N`. Output: `aek-assets/<json path>.array.<hash>.ktx2`.
+
+As built:
+
+- Size: the JSON's `size`, else the layers' common size (they must agree), then fit to `maxSize`
+  and multiples of 4 like a texture. Layers are stored flipped. A layer with alpha makes the whole
+  array RGBA. Upscaled or stretched layers get a warning.
+- Every layer is read in the array's colour space. Only a pack layer whose texture is in another
+  colour space fails (its recipe decodes and multiplies in its own).
+- `optimize.textures: false` is rejected by the schema; a slot resolving to codec `none` (eg.
+  `data`) fails the gather and the build. An array whose textures side is off (a rule's
+  `textures: false`, the project switches) is `skipped`: no output.
+- `EncodedTexture.layers`: VRAM figures and the per-texture budget ceiling count every layer.
+- The dev server also rebuilds an array when one of its layers' `*.texture.json` changes
+  (`listAssetJsonFiles`).
+- `ktx create --layers 1` writes `layerCount: 1`, which three's KTX2Loader loads as a plain
+  `CompressedTexture` (it builds a `CompressedArrayTexture` only for `layerCount > 1`): section 4
+  wraps it or requires two layers.
+
+#### Section 3: Generated data and budgets — done
+
+`__url`, `__bytes`, `__vramBytes` and `__codec` on the gathered array (`generated.ts`, keyed by
+`getTextureArrayAssetKey`); the production gather's missing-output and budget checks for the
+arrays shipped scenes use, including a `skipped` array (no output to ship);
+`assetOutputsBuildPlugin.ts` ships its output.
+
+As built (verified with the test array listed in a shipped scene for the run: a production gather
+and `yarn build` ship it; over budget, `AEK_ASSETS_OPTIMIZE=false` and no `ktx` each fail the
+build, naming the array):
+
+- `getTextureArrayGeneratedFields` / `getTextureArrayResult` (`generated.ts`) share
+  `getOutputFields` with the textures. The fields go on the registry entry (dev data) and reach
+  the scene entry with it: an array has no scene entries. No `__sourceUrl`: no single file
+  stands in for the layers.
+- `isMissingOutput` counts a `skipped` array (its textures side off) as missing, unlike a
+  texture's `skipped`, which ships as before the pipeline.
+- `AEK_ASSETS_ALLOW_UNOPTIMIZED` leaves arrays out of its fallback (`command.ts`): they stay
+  `encoderMissing`, and the gather says an array needs `ktx` even with it.
+- `assetOutputsBuildPlugin.ts` needed no change: it keeps every `__url` in the bundled data.
+- Fixed on the way (Phase 1): `TextureArray.ts` and `app/textureArrays.ts` read
+  `getGeneratedAppData().textures`, which production data doesn't have, so `yarn build`'s `tsc`
+  failed (the Stop hook type-checks dev data). At runtime, a member given by `*.texture.json` id
+  now fails with its own error in production, not a `TypeError`. Such a member still resolves in
+  dev data only, though: production data has no texture registry (settled in section 4).
+
+#### Section 4: Runtime load and verification — done
+
+`loadTextureAsync` loads the array's `__url` (a one-layer array too); the exit criteria in the
+`textureArrays` scene on WebGPU and WebGL2; this phase's "As built" and the status line.
+
+As built (verified in the `textureArrays` scene on WebGPU and WebGL2: each layer of the 3-layer
+asset, and the one-layer asset, next to its source file differs by a mean of 1.2-2.7 / 255 over
+the cell, the same on both backends, with the same orientation; GPU memory counts each array's mip
+bytes exactly):
+
+- `TextureProps.__layers` marks an array asset: `loadTextureAsync` hands it to
+  `loadTextureArrayAssetAsync` (`core/Texture.ts`). The scene loader needed no change: an array's
+  scene entry is already a texture entry. The texture gets a `TextureArrayInfo` on
+  `userData.textureArray` with the new `origin: 'BUILD'` (runtime arrays: `'RUNTIME'`) and the
+  layer names as `members`, so `getTextureArray` and `getTextureArrayInfo` cover both kinds.
+- A one-layer file (KTX2Loader's plain `CompressedTexture`) is wrapped into a one-layer
+  `CompressedArrayTexture` from the same mip data. A file whose layer count differs from
+  `__layers` fails (stale generated data).
+- No output (`__url` unset: the array has no source to fall back to) and a failed load log an
+  error and return an unregistered black `DataArrayTexture` with as many layers, so a material
+  that samples it with `.depth()` still binds an array; `throwOnError` throws instead. It used to
+  return a plain empty texture without a word.
+- `setTextureArrayLayer` on a `BUILD` array says its layers are in its file; a `BUILD` array as a
+  `buildTextureArray` member fails like any array.
+- Production members by texture asset id: the scene loader registers every texture a scene lists
+  before its scene file runs, so such a member is borrowed as registered. A lookup through the
+  scene entries would never run; the error tells production to list the asset in the scene's
+  `textures` instead.
+- The build-time array keeps its CPU mip data after the upload, like every loaded KTX2 texture
+  (only a non-swappable runtime array drops it).
+- Test asset: `src/app/textures/p299TestArray1.textureArray.json` (one 256² layer). The scene lists
+  both assets in its `textures` (column 4 rows 2-4 and column 5); its results add
+  `noOutputFallback` and `assetErrors`.
+
+### Phase 3 — Atlases (D3) — done
 
 Schema, packer, per-slot composition, cell table. **Exit:** a 2-slot atlas of 6 cells, mips
-viewed at the smallest level show no neighbour bleeding.
+viewed at the smallest level the file has show no neighbour bleeding.
 
-### Phase 4 — Helpers and debug (D4, D6)
+Decided before it started (D3 as written can't meet its exit):
 
-**Exit:** a mesh remapped into an atlas cell and a mesh sampling an array layer render in
-`debugScene`; the Assets tab shows layers and cells.
+- **A shortened mip chain.** No padding protects a full chain: at 1×1 every cell is averaged
+  together. And `ktx create --generate-mipmap` filters with `lanczos4`, whose kernel reaches past
+  the padding. So the pipeline computes the levels itself (`images.ts`'s exact 2×2 box) and
+  passes them to `ktx create --levels N` (verified with 4.4.2: no `--generate-mipmap`, input files
+  level-major, layers inner). The chain stops at level `L`, the last one the layout protects:
+  `padding ≥ 2^L`, the atlas size aligned to `2^L` and every padded rect to `4 · 2^L`, so neither
+  a level-`L` texel nor a level-`L` 4 × 4 compression block holds two cells, and a bilinear tap at
+  a cell's edge stays in its padding (the block rule came in section 5). three r186
+  sizes the GPU texture from `mipmaps.length` on both backends (`Textures.getMipLevels`,
+  `texStorage2D/3D`), so a short chain is a complete texture.
+- **Slots are KTX2 only**, like arrays: a `codec: "none"` PNG would get a full chain generated
+  at runtime. p309's `normalRough` (slot `data`) needs a codec set.
+- **`maxSize`:** a slot drops its top levels until it fits (exact halving keeps the cells
+  aligned), and warns when that leaves fewer levels than the layout protects.
+- **`rect` includes the padding**; the cell's UV rect is the content inside it. UVs are three's
+  (v up, the KTX2 stored flipped like every texture's).
+- **Slot colour space** is the slot's `texOpts.colorSpace` (`"srgb"`), like textures and arrays.
+- **Runtime ids** (asked): each slot is an ordinary registered texture, id `<atlasId>.<slot>`,
+  with the cell table on `userData.textureAtlas` (like `userData.textureArray`). A scene lists
+  `"<atlasId>"` in its `textures` (the gatherer expands it to every slot) or one slot by its id.
+  No SceneLoader change.
+
+#### Section 1: Schema, gatherer suffix, cell resolution, packer — done
+
+`schemas/textureAtlasSchema.ts`, the `.textureAtlas.json` suffix in `gatherAppData.ts` (slots in
+the textures' registry and id space) and `devTools/assetPipeline/textureAtlases.ts`: cell sources
+resolved like array layers (a texture's source or pack, or a file), the layout (explicit rects and
+a shelf packer, both aligned; the protected level count) and the cell table (`__atlas`). Source
+sizes come from a synchronous header read (`readImageSizeSync`, PNG / JPEG / WebP), since the
+gather is synchronous; another format needs the cell's `size` or `rect`. Test asset:
+`src/app/textures/p299TestAtlas.textureAtlas.json` (2 slots, 6 cells: explicit rects and packed
+ones, a texture asset source, a cell without a source in one slot).
+
+As built:
+
+- Each slot is a dev data `textures` entry `<atlasId>.<slot>` with `__atlas: { id, slot, size,
+padding, levels, cells }`, a cell being `{ uv: [u0, v0, u1, v1], size: [w, h], data? }` (content
+  px of the layout). The atlas id is taken in the textures' id space too. A slot entry gets the
+  slot's `debugData` (else the atlas's), both `userData`s merged and the atlas's `throwOnError`.
+- `padding` defaults to 8. The packer places the cells without a `rect` tallest first, each
+  padded and rounded up to the grid `4 · 2^⌊log2 padding⌋` (section 5; it was `2^⌊log2 padding⌋`).
+  An explicit rect off the 4 px grid is an error, not snapped (snapping would move the author's
+  layout). A rect off the packer's grid, or an atlas size aligned to less than the padding
+  protects, shortens the chain, with a warning naming it.
+- A cell needs a source in one slot or more; `rect` and `size` exclude each other. Slot names are
+  letters, digits, `_` and `-` (they end the texture id after a dot). The slot schema is strict:
+  the plan's `"colorSpace": "SRGB"` on a slot is an error (it is `texOpts.colorSpace`).
+- The gather checks each slot's settings: codec `none` fails like an array's
+  (`getTextureArraySlotSettings`, now with a `what` for the message).
+- Shared with arrays (`textureArrays.ts`): `resolveTextureSourceRef` (a layer or cell source) and
+  `readTextureSourceSizeSync`. `readImageSizeSync` (`images.ts`) matched sharp on 44 files (PNG,
+  baseline and progressive JPEG, lossy / lossless / alpha WebP).
+- `gatherAppData.ts`'s issue expansion also unwraps a record's "Invalid key in record" into the
+  key's own message (any record-keyed schema).
+- Not yet: the dev server doesn't watch an atlas's source images (section 2 adds them through the
+  pipeline assets), and a scene can't list an atlas yet (section 3).
+- Test sources (`src/app/textures/source/p299Atlas/`): saturated solid cells with a dark border
+  and white diagonals, and greyscale masks, so a neighbour's hue shows where it bleeds.
+
+#### Section 2: Composition and encode — done
+
+Per slot: each source resized into its cell's content rect, edge-extended into its padding, the
+rest of the atlas `fill`; then the box-filtered levels down to the protected one (less what
+`maxSize` drops), encoded with `ktx create --levels N`. A `textureAtlas` pipeline asset per slot,
+through `collectPipelineAssets`, `processAsset`, the cache and the lock. Output:
+`aek-assets/<json path>.atlas.<slot>.<hash>.ktx2`.
+
+As built (verified on the test atlas: both slots 512² with 5 levels down to 32², each level
+extracted with `ktx extract` shows every cell in its own rect with its edge extended and no
+neighbour's hue; a second run is all cache hits, a deleted output is restored from the store, and
+the arrays' keys didn't change):
+
+- `AtlasSlotSource` (`kind: 'atlas'`, `textureAtlases.ts`): the slot's name, the atlas id, the
+  layout (size, padding, levels) and each cell's rects with this slot's source, or none (its
+  fill). `collectPipelineAssets` reads `*.textureAtlas.json` (`readAssetJsons`) and adds one
+  pipeline asset per slot, keyed `getTextureAtlasSlotAssetKey` (`textureAtlas:<json>:<slot>`), with
+  the slot's texture id (`<atlasId>.<slot>`), its `optimize` and its colour space. Its settings
+  resolve against the atlas JSON's path. An atlas whose cells don't resolve or fit gets none.
+- The cache key (`getTextureAtlasKeyParams`) has the layout as this slot draws it (each cell's
+  rects and what its source is: a file, a pack recipe or the fill), the JSON's `fill`, and the
+  files this slot's cells read, in cell order. So an edit to another slot's sources only rebuilds
+  that slot, unless it moves the layout.
+- Channels: a slot is RGBA when one of its sources has alpha (from the headers,
+  `probeTextureSource`), or its `fill` has 4 values with alpha below 1. The default fill
+  `[0, 0, 0, 0]` is transparent black in an RGBA slot and black in an RGB one. A 3-value fill is
+  opaque.
+- Levels: composed at the layout's size, then `images.ts`'s `halve` (exported) per level, each
+  flipped as stored and written one at a time (`encodeKtx2Levels` in `ktxEncode.ts`: the inputs
+  are the levels, `getKtxCreateArgs`' new `generateMipmap: false`). `mipmaps: false` stores one
+  level. `maxSize` drops the top levels with a warning; it fails when it leaves none of the
+  protected levels, or when the new top level isn't a multiple of 4 (an atlas `size` aligned to
+  less than `4 << dropped`).
+- `EncodedTexture.levels` (new, in the lock entry): the stored level count, a shortened chain.
+  `estimateVramBytes` takes it, so the run's VRAM figure (and section 3's `__vramBytes`) counts
+  only those levels. An atlas slot's `source` is the layout's size and its unique source files'
+  bytes; VRAM `in` is the layout as one RGBA8 image with a full chain.
+- Warnings, cached with the output: a cell source that is upscaled or stretched into its cell,
+  and `maxSize` dropping levels. The gather now warns for a slot no cell has a source in.
+- Shared with arrays (`textureArrays.ts`): `readTextureSource` (the layer reader without the flip),
+  `probeTextureSource`, `listTextureSourceFiles`, `getTextureSourceKeyParam`; `toChannels` moved
+  to `images.ts`.
+- Tooling: `yarn assets --only <atlasId>` builds every slot, `<atlasId>.<slot>` one. The run lists
+  a slot with its cell count. Like arrays, an atlas slot is never passed through (`skipped` with
+  its textures side off) and stays out of `AEK_ASSETS_ALLOW_UNOPTIMIZED`'s fallback. The dev server
+  rebuilds a slot when the atlas JSON, a cell source's `*.texture.json` or a source image changes.
+- The test atlas's mask slot warns three times (section 1's masks are stretched into cells of
+  other shapes). The warnings are correct, so the asset is left as it is.
+
+#### Section 3: Generated data, scenes and budgets — done
+
+Per slot `__url`, `__bytes`, `__vramBytes`, `__codec`; a scene's `"<atlasId>"` expanded to its
+slots; the production gather's missing-output and budget checks per slot.
+
+As built (verified with the test atlas listed in a shipped scene for the run, as
+`["p299TestAtlas.mask", "p299TestAtlas", "p299TestAtlas.albedo"]`: the scene got the mask and
+albedo slots once each, without `debugData` or `__sourcePath` in production; `yarn build` with no
+`ktx` took both from the lock and shipped both outputs to `dist/aek-assets/`; over budget,
+`AEK_ASSETS_OPTIMIZE=false` and no `ktx` on a cache miss (also with `AEK_ASSETS_ALLOW_UNOPTIMIZED`)
+each fail the production gather, naming the slot):
+
+- `getTextureAtlasSlotGeneratedFields` / `getTextureAtlasSlotResult` (`generated.ts`) go through
+  `getOutputFields` like the arrays' and look the result up by `getTextureAtlasSlotAssetKey`. The
+  fields go on the slot's registry entry and reach the scene entry with it. `__vramBytes.out`
+  counts the stored levels (the test atlas: 512² to 32², 349,184 B).
+- A scene's `"<atlasId>"` becomes its slot ids in the JSON's `slots` order, where the id stood. A
+  slot listed again, by its own id or the atlas's, is dropped, so the loader never registers it
+  twice. Other duplicate texture ids are left as before. An atlas that failed the gather stays a
+  raw string id, like any unknown id.
+- A slot's scene entry is its registry entry less `__sourcePath`, with `__atlas` (the cell table
+  is repeated in every slot entry, as section 1 decided). `debugData` is dropped in production.
+- `isKtxOnlyAsset` (`generated.ts`: a texture array or an atlas slot) replaces the array-only
+  checks: `isMissingOutput` counts a `skipped` slot as missing, the gather's hints say "a texture
+  array or atlas slot", and `command.ts`'s `AEK_ASSETS_ALLOW_UNOPTIMIZED` fallback uses it too.
+- Budgets needed no change: `getBudgetViolations` reads the slot's `EncodedTexture` (its `levels`
+  in the VRAM figure, the full-chain ceiling at the profile's `maxSize`).
+- `assetOutputsBuildPlugin.ts` needed no change (every `__url` in the bundled data).
+- No scene lists an atlas yet: section 4's `textureAtlases` scene is the first, and the runtime
+  side of a slot entry is untested until then.
+
+#### Section 4: Runtime load and verification — done
+
+`loadTextureAsync` gives a slot texture its `userData.textureAtlas`; a `textureAtlases` debug
+scene showing each slot at each of its levels (`textureLod`) with the cell rects, on WebGPU and
+WebGL2. This phase's "As built" and the status line.
+
+As built (verified in the `textureAtlases` scene on WebGPU and WebGL2, the same to a mean of
+0.02 / 255 over the scene: both slots load from the scene's `"p299TestAtlas"`, 512² with 5 levels;
+GPU memory counts each slot's 349,184 B, its `__vramBytes.out`; each cell at level 0 next to its
+source differs by a mean of 0.4-4.1 / 255 at about 1:1; a ring just inside each albedo cell has
+no hue the cell lacks at level 0, at every level, while the same test finds 91-100 % foreign hues
+when judged by a neighbour's; the scene's exit releases both slots):
+
+- `TextureProps.__atlas` (the generated `TextureAtlasSlotInfo`) marks a slot: `loadTextureAsync`
+  hands it to `loadTextureAtlasSlotAsync` (`core/Texture.ts`). The scene loader needed no change.
+- `core/TextureAtlas.ts` (new; Phase 4 adds the helpers): `TextureAtlasInfo` on
+  `userData.textureAtlas` is the slot's `__atlas` (a copy) plus the file's `width`, `height` and
+  `storedLevels`: `__atlas.levels` is what the layout keeps apart, not what the file stores (fewer
+  with `maxSize` or `mipmaps: false`). `getTextureAtlasInfo(texture)` reads it.
+- A file that doesn't fit its layout fails (stale generated data): its size must be the layout's
+  halved per dropped top level, and the dropped plus stored levels at most `__atlas.levels`.
+- No output (`__url` unset) and a failed load log an error and return an unregistered empty
+  texture without `textureAtlas`; `throwOnError` throws. It used to load silently as an empty
+  texture (`!fileName && !__url`).
+- The scene: each slot whole at every stored level (`.level(n)`, content rects magenta, padded
+  rects cyan, the quad's edge grey), each cell through its UV rect at every level, and its source
+  file; `results` add the error paths (`noOutput`, `tooManyLevels`, `droppedPlusStored`,
+  `sizeMismatch`) and `noOutputFallback`.
+
+**Found here, fixed in section 5: block cross-talk at the last level.** The layout kept level-`L`
+_texels_ apart (rects aligned to `2^L`), but KTX2's codecs encode 4 × 4 _blocks_, which at level
+`L` cover `4 · 2^L` layout px. The test atlas is aligned to 16 px, so at level 4 (blocks of 64 px)
+four blocks hold two cells' texels (yellow + metal, blue + checker), and their shared endpoints
+pull each toward the other: decoded level 4 against the box-filtered level 0, the metal content
+texel next to yellow is +9 G / −6 B (an olive tint, visible in the scene), yellow's border
+shifted toward brown as much, and one yellow texel is +67 B. Levels 0-3 have no such block. UASTC
+partitions soften it; ETC1S (one colour per block) would be worse.
+
+#### Section 5: Block-aligned levels — done
+
+Section 4's finding, fixed in section 1's rule (`layoutAtlasCells`, `textureAtlases.ts`): a level
+`L` is protected only when every padded rect is aligned to `4 · 2^L` (whole compression blocks),
+and the packer's grid is `4 · 2^⌊log2 padding⌋`, so packed cells never shorten the chain.
+
+As built (verified: the test atlas re-encoded, still 512² with 5 levels and 349,184 B a slot;
+decoded, no 4 × 4 block of any level holds two cells, in either slot; in the `textureAtlases`
+scene on WebGPU and WebGL2 the level-4 metal cell's olive edge and yellow's reddish corner are
+gone, and section 4's checks give the same figures):
+
+- The atlas size stays at `2^L` (exact halving): a level whose size isn't a multiple of 4 ends in
+  partial blocks, which can't hold two cells once the rects are block aligned.
+- The warning names each limit and what it needs, eg. "r's rect [32, 0, 96, 96] is only aligned
+  to 32 px (it needs 64: the 4×4 compression blocks at level 4 cover 64 px)".
+- The test atlas's explicit rects (256 and 128 px aligned) didn't move; its packed cells did, so
+  both slots got new outputs and lock entries. The schema's `padding` and `rect` descriptions say
+  the grid.
+- Costs space: a packed cell's padded size is rounded up to the grid (64 px at padding 16), so a
+  64² cell with 16 px of padding takes 128², not 96². A small-cell atlas that needs the room can
+  lower its padding (and its levels) or place cells with `rect`.
+
+### Phase 4 — Helpers and debug (D4, D6) — done
+
+**Exit:** a mesh remapped into an atlas cell renders in the `textureAtlases` scene and a mesh
+sampling an array layer in the `textureArrays` scene; the Assets tab shows layers and cells.
+
+Decided before it started:
+
+- **The exit scenes** are the p299 scenes, not `debugScene` (p300's asset check scene, which lists
+  no textures): they already load the array and atlas assets and have the harness hooks.
+- **Previews** show one mip level at a time, picked in the info window (a thumbnail per layer, or
+  the slot image), not every layer × level: a 16-layer array of 11 levels would be 176 renders.
+- **Lookups:** an atlas has no runtime object, so `getAtlasCell` reads the cell table of a
+  registered slot (undefined until one has loaded). `__layers` is a list (Phase 2), so
+  `getArrayLayerIndex` is an `indexOf` over `TextureArrayInfo.members`, both origins.
+- **Thumbnails** of KTX2 textures can't go through a 2D canvas: they are rendered on the GPU and
+  read back (`readRenderTargetPixelsAsync`, a first in the engine).
+
+#### Section 1: Lookups and TSL helpers — done
+
+`getAtlasCell`, `getArrayLayerIndex`, `sampleArrayLayer` and `sampleAtlasCell` (a cell by id, a
+rect, or a `vec4` node for a per-instance rect; `clampToCell` keeps the sample half a level-0
+texel inside the content rect). The p299 scenes sample through them.
+
+As built (verified in both p299 scenes on WebGPU and WebGL2, the same results on both and the
+atlas scene the same to a mean of 0.003 / 255: the asset's layers picked by name differ from their
+source files by a mean of 0.7-1.8 / 255; clamped overscan stretches each cell's edge texels where
+unclamped shows its padding, then its neighbours):
+
+- `getAtlasCell(atlas, cellId)` (`core/TextureAtlas.ts`) takes the atlas id, a slot's id or a slot
+  texture and returns the cell table entry (`uv`, `size`, `data`), or undefined: an unknown cell or
+  atlas, a texture that isn't a slot, or no slot loaded yet. `TextureAtlas.ts` now imports
+  `Texture.ts` at runtime (`Texture.ts` imports it as types only, so no cycle).
+- `sampleAtlasCell(slot, uv, cell, { clampToCell = true })`: `cell` is a cell id (the slot's table;
+  an unknown id throws, listing the cells), an `AtlasCellRect` (`[u0, v0, u1, v1]`, any texture)
+  or a `vec4` node. The clamp's half texel comes from the file's size on the CPU
+  (`TextureAtlasInfo.width`, else `texture.image`), not a `textureSize` node. Returns the texture
+  node for `.level()` / `.grad()`.
+- `getArrayLayerIndex(array, member)` (`core/TextureArray.ts`) takes an id or the texture; a
+  runtime array's member is its id or file name (`getMemberKey`), an asset's its layer name.
+- `sampleArrayLayer(array, uv, layer)`: `layer` is an index (checked against `image.depth`, so a
+  plain `--layers` KTX2 without a member list works too), a member name or a node. A texture that
+  isn't an array, an unknown name or a bad index throws.
+- Both helpers take the UV explicitly (no default `uv()`), like the plan's signatures.
+- The scenes: `textureArrays` samples every array quad through `sampleArrayLayer` (the asset
+  column by layer name) and reports `layerIndex` and `sampleErrors`; `textureAtlases` samples its
+  cell rows through `sampleAtlasCell` (clamped), adds two overscan rows (UVs -0.25..1.25, clamped
+  and not) and reports `cellLookups`, `sampleErrors` and `rectOnPlainTexture`. Its grid moved up
+  half a cell (`Y0`) for them.
+
+#### Section 2: `remapUVsToAtlasCell` and the exit meshes — done
+
+A deep clone by default (three r186 frees shared GPU buffers when either geometry is disposed, as
+with LOD chains), `inPlace` rewrites the given one; UVs outside 0..1 warn. A lit mesh remapped
+into a cell (`textureAtlases`) and a lit mesh sampling an array layer (`textureArrays`).
+
+As built (verified in both p299 scenes on WebGPU and WebGL2, the same results on both: the lit
+sphere remapped into the checker cell, drawn with the albedo slot as a plain `map`, differs from
+the same sphere with the cell's source file by a mean of 7.8 / 255 with the grid lines in place
+(a 96 px cell against a 512² file, at about 43 px on screen); the lit sphere sampling the asset's
+`testTexture` layer differs from its source by 5.1 / 255):
+
+- `remapUVsToAtlasCell(geometry, atlas, cellId, { attribute = 'uv', inPlace, id })`
+  (`core/TextureAtlas.ts`): `geometry` is a geometry or a registered id, `atlas` what
+  `getAtlasCell` takes (an atlas id, a slot id or a slot texture; a slot must be loaded). A cell id
+  only, no rect: a rect needs no atlas, and `sampleAtlasCell` already takes one.
+- The clone: `geometry.clone()` (three r186 copies every attribute's array, an interleaved buffer
+  once per clone, and the index) with a new `Float32` UV attribute, registered with
+  `saveBufferGeometry` as `<geometryId>@<atlasId>:<cellId>` (or `id`) and owned by the loading
+  scene. A second call for the same geometry and cell returns the registered clone. three's
+  `copy()` assigns `userData` by reference, so the clone gets its own, without the source's `id`,
+  `props`, `debugData` and LOD fields.
+- `inPlace` writes through the attribute's own type (`setXY`, so normalized integers stay
+  quantized, as the pipeline's meshopt GLBs ship them) and flags it for upload. Unnormalized
+  integers throw; 8-bit normalized and half-float UVs warn (too coarse for a cell rect).
+- Either result gets `userData.atlasCell` (`GeometryAtlasCell`: atlas, cell, attribute, the
+  rect), and a geometry that has one throws: remapping twice would map into the cell's own
+  sub-rect.
+- The warning is "too far", not "outside 0..1": three's `SphereGeometry` offsets its poles' u by
+  half a segment (u -0.0104..1.0104), which reaches a pixel into the padding and would warn for
+  every sphere. A UV warns when it reaches more than half the padding past the content (in the
+  layout's px, from the cell's `size`): the other half is a bilinear tap's at the last protected
+  level (`padding ≥ 2^L`, a tap reaches `2^(L-1)`).
+- The scenes got an ambient and a directional light (for the lit meshes; the quads stay unlit).
+  `textureAtlases`, column 6 (between the slots): a sphere remapped into `checker` (a clone), the
+  same sphere with the source file, a box remapped in place into `metal`; `results.remap` checks
+  the clone (no shared attribute or index, the UV range is the cell rect, shared by a second
+  call), the untouched source, the in-place box, a plane tiled ×2 (warns) and the errors.
+  `textureArrays`, column 6, rows 2-4: the asset's `testTexture` layer as a `colorNode`, its source
+  as a `map`, and layer s2 of the runtime array.
+
+#### Section 3: Assets tab sections — done
+
+Array and atlas byte sizes (Phase 1's: a dropped array shows none, an uncompressed one leaves out
+its layers); an array section (layers, kind, levels, origin, swappable, CPU copy) and an atlas
+section (layout, cell table).
+
+As built (verified in both p299 scenes on WebGPU and WebGL2, the windows' text identical on both:
+every array and slot the scenes register opened from the list; the dropped 4-member KTX2 array
+shows 1.33 MB where it showed none, the uncompressed arrays count every layer, eg. 2 × 256² RGBA8
+with GPU mips 682.7 KB; each atlas slot 341.0 KB, its `__vramBytes.out` of 349,184 B):
+
+- Sizes (`_dbg__AssetStats.ts`): `getTextureByteSize` falls back to `layerBytes × layers` for a
+  runtime array whose CPU copy was dropped (`layerBytes` is measured before the drop), and
+  multiplies an uncompressed texture by `getTextureDepth` (an array's layers, a 3D texture's
+  depth), as three's own sizer does. The GPU memory tab's sizer is unchanged (it sizes at upload,
+  before any drop). `describeTexture` names array and 3D textures, shows the layers in the
+  dimensions and a provided chain's level count (an atlas slot's shortened one).
+- List rows: an array's or a slot's subtitle says what it is: `<id> (array, 3 layers)`,
+  `<id> (atlas slot, 6 cells)`.
+- "Texture array" section, for every array texture: origin, kind, layers, layer size and levels,
+  bytes per layer, swappable, CPU copy, and a layer table (index and member or layer name, plus
+  the JSON's layer source for an asset in dev data). An array without `TextureArrayInfo` (a plain
+  `--layers` KTX2 loaded as a texture) shows its layer count and says it has no member list.
+- "Texture atlas" section, for a slot: atlas, slot, the atlas's loaded slots, layout and padding,
+  the levels kept apart, the file's size and stored levels (and the top levels `maxSize` dropped),
+  and the cell table: each cell's content position in image px from the top left (the JSON's
+  `rect` convention; a padded rect is that plus `padding` on each side, as the scene draws it),
+  its size, its UV rect and its `data`. The packer's grid round-up isn't in the cell table, so it
+  isn't shown.
+- An array or slot's "File" is its JSON's path (from dev data's registry: a scene entry has no
+  `__sourcePath`), and the pipeline section's "Source" says what it was built from instead of
+  "packed from several files". A runtime array's "File" says `buildTextureArray`.
+- The tables use the tab's first style module, `Debug/Assets.module.scss` (section 4 adds the
+  preview's styles there).
+- Not changed: "Used by materials" counts map slots only, so an array or slot sampled through TSL
+  nodes built in code shows 0 (as before; the GPU memory tab's `forEachMaterialTexture` also reads
+  `userData.uniforms`, which code-built nodes aren't in either).
+
+#### Section 4: Previews — done
+
+The GPU preview renderer; layer thumbnails and the atlas slot image with the content and padded
+rects and the cell ids on hover, at a picked level. This phase's "As built" and the status line.
+
+As built (verified in both p299 scenes on WebGPU and WebGL2, the same figures on both: every
+array and slot the scenes register previews at every level it has; at level 0 each albedo cell
+next to its source file differs by a mean of 0-0.09 / 255 (the solid cells; checker 2.8, metal 4,
+resampled into smaller cells) and each layer of the 3-layer asset by 0-3.4 / 255, where the same
+comparison flipped upside down gives 2.8-6.4 and 6.6-45: the orientation is right on both; the
+overlay covers the image exactly):
+
+- `renderTexturePreviewAsync(texture, { level, layers?, maxSize })` (`core/Debug/_dbg__TexturePreview.ts`):
+  one `NodeMaterial` per call sampling `texture(t, uv).level(levelUniform)` (`.depth(layerUniform)`
+  for an array), so one shader serves every tile; the tiles are rendered side by side into one
+  RGBA8 target per strip (up to 4096 px wide) and read back once. The target has the texture's
+  colour space (sRGB encoded on write, data as it is; a render target has no tone mapping), so the
+  bytes go into a canvas as they are. `NoBlending` keeps the alpha. It reuses the impostor bake's
+  `getBakeRenderer`, `withBakeRendererState` and `clearBakeTarget`.
+- Readback: WebGPU's rows start at the top and are padded to 256 bytes, WebGL2's start at the
+  bottom; the row stride is taken from the returned length. three's `QuadMesh` has v = 0 at the
+  top, so the shader samples `1 - v`.
+- `getTextureLevelCount` / `getTextureLevelSize`: a provided chain (KTX2, an atlas slot's shortened
+  one), a generated full chain (`generateMipmaps` with a mipmap `minFilter`, eg. the uncompressed
+  arrays), else 1. A level over `maxSize` is sampled down at that level (bilinear, so fine detail
+  aliases) and the status line says so; layer thumbnails cap at 128 px, the slot image at 1024 px.
+  The canvases scale with `image-rendering: pixelated` over a checkerboard (alpha shows).
+- The window (`core/Debug/_dbg__AssetsPreview.ts`, a "Preview" section after the array / atlas
+  section): level buttons (the file's levels; a slot whose maxSize dropped top levels also names
+  the layout's level), a status line, then a thumbnail per layer captioned with its member or
+  layer name, or the slot image with an SVG overlay in the layout's px (padded rects cyan, content
+  rects magenta, as the scene draws them), a "Cell rects" toggle, the hovered cell highlighted and
+  named under the image (`<id>: <w> × <h> px at <x>, <y>`, the cell table's convention) and in its
+  `<title>`.
+- The picked level and the rects toggle are per info window for the session, kept when its
+  content is rebuilt and dropped by the kind's `onClose`. A level change re-renders and keeps the
+  old images until the new ones arrive (the latest request wins). A template CMP gets no
+  `onCreateCmp` of its own (CMP.ts calls the parent's), so the render starts when the content is
+  built and fills the element when the readback arrives.
+- Arrays without `TextureArrayInfo` (a plain `--layers` KTX2) preview too: their layers come from
+  `image.depth`. Plain 2D textures get no preview: the renderer handles them, the plan's scope
+  doesn't.
 
 ### Phase 5 — JSON binding (D5, after p302 D4)
 

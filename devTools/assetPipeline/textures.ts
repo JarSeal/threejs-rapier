@@ -34,7 +34,15 @@ export type EncodedTexture = {
   mipmaps: boolean;
   normalMode: boolean;
   bytes: number;
+  /** An array's (p299 D2): its size is the size before `maxSize`, its bytes every layer's files */
   source: { width: number; height: number; bytes: number };
+  /** A texture array's layer count (p299 D2); unset for a texture */
+  layers?: number;
+  /**
+   * The mip levels stored, when the chain is shorter than a full one: an atlas slot's (p299 D3)
+   * stops at the level its layout keeps apart. Unset: a full chain (with `mipmaps`) or one level.
+   */
+  levels?: number;
 };
 
 export type TextureImageOpts = {

@@ -1207,6 +1207,317 @@
       "id": "sceneTestECS",
       "sceneFile": "./testECS.ts"
     },
+    "textureArrays": {
+      "isDebugScene": true,
+      "name": "Texture arrays (p299)",
+      "description": "p299's verification scene: runtime texture arrays (buildTextureArray) next to the textures they were built from. A 4-layer KTX2 array drawn by one quad and one material, the uncompressed PNG path, a one-member array of a texture asset, layer swaps after the first upload, `ktx create --layers` files, and texture array assets (*.textureArray.json) loaded by the scene loader. Files from devTools/assetPipeline/p299ArraySpike.ts.",
+      "textures": [
+        {
+          "id": "p299TestArray",
+          "texOpts": {
+            "wrapS": 1000,
+            "wrapT": 1000,
+            "colorSpace": "srgb"
+          },
+          "debugData": {
+            "name": "p299 test array",
+            "description": "p299 Phase 2: a build-time array of three layers of mixed sizes (a texture asset's 2048² source, a 256² and a 2048² file), resized to 512²."
+          },
+          "__layers": [
+            "testTexture",
+            "l1",
+            "cubemap01_positive_y"
+          ],
+          "__url": "/aek-assets/app/textures/p299TestArray.array.5c60d088.ktx2",
+          "__bytes": {
+            "in": 4471280,
+            "out": 446409
+          },
+          "__vramBytes": {
+            "in": 4194300,
+            "out": 1048656
+          },
+          "__codec": "uastc"
+        },
+        {
+          "id": "p299TestArray1",
+          "texOpts": {
+            "wrapS": 1000,
+            "wrapT": 1000,
+            "colorSpace": "srgb"
+          },
+          "debugData": {
+            "name": "p299 one-layer test array",
+            "description": "p299 Phase 2: a build-time array of one layer (a 256² file). `ktx create --layers 1` writes layerCount 1, which KTX2Loader loads as a plain CompressedTexture: loadTextureAsync wraps it."
+          },
+          "__layers": [
+            "l2"
+          ],
+          "__url": "/aek-assets/app/textures/p299TestArray1.array.ecc27102.ktx2",
+          "__bytes": {
+            "in": 1632,
+            "out": 3265
+          },
+          "__vramBytes": {
+            "in": 349524,
+            "out": 87408
+          },
+          "__codec": "uastc"
+        }
+      ],
+      "id": "textureArrays",
+      "sceneFile": "./textureArrays.ts",
+      "cameras": [
+        {
+          "camProps": {
+            "type": "PERSPECTIVE",
+            "fov": 90,
+            "active": true
+          },
+          "entityOpts": {
+            "debugData": {
+              "name": "_camera",
+              "description": "Auto-generated camera for the scene"
+            }
+          }
+        }
+      ]
+    },
+    "textureAtlases": {
+      "isDebugScene": true,
+      "name": "Texture atlases (p299)",
+      "description": "p299's atlas verification scene: each slot of the p299TestAtlas asset (*.textureAtlas.json, listed by its atlas id) whole at each mip level the file has, with the cell rects outlined, and each cell sampled through its UV rect at every level, next to its source file.",
+      "textures": [
+        {
+          "id": "p299TestAtlas.albedo",
+          "texOpts": {
+            "colorSpace": "srgb"
+          },
+          "debugData": {
+            "name": "p299 test atlas",
+            "description": "p299 Phase 3: a 2-slot atlas of 6 cells (explicit rects and packed ones, a texture asset's source, cells without a mask source), 16 px of padding, for checking mip bleeding."
+          },
+          "__atlas": {
+            "id": "p299TestAtlas",
+            "slot": "albedo",
+            "size": [
+              512,
+              512
+            ],
+            "padding": 16,
+            "levels": 5,
+            "cells": {
+              "red": {
+                "uv": [
+                  0.03125,
+                  0.53125,
+                  0.46875,
+                  0.96875
+                ],
+                "size": [
+                  224,
+                  224
+                ]
+              },
+              "green": {
+                "uv": [
+                  0.53125,
+                  0.78125,
+                  0.96875,
+                  0.96875
+                ],
+                "size": [
+                  224,
+                  96
+                ],
+                "data": {
+                  "note": "passed through to the cell table"
+                }
+              },
+              "checker": {
+                "uv": [
+                  0.40625,
+                  0.15625,
+                  0.59375,
+                  0.34375
+                ],
+                "size": [
+                  96,
+                  96
+                ]
+              },
+              "metal": {
+                "uv": [
+                  0.65625,
+                  0.21875,
+                  0.78125,
+                  0.34375
+                ],
+                "size": [
+                  64,
+                  64
+                ]
+              },
+              "blue": {
+                "uv": [
+                  0.53125,
+                  0.46875,
+                  0.65625,
+                  0.71875
+                ],
+                "size": [
+                  64,
+                  128
+                ]
+              },
+              "yellow": {
+                "uv": [
+                  0.03125,
+                  0.21875,
+                  0.28125,
+                  0.34375
+                ],
+                "size": [
+                  128,
+                  64
+                ]
+              }
+            }
+          },
+          "__url": "/aek-assets/app/textures/p299TestAtlas.atlas.albedo.1bae140f.ktx2",
+          "__bytes": {
+            "in": 976923,
+            "out": 16013
+          },
+          "__vramBytes": {
+            "in": 1398100,
+            "out": 349184
+          },
+          "__codec": "uastc"
+        },
+        {
+          "id": "p299TestAtlas.mask",
+          "debugData": {
+            "name": "p299 test atlas",
+            "description": "p299 Phase 3: a 2-slot atlas of 6 cells (explicit rects and packed ones, a texture asset's source, cells without a mask source), 16 px of padding, for checking mip bleeding."
+          },
+          "__atlas": {
+            "id": "p299TestAtlas",
+            "slot": "mask",
+            "size": [
+              512,
+              512
+            ],
+            "padding": 16,
+            "levels": 5,
+            "cells": {
+              "red": {
+                "uv": [
+                  0.03125,
+                  0.53125,
+                  0.46875,
+                  0.96875
+                ],
+                "size": [
+                  224,
+                  224
+                ]
+              },
+              "green": {
+                "uv": [
+                  0.53125,
+                  0.78125,
+                  0.96875,
+                  0.96875
+                ],
+                "size": [
+                  224,
+                  96
+                ],
+                "data": {
+                  "note": "passed through to the cell table"
+                }
+              },
+              "checker": {
+                "uv": [
+                  0.40625,
+                  0.15625,
+                  0.59375,
+                  0.34375
+                ],
+                "size": [
+                  96,
+                  96
+                ]
+              },
+              "metal": {
+                "uv": [
+                  0.65625,
+                  0.21875,
+                  0.78125,
+                  0.34375
+                ],
+                "size": [
+                  64,
+                  64
+                ]
+              },
+              "blue": {
+                "uv": [
+                  0.53125,
+                  0.46875,
+                  0.65625,
+                  0.71875
+                ],
+                "size": [
+                  64,
+                  128
+                ]
+              },
+              "yellow": {
+                "uv": [
+                  0.03125,
+                  0.21875,
+                  0.28125,
+                  0.34375
+                ],
+                "size": [
+                  128,
+                  64
+                ]
+              }
+            }
+          },
+          "__url": "/aek-assets/app/textures/p299TestAtlas.atlas.mask.91a3bdbd.ktx2",
+          "__bytes": {
+            "in": 3090,
+            "out": 16750
+          },
+          "__vramBytes": {
+            "in": 1398100,
+            "out": 349184
+          },
+          "__codec": "uastc"
+        }
+      ],
+      "id": "textureAtlases",
+      "sceneFile": "./textureAtlases.ts",
+      "cameras": [
+        {
+          "camProps": {
+            "type": "PERSPECTIVE",
+            "fov": 90,
+            "active": true
+          },
+          "entityOpts": {
+            "debugData": {
+              "name": "_camera",
+              "description": "Auto-generated camera for the scene"
+            }
+          }
+        }
+      ]
+    },
     "thirdPersonGymScene": {
       "name": "GYM (3rd person)",
       "description": "Third-person obstacle-course/gym scene assembling every ported physics feature: ~15 imported GLBs, 6 moving platform variants, a player-controlled and a scripted dynamic character, and the physics stress-test spawner.",
@@ -2336,6 +2647,291 @@
       "__vramBytes": {
         "in": 22369620,
         "out": 1398128
+      },
+      "__codec": "uastc"
+    },
+    "p299TestArray": {
+      "id": "p299TestArray",
+      "layers": [
+        "testTexture",
+        "/debugger/assets/testOptimized/p299/l1.png",
+        "/debugger/assets/testTextures/cubemap01_positive_y.png"
+      ],
+      "size": [
+        512,
+        512
+      ],
+      "texOpts": {
+        "wrapS": 1000,
+        "wrapT": 1000,
+        "colorSpace": "srgb"
+      },
+      "optimize": {
+        "slot": "baseColor"
+      },
+      "debugData": {
+        "name": "p299 test array",
+        "description": "p299 Phase 2: a build-time array of three layers of mixed sizes (a texture asset's 2048² source, a 256² and a 2048² file), resized to 512²."
+      },
+      "__sourcePath": "src/app/textures/p299TestArray.textureArray.json",
+      "__layers": [
+        "testTexture",
+        "l1",
+        "cubemap01_positive_y"
+      ],
+      "__url": "/aek-assets/app/textures/p299TestArray.array.5c60d088.ktx2",
+      "__bytes": {
+        "in": 4471280,
+        "out": 446409
+      },
+      "__vramBytes": {
+        "in": 4194300,
+        "out": 1048656
+      },
+      "__codec": "uastc"
+    },
+    "p299TestArray1": {
+      "id": "p299TestArray1",
+      "layers": [
+        "/debugger/assets/testOptimized/p299/l2.png"
+      ],
+      "texOpts": {
+        "wrapS": 1000,
+        "wrapT": 1000,
+        "colorSpace": "srgb"
+      },
+      "optimize": {
+        "slot": "baseColor"
+      },
+      "debugData": {
+        "name": "p299 one-layer test array",
+        "description": "p299 Phase 2: a build-time array of one layer (a 256² file). `ktx create --layers 1` writes layerCount 1, which KTX2Loader loads as a plain CompressedTexture: loadTextureAsync wraps it."
+      },
+      "__sourcePath": "src/app/textures/p299TestArray1.textureArray.json",
+      "__layers": [
+        "l2"
+      ],
+      "__url": "/aek-assets/app/textures/p299TestArray1.array.ecc27102.ktx2",
+      "__bytes": {
+        "in": 1632,
+        "out": 3265
+      },
+      "__vramBytes": {
+        "in": 349524,
+        "out": 87408
+      },
+      "__codec": "uastc"
+    },
+    "p299TestAtlas.albedo": {
+      "id": "p299TestAtlas.albedo",
+      "texOpts": {
+        "colorSpace": "srgb"
+      },
+      "debugData": {
+        "name": "p299 test atlas",
+        "description": "p299 Phase 3: a 2-slot atlas of 6 cells (explicit rects and packed ones, a texture asset's source, cells without a mask source), 16 px of padding, for checking mip bleeding."
+      },
+      "__sourcePath": "src/app/textures/p299TestAtlas.textureAtlas.json",
+      "__atlas": {
+        "id": "p299TestAtlas",
+        "slot": "albedo",
+        "size": [
+          512,
+          512
+        ],
+        "padding": 16,
+        "levels": 5,
+        "cells": {
+          "red": {
+            "uv": [
+              0.03125,
+              0.53125,
+              0.46875,
+              0.96875
+            ],
+            "size": [
+              224,
+              224
+            ]
+          },
+          "green": {
+            "uv": [
+              0.53125,
+              0.78125,
+              0.96875,
+              0.96875
+            ],
+            "size": [
+              224,
+              96
+            ],
+            "data": {
+              "note": "passed through to the cell table"
+            }
+          },
+          "checker": {
+            "uv": [
+              0.40625,
+              0.15625,
+              0.59375,
+              0.34375
+            ],
+            "size": [
+              96,
+              96
+            ]
+          },
+          "metal": {
+            "uv": [
+              0.65625,
+              0.21875,
+              0.78125,
+              0.34375
+            ],
+            "size": [
+              64,
+              64
+            ]
+          },
+          "blue": {
+            "uv": [
+              0.53125,
+              0.46875,
+              0.65625,
+              0.71875
+            ],
+            "size": [
+              64,
+              128
+            ]
+          },
+          "yellow": {
+            "uv": [
+              0.03125,
+              0.21875,
+              0.28125,
+              0.34375
+            ],
+            "size": [
+              128,
+              64
+            ]
+          }
+        }
+      },
+      "__url": "/aek-assets/app/textures/p299TestAtlas.atlas.albedo.1bae140f.ktx2",
+      "__bytes": {
+        "in": 976923,
+        "out": 16013
+      },
+      "__vramBytes": {
+        "in": 1398100,
+        "out": 349184
+      },
+      "__codec": "uastc"
+    },
+    "p299TestAtlas.mask": {
+      "id": "p299TestAtlas.mask",
+      "debugData": {
+        "name": "p299 test atlas",
+        "description": "p299 Phase 3: a 2-slot atlas of 6 cells (explicit rects and packed ones, a texture asset's source, cells without a mask source), 16 px of padding, for checking mip bleeding."
+      },
+      "__sourcePath": "src/app/textures/p299TestAtlas.textureAtlas.json",
+      "__atlas": {
+        "id": "p299TestAtlas",
+        "slot": "mask",
+        "size": [
+          512,
+          512
+        ],
+        "padding": 16,
+        "levels": 5,
+        "cells": {
+          "red": {
+            "uv": [
+              0.03125,
+              0.53125,
+              0.46875,
+              0.96875
+            ],
+            "size": [
+              224,
+              224
+            ]
+          },
+          "green": {
+            "uv": [
+              0.53125,
+              0.78125,
+              0.96875,
+              0.96875
+            ],
+            "size": [
+              224,
+              96
+            ],
+            "data": {
+              "note": "passed through to the cell table"
+            }
+          },
+          "checker": {
+            "uv": [
+              0.40625,
+              0.15625,
+              0.59375,
+              0.34375
+            ],
+            "size": [
+              96,
+              96
+            ]
+          },
+          "metal": {
+            "uv": [
+              0.65625,
+              0.21875,
+              0.78125,
+              0.34375
+            ],
+            "size": [
+              64,
+              64
+            ]
+          },
+          "blue": {
+            "uv": [
+              0.53125,
+              0.46875,
+              0.65625,
+              0.71875
+            ],
+            "size": [
+              64,
+              128
+            ]
+          },
+          "yellow": {
+            "uv": [
+              0.03125,
+              0.21875,
+              0.28125,
+              0.34375
+            ],
+            "size": [
+              128,
+              64
+            ]
+          }
+        }
+      },
+      "__url": "/aek-assets/app/textures/p299TestAtlas.atlas.mask.91a3bdbd.ktx2",
+      "__bytes": {
+        "in": 3090,
+        "out": 16750
+      },
+      "__vramBytes": {
+        "in": 1398100,
+        "out": 349184
       },
       "__codec": "uastc"
     }

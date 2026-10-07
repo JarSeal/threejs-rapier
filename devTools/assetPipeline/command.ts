@@ -3,7 +3,7 @@ import path from 'path';
 import { collectPipelineAssets, readAssetJsons } from './assets';
 import { BUDGET_FIX, getBudgetViolations } from './budgets';
 import { createPipelineCache } from './cache';
-import { getResultFigures } from './generated';
+import { getResultFigures, isKtxOnlyAsset } from './generated';
 import { createKtxProvider } from './ktxEncode';
 import { KTX_FIX } from './ktxTool';
 import { removeStaleOutputs } from './outputs';
@@ -40,8 +40,15 @@ const formatDuration = (ms: number) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).
 
 const getAssetLabel = (asset: PipelineAsset) => {
   const source = asset.source.kind === 'remote' ? asset.source.url : asset.source.repoPath;
-  const colorSpace = asset.type === 'texture' && asset.isSrgb ? ', sRGB' : '';
-  return `${asset.id} ${DIM}(${source}${colorSpace})${RESET}`;
+  const count = (n: number, noun: string) => `, ${n} ${noun}${n === 1 ? '' : 's'}`;
+  const parts =
+    asset.source.kind === 'array'
+      ? count(asset.source.layers.length, 'layer')
+      : asset.source.kind === 'atlas'
+        ? count(asset.source.cells.filter((cell) => cell.source).length, 'cell')
+        : '';
+  const colorSpace = asset.type !== 'importedAsset' && asset.isSrgb ? ', sRGB' : '';
+  return `${asset.id} ${DIM}(${source}${parts}${colorSpace})${RESET}`;
 };
 
 const STATUS_LABELS: Record<PipelineRunResult['status'], string> = {
@@ -239,7 +246,8 @@ export type AssetsCommandOpts = {
    * Re-runs the assets that got no output for want of `ktx` with their textures side off, so they
    * pass through as unoptimized outputs (a production build under `AEK_ASSETS_ALLOW_UNOPTIMIZED`,
    * which has no `__sourceUrl` to fall back to). Not cached: the lock keeps the real settings'
-   * entries only. Default: false.
+   * entries only. Not a texture array (p299 D2) nor an atlas slot (D3): each is only ever a KTX2
+   * file, so it stays `encoderMissing`. Default: false.
    */
   isUnoptimizedFallback?: boolean;
 };
@@ -321,7 +329,9 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
   if (opts.isUnoptimizedFallback) {
     const missing = new Map(
       [...pipelineRun.results].flatMap(([key, result]) =>
-        result.status === 'encoderMissing' ? [[key, result.asset] as const] : []
+        result.status === 'encoderMissing' && !isKtxOnlyAsset(result)
+          ? [[key, result.asset] as const]
+          : []
       )
     );
     if (missing.size) {

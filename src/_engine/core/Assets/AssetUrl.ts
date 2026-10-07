@@ -74,7 +74,7 @@ export const resolveAssetUrl = (
       if (!loggedPackedAssets.has(asset.__url)) {
         loggedPackedAssets.add(asset.__url);
         llog(
-          `Asset "${name}" is packed by the asset pipeline and has no source file: it loads its output despite the "Load source files" override.`
+          `Asset "${name}" is built by the asset pipeline (a packed texture or a texture array) and has no source file: it loads its output despite the "Load source files" override.`
         );
       }
     }

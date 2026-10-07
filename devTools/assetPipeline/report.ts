@@ -36,7 +36,7 @@ export type RunSummaryAsset = {
   url?: string;
   bytes?: InOut;
   vramBytes?: InOut;
-  /** A standalone texture's codec */
+  /** A standalone texture's (or a texture array's) codec */
   codec?: string;
   /** Why it was passed through, skipped or not encoded, or what failed */
   reason?: string;
@@ -86,7 +86,7 @@ export const summarizeRun = (
     statuses[result.status] = (statuses[result.status] ?? 0) + 1;
     const cacheStatus = 'cache' in result ? result.cache : undefined;
     if (cacheStatus) cache[cacheStatus]++;
-    const isTexture = result.asset.type === 'texture';
+    const isTexture = result.asset.type !== 'importedAsset';
     assets.push({
       key,
       id: result.asset.id,

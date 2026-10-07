@@ -1,0 +1,51 @@
+{
+  "$schema": "../../../.schemas/textureAtlas.schema.json",
+  "id": "p299TestAtlas",
+  "size": [512, 512],
+  "padding": 16,
+  "slots": {
+    "albedo": {
+      "texOpts": { "colorSpace": "srgb" },
+      "optimize": { "slot": "baseColor" }
+    },
+    "mask": {
+      "fill": [0, 0, 0],
+      "optimize": { "slot": "data", "textures": { "data": { "codec": "uastc" } } }
+    }
+  },
+  "cells": [
+    {
+      "id": "red",
+      "rect": [0, 0, 256, 256],
+      "sources": { "albedo": "./source/p299Atlas/red.png", "mask": "./source/p299Atlas/maskRings.png" }
+    },
+    {
+      "id": "green",
+      "rect": [256, 0, 256, 128],
+      "sources": { "albedo": "./source/p299Atlas/green.png", "mask": "./source/p299Atlas/maskGradient.png" },
+      "data": { "note": "passed through to the cell table" }
+    },
+    {
+      "id": "checker",
+      "size": [96, 96],
+      "sources": { "albedo": "/debugger/assets/testTextures/UVMaps/UVCheckerMap-orange-white-512.png" }
+    },
+    {
+      "id": "metal",
+      "size": [64, 64],
+      "sources": { "albedo": "testTexture" }
+    },
+    {
+      "id": "blue",
+      "sources": { "albedo": "./source/p299Atlas/blue.png", "mask": "./source/p299Atlas/maskGradient.png" }
+    },
+    {
+      "id": "yellow",
+      "sources": { "albedo": "./source/p299Atlas/yellow.png", "mask": "./source/p299Atlas/maskRings.png" }
+    }
+  ],
+  "debugData": {
+    "name": "p299 test atlas",
+    "description": "p299 Phase 3: a 2-slot atlas of 6 cells (explicit rects and packed ones, a texture asset's source, cells without a mask source), 16 px of padding, for checking mip bleeding."
+  }
+}

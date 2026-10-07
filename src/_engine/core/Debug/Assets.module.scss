@@ -1,0 +1,150 @@
+@use '../../styles/variables.scss';
+
+/** The info window's layer and cell tables (texture arrays and atlases, p299 D6) */
+.assetsTable {
+  width: 100%;
+  margin-top: 0.4rem;
+  border-collapse: collapse;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+
+  th {
+    color: variables.$debugTextColorDark;
+    font-weight: normal;
+    text-align: left;
+    vertical-align: bottom;
+  }
+
+  td {
+    padding: 0.15rem 0;
+    vertical-align: top;
+    word-break: break-word;
+  }
+
+  th + th,
+  td + td {
+    padding-left: 0.8rem;
+  }
+
+  td.assetsTableNumber {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  tbody tr:hover {
+    background-color: variables.$debugGuiBackgroundLighter2;
+  }
+}
+
+.assetsTableSub {
+  color: variables.$debugTextColorDark;
+}
+
+/** The info window's previews (an array's layers, an atlas slot's image, p299 D6) */
+.assetsPreview {
+  font-size: 1rem;
+}
+
+.assetsPreviewToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.4rem;
+}
+
+.assetsPreviewLevel {
+  min-width: 2.4rem;
+  padding: 0.1rem 0.4rem;
+}
+
+.assetsPreviewLevelActive {
+  background-color: variables.$debugTextColor;
+  color: variables.$debugGuiBackground;
+
+  &:hover {
+    background-color: variables.$debugTextColor;
+  }
+}
+
+.assetsPreviewToggle {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/** Transparent texels show as a checkerboard */
+@mixin checkerboard {
+  background-color: #777;
+  background-image: linear-gradient(45deg, #555 25%, transparent 25%, transparent 75%, #555 75%),
+    linear-gradient(45deg, #555 25%, transparent 25%, transparent 75%, #555 75%);
+  background-size: 1.6rem 1.6rem;
+  background-position:
+    0 0,
+    0.8rem 0.8rem;
+}
+
+.assetsPreviewCanvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  // Texels, not a blur: a small level is scaled up
+  image-rendering: pixelated;
+  @include checkerboard;
+}
+
+.assetsPreviewThumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.6rem, 1fr));
+  gap: 0.6rem;
+  margin: 0.4rem 0;
+
+  figure {
+    margin: 0;
+    min-width: 0;
+  }
+
+  figcaption {
+    margin-top: 0.2rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: variables.$debugTextColorDark;
+  }
+}
+
+.assetsPreviewFrame {
+  position: relative;
+  margin: 0.4rem 0;
+}
+
+.assetsPreviewOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.assetsPreviewHideRects .assetsPreviewOverlay {
+  display: none;
+}
+
+.assetsPreviewCell {
+  rect {
+    // Painted (transparent), so the whole rect takes the hover
+    fill: transparent;
+    stroke-width: 1;
+  }
+
+  &:hover .assetsPreviewContent {
+    fill: rgba(255, 0, 255, 0.25);
+  }
+}
+
+.assetsPreviewPadded {
+  stroke: #00ffff;
+}
+
+.assetsPreviewContent {
+  stroke: #ff00ff;
+}

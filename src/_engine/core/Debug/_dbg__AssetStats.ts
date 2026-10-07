@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { TextureArrayInfo } from '../TextureArray';
 
 /** Pure helpers for the Assets debugger tab (_dbg__Assets.ts): counts, sizes and readable names. */
 
@@ -153,6 +154,18 @@ export const getTextureSize = (texture: THREE.Texture) => {
   return { width: image.width, height: image.height };
 };
 
+const isArrayTexture = (texture: THREE.Texture) =>
+  Boolean(
+    (texture as THREE.CompressedArrayTexture).isCompressedArrayTexture ||
+      (texture as THREE.DataArrayTexture).isDataArrayTexture
+  );
+
+/** The layers of an array texture or the depth of a 3D texture (its image's depth), else 1. */
+export const getTextureDepth = (texture: THREE.Texture) =>
+  isArrayTexture(texture) || (texture as THREE.Data3DTexture).isData3DTexture
+    ? (texture.image as { depth?: number } | null)?.depth ?? 1
+    : 1;
+
 type CompressedMips = { data?: ArrayBufferView }[] | undefined;
 
 /**
@@ -173,15 +186,24 @@ export const getCompressedTextureByteSize = (texture: THREE.Texture) => {
   return bytes || null;
 };
 
-/** Estimated GPU memory: width × height × bytes per pixel (× 6 faces for a cube texture), plus a
- * third for the mipmap chain; a compressed texture's uploaded bytes. Null for unknown formats. */
+/** Estimated GPU memory: width × height × bytes per pixel (× 6 faces for a cube texture, × its
+ * layers or depth for an array or 3D texture), plus a third for the mipmap chain; a compressed
+ * texture's uploaded bytes. Null for unknown formats. */
 export const getTextureByteSize = (texture: THREE.Texture) => {
-  if ('isCompressedTexture' in texture) return getCompressedTextureByteSize(texture);
+  if ('isCompressedTexture' in texture) {
+    const array = texture.userData.textureArray as TextureArrayInfo | undefined;
+    // A runtime array drops its CPU mip data after the upload (TextureArray.ts): from its layer
+    // size, measured before that
+    return (
+      getCompressedTextureByteSize(texture) ??
+      (array?.cpuDataReleased ? array.layerBytes * array.members.length : null)
+    );
+  }
   const size = getTextureSize(texture);
   const channels = FORMAT_CHANNELS.get(texture.format as number);
   const bytesPerChannel = TYPE_BYTES.get(texture.type);
   if (!size || !channels || !bytesPerChannel) return null;
-  const faces = 'isCubeTexture' in texture && texture.isCubeTexture ? 6 : 1;
+  const faces = 'isCubeTexture' in texture && texture.isCubeTexture ? 6 : getTextureDepth(texture);
   const base = size.width * size.height * channels * bytesPerChannel * faces;
   return Math.round(texture.generateMipmaps ? (base * 4) / 3 : base);
 };
@@ -190,19 +212,36 @@ export const getTextureByteSize = (texture: THREE.Texture) => {
 export const describeTexture = (texture: THREE.Texture) => {
   const size = getTextureSize(texture);
   const isCube = 'isCubeTexture' in texture && texture.isCubeTexture;
+  const isArray = isArrayTexture(texture);
+  const is3D = (texture as THREE.Data3DTexture).isData3DTexture;
+  const depth = getTextureDepth(texture);
+  const isCompressed = 'isCompressedTexture' in texture && texture.isCompressedTexture;
+  const levels = texture.mipmaps?.length ?? 0;
   return {
     kind: isCube
       ? 'Cube texture'
-      : 'isDataTexture' in texture && texture.isDataTexture
-        ? 'Data texture'
-        : 'isCompressedTexture' in texture && texture.isCompressedTexture
-          ? 'Compressed texture'
-          : 'Texture',
-    dimensions: size ? `${size.width} × ${size.height}${isCube ? ' (× 6 faces)' : ''}` : '—',
+      : isArray
+        ? isCompressed
+          ? 'Compressed array texture'
+          : 'Data array texture'
+        : is3D
+          ? '3D data texture'
+          : 'isDataTexture' in texture && texture.isDataTexture
+            ? 'Data texture'
+            : isCompressed
+              ? 'Compressed texture'
+              : 'Texture',
+    dimensions: size
+      ? `${size.width} × ${size.height}${isCube ? ' (× 6 faces)' : isArray ? ` × ${depth} layer${depth === 1 ? '' : 's'}` : is3D ? ` × ${depth}` : ''}`
+      : '—',
     colorSpace: texture.colorSpace || 'none (data)',
     format: constName(FORMAT_NAMES, texture.format as number),
     type: constName(TYPE_NAMES, texture.type),
-    mipmaps: texture.generateMipmaps ? 'generated' : texture.mipmaps?.length ? 'provided' : 'off',
+    mipmaps: texture.generateMipmaps
+      ? 'generated'
+      : levels
+        ? `provided, ${levels} level${levels === 1 ? '' : 's'}`
+        : 'off',
     filtering: `min ${constName(FILTER_NAMES, texture.minFilter)}, mag ${constName(FILTER_NAMES, texture.magFilter)}`,
     wrap: `S ${constName(WRAP_NAMES, texture.wrapS)}, T ${constName(WRAP_NAMES, texture.wrapT)}`,
     anisotropy: String(texture.anisotropy),
