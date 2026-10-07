@@ -3,7 +3,8 @@ import { float, fwidth, max, mix, step, texture, uv, vec3, vec4 } from 'three/ts
 // The real generic `Node<T>` typings (the `three/tsl` `Node` is a loose local shim)
 import type { Node, TextureNode } from 'three/webgpu';
 import { createCameraEntity, getActiveCamera } from '../_engine/core/CameraManager';
-import { saveBufferGeometry } from '../_engine/core/Geometry';
+import { getGeometryRegistry, saveBufferGeometry } from '../_engine/core/Geometry';
+import { createLightEntity } from '../_engine/core/LightManager';
 import { saveMaterial } from '../_engine/core/Material';
 import { createMeshEntity } from '../_engine/core/MeshManager';
 import { getRenderer } from '../_engine/core/Renderer';
@@ -18,6 +19,7 @@ import {
 import {
   getAtlasCell,
   getTextureAtlasInfo,
+  remapUVsToAtlasCell,
   sampleAtlasCell,
   type TextureAtlasInfo,
 } from '../_engine/core/TextureAtlas';
@@ -35,6 +37,9 @@ import { lerror } from '../_engine/utils/Logger';
  * - row levels + 1: each cell's source file in that slot (empty: the cell has none, its fill).
  * - rows levels + 2 and + 3: each cell at level 0 with the UVs overscanned to -0.25..1.25, clamped
  *   to the cell (its edge texels stretched out) and not (its padding, then its neighbours).
+ * - column 6 (between the slots), lit: a sphere remapped into the checker cell
+ *   (`remapUVsToAtlasCell`, a clone) with the albedo slot as its `map`, the same sphere with the
+ *   cell's source file, and a box remapped in place into the metal cell.
  * A cell's quads have its content's aspect. `window.__textureAtlases` holds the checks' results
  * and `screenRect(name)` for the harness.
  */
@@ -43,6 +48,8 @@ const ATLAS_ID = 'p299TestAtlas';
 const SLOTS = ['albedo', 'mask'] as const;
 const CELL = 1.2;
 const SLOT_COLUMNS = 7;
+/** The gap between the slots: the lit remapped meshes */
+const LIT_COLUMN = 6;
 const X0 = -CELL * 6;
 const Y0 = CELL * 3.5;
 /** In front of the debug helpers at the world origin */
@@ -272,6 +279,111 @@ const buildSlot = async (tex: THREE.Texture, slotIndex: number) => {
   }
 };
 
+/** A UV attribute's range, `[minU, minV, maxU, maxV]` */
+const uvRange = (geometry: THREE.BufferGeometry) => {
+  const attr = geometry.getAttribute('uv');
+  const range = [Infinity, Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < attr.count; i++) {
+    range[0] = Math.min(range[0], attr.getX(i));
+    range[1] = Math.min(range[1], attr.getY(i));
+    range[2] = Math.max(range[2], attr.getX(i));
+    range[3] = Math.max(range[3], attr.getY(i));
+  }
+  return range;
+};
+
+const addLitMesh = (name: string, geo: THREE.BufferGeometry, map: THREE.Texture, row: number) => {
+  const mat = new THREE.MeshStandardNodeMaterial({ map, roughness: 0.6, metalness: 0 });
+  saveMaterial(mat, `textureAtlases/${name}`);
+  const x = X0 + LIT_COLUMN * CELL;
+  const y = Y0 - row * CELL;
+  state.quads[name] = { x, y, halfW: 0.5, halfH: 0.5 };
+  createMeshEntity(
+    { geo, mat, position: { x, y, z: Z }, rotation: { x: 0.35, y: -0.6, z: 0 } },
+    { appId: `textureAtlases_${name}` }
+  );
+};
+
+/** Phase 4's exit: lit meshes with their UVs remapped into albedo cells (`remapUVsToAtlasCell`),
+ * drawn with the slot as a plain `map`, next to the cell's source file on the same geometry. */
+const buildRemappedMeshes = (albedo: THREE.Texture) => {
+  const { results } = state;
+  const sphere = saveBufferGeometry(new THREE.SphereGeometry(0.45, 48, 24), {
+    id: 'textureAtlasesSphere',
+  });
+  const remapped = remapUVsToAtlasCell(sphere, ATLAS_ID, 'checker');
+  addLitMesh('lit_checker_remapped', remapped, albedo, 1);
+  addLitMesh('lit_checker_source', sphere, getTexture('textureAtlases/albedo_checker')!, 2);
+
+  const box = saveBufferGeometry(new THREE.BoxGeometry(0.6, 0.6, 0.6), {
+    id: 'textureAtlasesBox',
+  });
+  const inPlace = remapUVsToAtlasCell(box, `${ATLAS_ID}.albedo`, 'metal', { inPlace: true });
+  addLitMesh('lit_metal_inPlace', box, albedo, 3);
+
+  // UVs tiled twice: remapped with a warning (they reach the cell's neighbours)
+  const tiled = new THREE.PlaneGeometry(1, 1);
+  const tiledUv = tiled.getAttribute('uv');
+  for (let i = 0; i < tiledUv.count; i++) {
+    tiledUv.setXY(i, tiledUv.getX(i) * 2, tiledUv.getY(i) * 2);
+  }
+  const tiledRemapped = remapUVsToAtlasCell(saveBufferGeometry(tiled), albedo, 'red');
+
+  const sharedAttributes = Object.entries(remapped.attributes)
+    .filter(([key, attr]) => {
+      const sourceAttr = sphere.attributes[key] as THREE.BufferAttribute | undefined;
+      return sourceAttr === attr || sourceAttr?.array === (attr as THREE.BufferAttribute).array;
+    })
+    .map(([key]) => key);
+  const expectSync = (fn: () => unknown) => {
+    try {
+      fn();
+      return 'FAILED: did not throw';
+    } catch (error) {
+      return (error as Error).message;
+    }
+  };
+  results.remap = {
+    cellUv: {
+      checker: getAtlasCell(ATLAS_ID, 'checker')!.uv,
+      metal: getAtlasCell(albedo, 'metal')!.uv,
+    },
+    clone: {
+      id: remapped.userData.id,
+      isRegistered: getGeometryRegistry()[remapped.userData.id]?.resource === remapped,
+      isSource: remapped === sphere,
+      atlasCell: remapped.userData.atlasCell,
+      uvRange: uvRange(remapped),
+      uvType: remapped.getAttribute('uv').array.constructor.name,
+      sharedAttributes,
+      sharedIndex: remapped.index === sphere.index || remapped.index?.array === sphere.index?.array,
+      // A second call for the same geometry and cell returns the registered clone
+      sharedByCall: remapUVsToAtlasCell(sphere, ATLAS_ID, 'checker') === remapped,
+    },
+    source: {
+      id: sphere.userData.id,
+      uvRange: uvRange(sphere),
+      atlasCell: sphere.userData.atlasCell ?? null,
+    },
+    inPlace: {
+      isSource: inPlace === box,
+      id: box.userData.id,
+      atlasCell: box.userData.atlasCell,
+      uvRange: uvRange(box),
+    },
+    tiled: { id: tiledRemapped.userData.id, uvRange: uvRange(tiledRemapped) },
+    errors: {
+      alreadyRemapped: expectSync(() => remapUVsToAtlasCell(remapped, ATLAS_ID, 'red')),
+      unknownCell: expectSync(() => remapUVsToAtlasCell(sphere, ATLAS_ID, 'noSuchCell')),
+      unknownAtlas: expectSync(() => remapUVsToAtlasCell(sphere, 'noSuchAtlas', 'red')),
+      unknownGeometry: expectSync(() => remapUVsToAtlasCell('noSuchGeometry', ATLAS_ID, 'red')),
+      noAttribute: expectSync(() =>
+        remapUVsToAtlasCell(sphere, ATLAS_ID, 'red', { attribute: 'uv1' })
+      ),
+    },
+  };
+};
+
 /** loadTextureAsync of a slot that fails: no output, or a file that doesn't fit its layout. */
 const checkErrors = async () => {
   const { results } = state;
@@ -358,6 +470,7 @@ const build = async (assets: ScenePrimitiveAssets) => {
   }
   await checkErrors();
   checkHelpers(slotTextures[0]);
+  buildRemappedMeshes(slotTextures[0]);
   return slotTextures;
 };
 
@@ -377,6 +490,21 @@ export const scene = async ({ assets }: { assets: ScenePrimitiveAssets }) => {
       active: true,
     },
     { appId: 'textureAtlasesCam', debugData: { name: 'Texture atlases' } }
+  );
+  // For the lit meshes only: the quads are unlit
+  createLightEntity(
+    { type: 'AMBIENT', color: '#ffffff', intensity: 0.6 },
+    { appId: 'textureAtlasesAmbient' }
+  );
+  createLightEntity(
+    {
+      type: 'DIRECTIONAL',
+      color: '#ffffff',
+      intensity: 2.5,
+      position: { x: 3, y: 5, z: Z + 6 },
+      targetPos: { x: 0, y: 0, z: Z },
+    },
+    { appId: 'textureAtlasesSun' }
   );
 
   const quad = new THREE.PlaneGeometry(1, 1);

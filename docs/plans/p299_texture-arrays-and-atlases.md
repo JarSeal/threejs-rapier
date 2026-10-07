@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-3 implemented, Phase 4 section 1
+Status: in progress | Phases 0-3 implemented, Phase 4 sections 1-2
 Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
@@ -616,11 +616,46 @@ unclamped shows its padding, then its neighbours):
   and not) and reports `cellLookups`, `sampleErrors` and `rectOnPlainTexture`. Its grid moved up
   half a cell (`Y0`) for them.
 
-#### Section 2: `remapUVsToAtlasCell` and the exit meshes
+#### Section 2: `remapUVsToAtlasCell` and the exit meshes — done
 
 A deep clone by default (three r186 frees shared GPU buffers when either geometry is disposed, as
 with LOD chains), `inPlace` rewrites the given one; UVs outside 0..1 warn. A lit mesh remapped
 into a cell (`textureAtlases`) and a lit mesh sampling an array layer (`textureArrays`).
+
+As built (verified in both p299 scenes on WebGPU and WebGL2, the same results on both: the lit
+sphere remapped into the checker cell, drawn with the albedo slot as a plain `map`, differs from
+the same sphere with the cell's source file by a mean of 7.8 / 255 with the grid lines in place
+(a 96 px cell against a 512² file, at about 43 px on screen); the lit sphere sampling the asset's
+`testTexture` layer differs from its source by 5.1 / 255):
+
+- `remapUVsToAtlasCell(geometry, atlas, cellId, { attribute = 'uv', inPlace, id })`
+  (`core/TextureAtlas.ts`): `geometry` is a geometry or a registered id, `atlas` what
+  `getAtlasCell` takes (an atlas id, a slot id or a slot texture; a slot must be loaded). A cell id
+  only, no rect: a rect needs no atlas, and `sampleAtlasCell` already takes one.
+- The clone: `geometry.clone()` (three r186 copies every attribute's array, an interleaved buffer
+  once per clone, and the index) with a new `Float32` UV attribute, registered with
+  `saveBufferGeometry` as `<geometryId>@<atlasId>:<cellId>` (or `id`) and owned by the loading
+  scene. A second call for the same geometry and cell returns the registered clone. three's
+  `copy()` assigns `userData` by reference, so the clone gets its own, without the source's `id`,
+  `props`, `debugData` and LOD fields.
+- `inPlace` writes through the attribute's own type (`setXY`, so normalized integers stay
+  quantized, as the pipeline's meshopt GLBs ship them) and flags it for upload. Unnormalized
+  integers throw; 8-bit normalized and half-float UVs warn (too coarse for a cell rect).
+- Either result gets `userData.atlasCell` (`GeometryAtlasCell`: atlas, cell, attribute, the
+  rect), and a geometry that has one throws: remapping twice would map into the cell's own
+  sub-rect.
+- The warning is "too far", not "outside 0..1": three's `SphereGeometry` offsets its poles' u by
+  half a segment (u -0.0104..1.0104), which reaches a pixel into the padding and would warn for
+  every sphere. A UV warns when it reaches more than half the padding past the content (in the
+  layout's px, from the cell's `size`): the other half is a bilinear tap's at the last protected
+  level (`padding ≥ 2^L`, a tap reaches `2^(L-1)`).
+- The scenes got an ambient and a directional light (for the lit meshes; the quads stay unlit).
+  `textureAtlases`, column 6 (between the slots): a sphere remapped into `checker` (a clone), the
+  same sphere with the source file, a box remapped in place into `metal`; `results.remap` checks
+  the clone (no shared attribute or index, the UV range is the cell rect, shared by a second
+  call), the untouched source, the in-place box, a plane tiled ×2 (warns) and the errors.
+  `textureArrays`, column 6, rows 2-4: the asset's `testTexture` layer as a `colorNode`, its source
+  as a `map`, and layer s2 of the runtime array.
 
 #### Section 3: Assets tab sections
 

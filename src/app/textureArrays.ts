@@ -4,6 +4,7 @@ import { dFdx, dFdy, int, texture, uv, vec2 } from 'three/tsl';
 import type { Node, TextureNode } from 'three/webgpu';
 import { createCameraEntity, getActiveCamera } from '../_engine/core/CameraManager';
 import { saveBufferGeometry } from '../_engine/core/Geometry';
+import { createLightEntity } from '../_engine/core/LightManager';
 import { saveMaterial } from '../_engine/core/Material';
 import { createMeshEntity } from '../_engine/core/MeshManager';
 import { getRenderer } from '../_engine/core/Renderer';
@@ -41,6 +42,8 @@ import { lerror } from '../_engine/utils/Logger';
  *   the scene loader), picked by layer name, column 5 the files they were built from (resized to
  *   512² for the array).
  * - column 5, rows 0-1: the one-layer `p299TestArray1` asset, then its file.
+ * - column 6, rows 2-4, lit spheres: the asset's `testTexture` layer (`sampleArrayLayer` as the
+ *   material's `colorNode`), its source file as a plain `map`, and layer s2 of row 0's array.
  * Every array quad samples through `sampleArrayLayer` (Phase 4). `window.__textureArrays` holds the
  * checks' results and `project()` for the harness.
  */
@@ -85,6 +88,7 @@ const state: {
 
 let quadGeo: THREE.BufferGeometry;
 let rowGeo: THREE.BufferGeometry;
+let sphereGeo: THREE.BufferGeometry;
 
 const addQuad = (name: string, colorNode: Node<'vec4'>, row: number, col: number, wide = false) => {
   const mat = new THREE.MeshBasicNodeMaterial();
@@ -124,6 +128,34 @@ const addLayerQuad = (
   row: number,
   col: number
 ) => addQuad(name, sampleArrayLayer(tex, meshUv(), layer) as unknown as Node<'vec4'>, row, col);
+
+const addLitSphere = (
+  name: string,
+  row: number,
+  color: { node?: Node<'vec4'>; map?: THREE.Texture }
+) => {
+  const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.6, metalness: 0 });
+  if (color.map) mat.map = color.map;
+  if (color.node) mat.colorNode = color.node;
+  saveMaterial(mat, `textureArrays/${name}`);
+  const { x, y } = state.cellCenter(row, 6);
+  createMeshEntity(
+    { geo: sphereGeo, mat, position: { x, y, z: Z }, rotation: { x: 0.35, y: -0.6, z: 0 } },
+    { appId: `textureArrays_${name}` }
+  );
+};
+
+/** Phase 4's exit: lit meshes sampling an array layer, next to the layer's source file. */
+const buildLitSpheres = (memberIds: string[]) => {
+  const { arrays } = state;
+  addLitSphere('lit_assetLayer', 2, {
+    node: sampleArrayLayer(arrays.asset, meshUv(), 'testTexture') as unknown as Node<'vec4'>,
+  });
+  addLitSphere('lit_assetSource', 3, { map: getTexture('textureArrays/assetSource0')! });
+  addLitSphere('lit_runtimeLayer', 4, {
+    node: sampleArrayLayer(arrays.registered, meshUv(), memberIds[2]) as unknown as Node<'vec4'>,
+  });
+};
 
 const nextFrames = (count: number) =>
   new Promise<void>((resolve) => {
@@ -325,6 +357,7 @@ const build = async (assets: ScenePrimitiveAssets) => {
 
   await buildAssetColumns(assets);
   checkHelpers(memberIds, testTexture);
+  buildLitSpheres(memberIds);
 
   // The errors a bad member list gets
   results.errors = {
@@ -399,6 +432,21 @@ export const scene = async ({ assets }: { assets: ScenePrimitiveAssets }) => {
     },
     { appId: 'textureArraysCam', debugData: { name: 'Texture arrays' } }
   );
+  // For the lit spheres only: the quads are unlit
+  createLightEntity(
+    { type: 'AMBIENT', color: '#ffffff', intensity: 0.6 },
+    { appId: 'textureArraysAmbient' }
+  );
+  createLightEntity(
+    {
+      type: 'DIRECTIONAL',
+      color: '#ffffff',
+      intensity: 2.5,
+      position: { x: 4, y: 5, z: Z + 6 },
+      targetPos: { x: 1.2, y: 0, z: Z },
+    },
+    { appId: 'textureArraysSun' }
+  );
 
   const quad = new THREE.PlaneGeometry(1, 1);
   quadGeo = saveBufferGeometry(quad, { id: 'textureArraysQuad' });
@@ -406,6 +454,9 @@ export const scene = async ({ assets }: { assets: ScenePrimitiveAssets }) => {
   const row = new THREE.PlaneGeometry(ROW_WIDTH, 1);
   rowGeo = saveBufferGeometry(row, { id: 'textureArraysRow' });
   if (rowGeo !== row) row.dispose();
+  const sphere = new THREE.SphereGeometry(0.45, 48, 24);
+  sphereGeo = saveBufferGeometry(sphere, { id: 'textureArraysSphere' });
+  if (sphereGeo !== sphere) sphere.dispose();
 
   try {
     await build(assets);
