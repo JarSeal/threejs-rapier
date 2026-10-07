@@ -23,7 +23,7 @@ import {
   sampleAtlasCell,
   type TextureAtlasInfo,
 } from '../_engine/core/TextureAtlas';
-import { lerror } from '../_engine/utils/Logger';
+import { lerror, llog } from '../_engine/utils/Logger';
 
 /**
  * The p299 atlas verification scene: the `p299TestAtlas` asset (`*.textureAtlas.json`, listed by
@@ -322,12 +322,19 @@ const buildRemappedMeshes = (albedo: THREE.Texture) => {
   addLitMesh('lit_metal_inPlace', box, albedo, 3);
 
   // UVs tiled twice: remapped with a warning (they reach the cell's neighbours)
+  llog(
+    '[textureAtlases] Expected: the next warning (remapUVsToAtlasCell, "textureAtlasesTiledPlane") tests UVs that reach past their cell.'
+  );
   const tiled = new THREE.PlaneGeometry(1, 1);
   const tiledUv = tiled.getAttribute('uv');
   for (let i = 0; i < tiledUv.count; i++) {
     tiledUv.setXY(i, tiledUv.getX(i) * 2, tiledUv.getY(i) * 2);
   }
-  const tiledRemapped = remapUVsToAtlasCell(saveBufferGeometry(tiled), albedo, 'red');
+  const tiledRemapped = remapUVsToAtlasCell(
+    saveBufferGeometry(tiled, { id: 'textureAtlasesTiledPlane' }),
+    albedo,
+    'red'
+  );
 
   const sharedAttributes = Object.entries(remapped.attributes)
     .filter(([key, attr]) => {
@@ -391,6 +398,9 @@ const checkErrors = async () => {
     (tex): tex is TextureProps => typeof tex !== 'string' && tex.id === `${ATLAS_ID}.albedo`
   );
   if (!albedo?.__atlas) throw new Error('No albedo slot entry in the scene data');
+  llog(
+    '[textureAtlases] Expected: the next 5 errors (noOutputFallback, noOutput, tooManyLevels, droppedPlusStored, sizeMismatch) test how loadTextureAsync fails for an atlas slot.'
+  );
   const fallback = await loadTextureAsync({
     id: 'textureAtlases/noOutputFallback',
     __atlas: albedo.__atlas,

@@ -24,7 +24,7 @@ import {
   setTextureArrayLayer,
   type TextureArray,
 } from '../_engine/core/TextureArray';
-import { lerror } from '../_engine/utils/Logger';
+import { lerror, llog } from '../_engine/utils/Logger';
 
 /**
  * The p299 verification scene: texture arrays next to the textures they were built from. Unlit
@@ -227,6 +227,9 @@ const buildAssetColumns = async (assets: ScenePrimitiveAssets) => {
   const oneLayerSource = await loadSourceFile('assetOneLayerSource', `${URL_BASE}/l2.png`);
   addQuad('assetOneLayerSource', sampleTexture(oneLayerSource, meshUv()), 1, 5);
 
+  llog(
+    '[textureArrays] Expected: the next 3 errors (noOutputFallback, noOutput, layerCountMismatch) test how loadTextureAsync fails for a texture array asset.'
+  );
   // Without an output: an error, and (without throwOnError) an empty array of as many layers
   const fallback = await loadTextureAsync({
     id: 'textureArrays/noOutputFallback',
