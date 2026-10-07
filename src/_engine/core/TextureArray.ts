@@ -50,7 +50,11 @@ export type BuildTextureArrayProps = {
 
 /** What an array was built from, on its `userData.textureArray`. */
 export type TextureArrayInfo = {
-  /** The member per layer (an id, or a file member's id or file name) */
+  /** `RUNTIME`: {@link buildTextureArray}; `BUILD`: a texture array asset's KTX2 output
+   * (`*.textureArray.json`, loaded by loadTextureAsync) */
+  origin: 'RUNTIME' | 'BUILD';
+  /** The member per layer (an id, or a file member's id or file name); a `BUILD` array's layer
+   * names (its asset's `__layers`) */
   members: string[];
   kind: 'COMPRESSED' | 'UNCOMPRESSED';
   width: number;
@@ -117,19 +121,19 @@ const loadMember = async (member: TextureArrayMember): Promise<LoadedMember> => 
   const registered = typeof member === 'string' || member.id ? getTexture(key) : undefined;
   if (registered) return { key, texture: registered, isBorrowed: true };
 
-  // Production data has only the scenes, no texture registry
-  const props =
-    typeof member === 'string'
-      ? (
-          getGeneratedAppData() as unknown as {
-            textures?: Record<string, TextureProps | undefined>;
-          }
-        ).textures?.[member]
-      : member;
+  // Only dev data has the texture registry: in production, a texture asset is a member only once
+  // a scene that lists it has loaded it (registered)
+  const registry = (
+    getGeneratedAppData() as unknown as { textures?: Record<string, TextureProps | undefined> }
+  ).textures;
+  const props = typeof member === 'string' ? registry?.[member] : member;
   if (!props) {
     throw new Error(
-      `Texture array member "${key}" is neither a registered texture nor a texture asset (*.texture.json).`
+      `Texture array member "${key}" is neither a registered texture nor a texture asset (*.texture.json).${registry ? '' : ' Production data has no texture registry: list the asset in the scene\'s "textures", so its load registers it.'}`
     );
+  }
+  if (props.__layers) {
+    throw new Error(`Texture array member "${key}" is a texture array asset itself.`);
   }
   if (Array.isArray(props.fileName)) {
     throw new Error(`Texture array member "${key}" is a cube texture.`);
@@ -346,6 +350,7 @@ const build = async (id: string, props: BuildTextureArrayProps, keys: string[]) 
     }
     array.colorSpace = spec.colorSpace;
     const info: TextureArrayInfo = {
+      origin: 'RUNTIME',
       members: keys,
       kind: spec.kind,
       width: spec.width,
@@ -459,6 +464,11 @@ export const setTextureArrayLayer = (id: string, layer: number, member: TextureA
   const array = getTextureArray(id);
   const info = array && getTextureArrayInfo(array);
   if (!array || !info) throw new Error(`No texture array "${id}" is registered.`);
+  if (info.origin === 'BUILD') {
+    throw new Error(
+      `Texture array "${id}" is a texture array asset (*.textureArray.json): its layers are encoded in its file. Build a swappable array with \`buildTextureArray({ swappable: true })\` to replace layers.`
+    );
+  }
   if (!info.swappable) {
     throw new Error(
       `Texture array "${id}" isn't swappable: build it with \`swappable: true\` to replace its layers.`

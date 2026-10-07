@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-1 implemented, Phase 2 sections 1-3 implemented
+Status: in progress | Phases 0-2 implemented
 Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
@@ -252,11 +252,17 @@ debugData? })`, `setTextureArrayLayer(id, layer, member)` (async; swaps of one a
 8. Mismatches throw with the member, its layer and both values: format (codec), size, mip count,
    colour space, kind; an unknown member; a swap of a non-swappable array; a layer out of range.
 
-### Phase 2 — Build-time arrays (D2)
+### Phase 2 — Build-time arrays (D2) — done
 
 Schema, gatherer suffix, pipeline step (resize + `--layers` encode), lock and budget, runtime
 load. **Exit:** `yarn assets --only <array>` builds a 3-layer array from mixed-size sources; a
 clone with `assets.lock.json` and no `ktx` loads it from the cache.
+
+As built (exit verified: in a fresh clone, no `.tools/` and no `.cache/` store, `AEK_KTX` set to a
+missing binary, the gather took every asset from the lock and gave `p299TestArray` its `__url`;
+there, with the output deleted, `yarn assets --only p299TestArray` rebuilt it from its 2048² JPEG,
+256² PNG and 2048² PNG layers byte-identical to the committed file). The sections' own lists
+follow.
 
 #### Section 1: Schema, gatherer suffix, layer resolution — done
 
@@ -319,12 +325,41 @@ build, naming the array):
   `getGeneratedAppData().textures`, which production data doesn't have, so `yarn build`'s `tsc`
   failed (the Stop hook type-checks dev data). At runtime, a member given by `*.texture.json` id
   now fails with its own error in production, not a `TypeError`. Such a member still resolves in
-  dev data only, though: production data has no texture registry (section 4 or Phase 5).
+  dev data only, though: production data has no texture registry (settled in section 4).
 
-#### Section 4: Runtime load and verification
+#### Section 4: Runtime load and verification — done
 
 `loadTextureAsync` loads the array's `__url` (a one-layer array too); the exit criteria in the
 `textureArrays` scene on WebGPU and WebGL2; this phase's "As built" and the status line.
+
+As built (verified in the `textureArrays` scene on WebGPU and WebGL2: each layer of the 3-layer
+asset, and the one-layer asset, next to its source file differs by a mean of 1.2-2.7 / 255 over
+the cell, the same on both backends, with the same orientation; GPU memory counts each array's mip
+bytes exactly):
+
+- `TextureProps.__layers` marks an array asset: `loadTextureAsync` hands it to
+  `loadTextureArrayAssetAsync` (`core/Texture.ts`). The scene loader needed no change: an array's
+  scene entry is already a texture entry. The texture gets a `TextureArrayInfo` on
+  `userData.textureArray` with the new `origin: 'BUILD'` (runtime arrays: `'RUNTIME'`) and the
+  layer names as `members`, so `getTextureArray` and `getTextureArrayInfo` cover both kinds.
+- A one-layer file (KTX2Loader's plain `CompressedTexture`) is wrapped into a one-layer
+  `CompressedArrayTexture` from the same mip data. A file whose layer count differs from
+  `__layers` fails (stale generated data).
+- No output (`__url` unset: the array has no source to fall back to) and a failed load log an
+  error and return an unregistered black `DataArrayTexture` with as many layers, so a material
+  that samples it with `.depth()` still binds an array; `throwOnError` throws instead. It used to
+  return a plain empty texture without a word.
+- `setTextureArrayLayer` on a `BUILD` array says its layers are in its file; a `BUILD` array as a
+  `buildTextureArray` member fails like any array.
+- Production members by texture asset id: the scene loader registers every texture a scene lists
+  before its scene file runs, so such a member is borrowed as registered. A lookup through the
+  scene entries would never run; the error tells production to list the asset in the scene's
+  `textures` instead.
+- The build-time array keeps its CPU mip data after the upload, like every loaded KTX2 texture
+  (only a non-swappable runtime array drops it).
+- Test asset: `src/app/textures/p299TestArray1.textureArray.json` (one 256² layer). The scene lists
+  both assets in its `textures` (column 4 rows 2-4 and column 5); its results add
+  `noOutputFallback` and `assetErrors`.
 
 ### Phase 3 — Atlases (D3)
 

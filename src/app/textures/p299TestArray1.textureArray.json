@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../.schemas/textureArray.schema.json",
+  "id": "p299TestArray1",
+  "layers": ["/debugger/assets/testOptimized/p299/l2.png"],
+  "texOpts": { "colorSpace": "srgb", "wrapS": 1000, "wrapT": 1000 },
+  "optimize": { "slot": "baseColor" },
+  "debugData": {
+    "name": "p299 one-layer test array",
+    "description": "p299 Phase 2: a build-time array of one layer (a 256² file). `ktx create --layers 1` writes layerCount 1, which KTX2Loader loads as a plain CompressedTexture: loadTextureAsync wraps it."
+  }
+}

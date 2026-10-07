@@ -8,8 +8,13 @@ import { saveMaterial } from '../_engine/core/Material';
 import { createMeshEntity } from '../_engine/core/MeshManager';
 import { getRenderer } from '../_engine/core/Renderer';
 import { getGeneratedAppData } from '../_engine/core/Scene';
-import { loadScene } from '../_engine/core/SceneLoader';
-import { getAllTextures, loadTextureAsync, type TextureProps } from '../_engine/core/Texture';
+import { loadScene, type ScenePrimitiveAssets } from '../_engine/core/SceneLoader';
+import {
+  getAllTextures,
+  getTexture,
+  loadTextureAsync,
+  type TextureProps,
+} from '../_engine/core/Texture';
 import {
   buildTextureArray,
   getTextureArrayInfo,
@@ -30,6 +35,9 @@ import { lerror } from '../_engine/utils/Logger';
  * - row 3: swappable arrays, one layer swapped after the first upload: ETC1S [s0, s1] with
  *   layer 1 → s2 (red, blue), PNG [l0, l1] with layer 0 → l3 (yellow, green).
  * - row 4: `ktx create --layers` files loaded by loadTextureAsync (Phase 2's runtime side).
+ * - column 4, rows 2-4: the layers of the `p299TestArray` asset (`*.textureArray.json`, loaded by
+ *   the scene loader), column 5 the files they were built from (resized to 512² for the array).
+ * - column 5, rows 0-1: the one-layer `p299TestArray1` asset, then its file.
  * `window.__textureArrays` holds the checks' results and `project()` for the harness.
  */
 
@@ -154,7 +162,63 @@ const describeArray = (array: TextureArray) => {
 
 const file = (name: string): TextureProps => ({ fileName: `${URL_BASE}/${name}` });
 
-const build = async () => {
+const loadSourceFile = (name: string, fileName: string) =>
+  loadTextureAsync({
+    id: `textureArrays/${name}`,
+    fileName,
+    texOpts: { colorSpace: THREE.SRGBColorSpace },
+    throwOnError: true,
+  });
+
+/** The texture array assets the scene loader loaded, next to the files they were built from. */
+const buildAssetColumns = async (assets: ScenePrimitiveAssets) => {
+  const { results, arrays } = state;
+  arrays.asset = assets.textures.p299TestArray as TextureArray;
+  arrays.assetOneLayer = assets.textures.p299TestArray1 as TextureArray;
+  const sources = [
+    '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
+    `${URL_BASE}/l1.png`,
+    '/debugger/assets/testTextures/cubemap01_positive_y.png',
+  ];
+  for (const [layer, fileName] of sources.entries()) {
+    addLayerQuad(`asset_L${layer}`, arrays.asset, layer, 2 + layer, 4);
+    const source = await loadSourceFile(`assetSource${layer}`, fileName);
+    addQuad(`assetSource${layer}`, sampleTexture(source, meshUv()), 2 + layer, 5);
+  }
+  addLayerQuad('assetOneLayer', arrays.assetOneLayer, 0, 0, 5);
+  const oneLayerSource = await loadSourceFile('assetOneLayerSource', `${URL_BASE}/l2.png`);
+  addQuad('assetOneLayerSource', sampleTexture(oneLayerSource, meshUv()), 1, 5);
+
+  // Without an output: an error, and (without throwOnError) an empty array of as many layers
+  const fallback = await loadTextureAsync({
+    id: 'textureArrays/noOutputFallback',
+    __layers: ['a', 'b', 'c'],
+  });
+  results.noOutputFallback = {
+    type: fallback.constructor.name,
+    depth: (fallback.image as { depth?: number }).depth,
+    isRegistered: getTexture('textureArrays/noOutputFallback') !== undefined,
+  };
+  const assetUrl = (getGeneratedAppData() as unknown as { textures: Record<string, TextureProps> })
+    .textures.p299TestArray.__url;
+  results.assetErrors = {
+    noOutput: await expectError(() =>
+      loadTextureAsync({ id: 'textureArrays/noOutput', __layers: ['a'], throwOnError: true })
+    ),
+    layerCountMismatch: await expectError(() =>
+      loadTextureAsync({
+        id: 'textureArrays/layerCountMismatch',
+        __url: assetUrl,
+        __layers: ['a', 'b'],
+        throwOnError: true,
+      })
+    ),
+    notSwappable: await expectError(() => setTextureArrayLayer('p299TestArray', 0, file('l0.png'))),
+    asMember: await expectError(() => buildTextureArray({ members: ['p299TestArray'] })),
+  };
+};
+
+const build = async (assets: ScenePrimitiveAssets) => {
   const { results, arrays } = state;
 
   // Row 1: the registered single textures (row 0's members, borrowed by the array)
@@ -223,6 +287,8 @@ const build = async () => {
     addLayerQuad(`built_${codec}_L1`, built, 1, 4, c * 2 + 1);
   }
 
+  await buildAssetColumns(assets);
+
   // The errors a bad member list gets
   results.errors = {
     codecMismatch: await expectError(() =>
@@ -281,7 +347,7 @@ const runSwaps = async () => {
   results.done = true;
 };
 
-export const scene = async () => {
+export const scene = async ({ assets }: { assets: ScenePrimitiveAssets }) => {
   (window as unknown as { __textureArrays: typeof state }).__textureArrays = state;
   state.results = {};
   state.arrays = {};
@@ -290,8 +356,8 @@ export const scene = async () => {
     {
       type: 'PERSPECTIVE',
       fov: 45,
-      position: { x: 0.6, y: 0, z: Z + 9 },
-      lookAtPoint: { x: 0.6, y: 0, z: Z },
+      position: { x: 1.2, y: 0, z: Z + 9 },
+      lookAtPoint: { x: 1.2, y: 0, z: Z },
       active: true,
     },
     { appId: 'textureArraysCam', debugData: { name: 'Texture arrays' } }
@@ -305,7 +371,7 @@ export const scene = async () => {
   if (rowGeo !== row) row.dispose();
 
   try {
-    await build();
+    await build(assets);
     void runSwaps().catch((error) => {
       lerror('[textureArrays] Swaps failed', error);
       state.results.buildError = (error as Error).message;

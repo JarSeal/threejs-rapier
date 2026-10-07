@@ -12,6 +12,7 @@ import type { AssetLoadReport } from './Assets/AssetsAPITypes';
 import { recordAssetOwner, retagAssetOwner } from './Assets/AssetOwners';
 import { resolveAssetUrl, type GeneratedAssetUrls } from './Assets/AssetUrl';
 import { loadKTX2Texture } from './Import/KTX2';
+import type { TextureArrayInfo } from './TextureArray';
 
 export type TexOpts = {
   image?: TexImageSource | OffscreenCanvas;
@@ -36,6 +37,11 @@ export type TextureProps = {
   isPersistent?: boolean;
   userData?: Record<string, unknown>;
   debugData?: { name?: string; description?: string };
+  /**
+   * A texture array asset's (`*.textureArray.json`, p299 D2) layer names by layer index, baked in
+   * by gatherAppData: its `__url` is one KTX2 array file, loaded as a `CompressedArrayTexture`.
+   */
+  __layers?: string[];
 } & GeneratedAssetUrls;
 
 const textures: {
@@ -505,6 +511,100 @@ export const loadTextureFileAsync = async (
   return { texture: result, report };
 };
 
+/** A texture array asset's stand-in when it can't load: one black texel per layer. */
+const getNoFileArrayTexture = (layers: number, texOpts?: TexOpts) => {
+  const texture = new THREE.DataArrayTexture(new Uint8Array(4 * layers), 1, 1, layers);
+  texture.needsUpdate = true;
+  return setTextureOpts(texture, texOpts);
+};
+
+/**
+ * A loaded texture array file as a `CompressedArrayTexture` with `layers.length` layers. `ktx
+ * create --layers 1` writes `layerCount: 1`, which KTX2Loader loads as a plain
+ * `CompressedTexture`: that one is wrapped. Throws when the file has another layer count.
+ */
+const toCompressedArrayTexture = (texture: THREE.Texture, layers: string[]) => {
+  const compressed = texture as THREE.CompressedTexture;
+  if (!compressed.isCompressedTexture) throw new Error('its output is not a KTX2 file');
+  const isArray = (texture as THREE.CompressedArrayTexture).isCompressedArrayTexture;
+  const depth = isArray ? (texture.image as { depth: number }).depth : 1;
+  if (depth !== layers.length) {
+    throw new Error(
+      `its output has ${depth} layer(s) and its generated data names ${layers.length} (__layers): run "yarn gatherAppData"`
+    );
+  }
+  if (isArray) return texture as THREE.CompressedArrayTexture;
+  const { width, height } = compressed.image as { width: number; height: number };
+  const array = new THREE.CompressedArrayTexture(
+    compressed.mipmaps as unknown as ImageData[],
+    width,
+    height,
+    1,
+    compressed.format,
+    compressed.type
+  );
+  array.colorSpace = compressed.colorSpace;
+  array.premultiplyAlpha = compressed.premultiplyAlpha;
+  array.wrapS = compressed.wrapS;
+  array.wrapT = compressed.wrapT;
+  array.minFilter = compressed.minFilter;
+  array.magFilter = compressed.magFilter;
+  array.anisotropy = compressed.anisotropy;
+  array.generateMipmaps = false;
+  array.needsUpdate = true;
+  compressed.dispose(); // Never uploaded
+  return array;
+};
+
+/**
+ * loadTextureAsync for a texture array asset (`__layers`, p299 D2): its KTX2 output, or (without
+ * `throwOnError`) an empty array texture with the same layer count when there is none or it
+ * fails. It has no source file to fall back to. Its `userData.textureArray` describes it like a
+ * runtime array's (`getTextureArrayInfo`).
+ */
+const loadTextureArrayAssetAsync = async ({
+  id,
+  texOpts,
+  throwOnError,
+  isPersistent,
+  userData,
+  debugData,
+  __url,
+  __layers: layers,
+}: TextureProps & { __layers: string[] }) => {
+  let url: string | undefined;
+  try {
+    if (!__url) {
+      throw new Error(
+        'the asset pipeline has no output for it (encoder missing, the encode failed, its textures side is off, or not built yet; see the dev server\'s log, or run "yarn assets"): an array loads only from its KTX2 output'
+      );
+    }
+    url = resolveTextureUrl({ id, __url });
+    const { texture, report } = await loadTextureFileAsync(url);
+    const array = toCompressedArrayTexture(texture, layers);
+    setTextureOpts(array, texOpts, userData, debugData);
+    const mipmaps = array.mipmaps as unknown as { data: ArrayBufferView }[];
+    const info: TextureArrayInfo = {
+      origin: 'BUILD',
+      members: [...layers],
+      kind: 'COMPRESSED',
+      width: array.image.width,
+      height: array.image.height,
+      levels: mipmaps.length,
+      layerBytes: mipmaps.reduce((sum, mip) => sum + mip.data.byteLength, 0) / layers.length,
+      swappable: false,
+      cpuDataReleased: false,
+    };
+    array.userData.textureArray = info;
+    return saveAndReport(array, id, isPersistent, report, url);
+  } catch (err) {
+    const errorMsg = `Could not load texture array "${id}" in loadTextureAsync${url ? ` (url: "${url}")` : ''}: ${(err as Error).message}`;
+    lerror(errorMsg);
+    if (throwOnError) throw new Error(errorMsg);
+    return getNoFileArrayTexture(layers.length, texOpts);
+  }
+};
+
 /**
  * Loads a texture asynchronously supporting standard textures, HDR data textures, KTX2 compressed
  * textures and CubeTextures. Standard and HDR textures load where AppConfig.assets targets
@@ -513,25 +613,30 @@ export const loadTextureFileAsync = async (
  * renderer), and cube textures always load on the main thread.
  *
  * A texture from generated data (a `*.texture.json`) loads the asset pipeline's output (`__url`)
- * instead of its `fileName`, see resolveAssetUrl. The loader is picked by the loaded URL.
+ * instead of its `fileName`, see resolveAssetUrl. The loader is picked by the loaded URL. A
+ * texture array asset (`*.textureArray.json`, p299 D2) loads its KTX2 output as a
+ * `CompressedArrayTexture`, a one-layer array too.
  */
-export const loadTextureAsync = async ({
-  id,
-  fileName,
-  path,
-  useHDRLoader,
-  texOpts,
-  throwOnError,
-  isPersistent,
-  userData,
-  debugData,
-  __url,
-  __sourceUrl,
-}: TextureProps) => {
+export const loadTextureAsync = async (props: TextureProps) => {
+  const {
+    id,
+    fileName,
+    path,
+    useHDRLoader,
+    texOpts,
+    throwOnError,
+    isPersistent,
+    userData,
+    debugData,
+    __url,
+    __sourceUrl,
+    __layers,
+  } = props;
   if (id && textures[id]) {
     retagAssetOwner(textures[id].resource);
     return textures[id].resource;
   }
+  if (__layers) return loadTextureArrayAssetAsync({ ...props, __layers });
 
   // A packed texture (p300 DD5) has no fileName, only its output
   if (!fileName && !__url) return getNoFileTexture(texOpts);

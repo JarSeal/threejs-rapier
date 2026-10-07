@@ -10,6 +10,30 @@
         "out": 33824
       }
     },
+    "79858cda8def71d812a88187ff747d80d2d198da0030f1b57330fd0425f388fe": {
+      "source": "src/app/textures/p299TestArray1.textureArray.json",
+      "url": "/aek-assets/app/textures/p299TestArray1.array.ecc27102.ktx2",
+      "bytes": 3265,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 3265,
+          "source": {
+            "width": 256,
+            "height": 256,
+            "bytes": 1632
+          },
+          "codec": "uastc",
+          "width": 256,
+          "height": 256,
+          "hasAlpha": false,
+          "mipmaps": true,
+          "normalMode": false,
+          "layers": 1
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
     "9442fd32164cc23d52fef0976d43336dcfa4f2d708ff7273f0008fabbab37d21": {
       "source": "src/app/textures/p299TestArray.textureArray.json",
       "url": "/aek-assets/app/textures/p299TestArray.array.5c60d088.ktx2",
