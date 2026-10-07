@@ -167,6 +167,10 @@ export type AppConfig = {
      * that come into view or just got their LOD are selected at once, past the cap. The initial
      * value: setLodMaxSelectionsPerFrame() changes it at runtime. Default Infinity (no cap). */
     maxSelectionsPerFrame?: number;
+    /** How long a LOD change (or hiding and showing) cross-fades, in seconds, unless the LOD's
+     * own `fadeSeconds` says otherwise; 0 switches at once. The initial value:
+     * setLodFadeSeconds() changes it at runtime. Default 0.25. */
+    fadeSeconds?: number;
   };
   ecs?: {
     /** Build-time-selectable ECS component storage backend. Default 'MAP'. */
@@ -252,6 +256,7 @@ let config: AppConfig = {
   lod: {
     bias: 1,
     maxSelectionsPerFrame: Infinity,
+    fadeSeconds: 0.25,
   },
   ecs: {
     storageMode: 'MAP',

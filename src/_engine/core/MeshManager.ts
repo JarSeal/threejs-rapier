@@ -281,6 +281,11 @@ const addLodComponent = (entityId: number, def: LodDef, world: ECSWorld) => {
  * pre-warmed when the mesh was created with `preWarm`. Replaces a LOD the mesh already has (back
  * to level 0 first). The definition is read, not copied: after changing its levels, set it again.
  *
+ * Level changes and hiding / showing cross-fade with a dither over `fadeSeconds` (default
+ * `AppConfig.lod.fadeSeconds`; docs/plans/p351_impostor-billboard-lod.md §2.4): the previous level
+ * is drawn by a temporary copy of the mesh meanwhile. Unless `fadeSeconds` is 0, the levels'
+ * materials get `enableLodDither` (shared with other meshes, those get it too).
+ *
  * `'AUTO'` (or `{ auto: true, ... }`) reads the levels from the geometry's LOD chain (p347): each
  * is used while its simplification error stays within `maxPixelError` pixels at a viewport height
  * of 1080. The mesh stays on level 0 until the chain is ready (it waits for one the geometry's

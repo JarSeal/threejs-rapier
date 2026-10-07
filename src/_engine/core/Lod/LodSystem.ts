@@ -13,6 +13,7 @@ import { getConservativeGeometryRadius } from '../Spatial/SpatialIndexSystem';
 import { lwarn } from '../../utils/Logger';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
 import { getInstancedLodBounds } from './LodBounds';
+import { clearLodObjectFade, enableLodDither, LOD_FADE_OPAQUE, setLodObjectFade } from './LodFade';
 import type { LodData, LodResolvedLevel, LodTarget } from './LodTypes';
 
 // Debug
@@ -38,17 +39,228 @@ export const registerLodDebugGUI = async () => {
 // An InstancedMesh entity (a static instance cell, §4.3) is a plain mesh whose swap changes every
 // instance: its bounds are level 0 over all its instances (Lod/LodBounds.ts), not one instance.
 
+//
+// Cross-fades (docs/plans/p351_impostor-billboard-lod.md §2.4): a level change, or hiding and
+// showing, dissolves over `fadeSeconds` (LodFade.ts). The entity gets TAG_LOD_TRANSITIONING and
+// `_fade` (its progress) and lodFadeSystem drives it; a change while a fade runs finishes that fade
+// first. The first apply after the LOD is added never fades (the load), nor does removing the LOD;
+// an entity LOD culled at its first selection fades in when it's first shown.
+// Targets fade when they have `setFade`; plain meshes always can (see PLAIN MESH FADES), except
+// skinned ones.
+
 /** A definition's `hysteresis` when it has none. */
 export const DEFAULT_LOD_HYSTERESIS = 0.1;
+
+// --- FADES ---
+
+let globalFadeSeconds: number | undefined;
+
+/** How long a LOD change cross-fades, in seconds, for LODs without their own `fadeSeconds`. */
+export const getLodFadeSeconds = () => (globalFadeSeconds ??= getConfig().lod?.fadeSeconds ?? 0.25);
+
+/**
+ * Sets how long a LOD change (or hiding and showing) cross-fades, in seconds, for LODs without
+ * their own `fadeSeconds` (initially `AppConfig.lod.fadeSeconds`); 0 switches at once. Fades
+ * already running take the new duration from the next frame.
+ */
+export const setLodFadeSeconds = (seconds: number) => {
+  globalFadeSeconds = Math.max(seconds, 0);
+};
+
+const getFadeSeconds = (lod: LodData) => lod.def.fadeSeconds ?? getLodFadeSeconds();
+
+/** Set while a LOD component is removed: everything it does then is instant. */
+let areFadesSuppressed = false;
+
+// --- PLAIN MESH FADES ---
+//
+// A level change draws the previous level through a temporary copy of the mesh: a child of it, so
+// it follows the mesh and hides with it (frustum culling, DISABLED). The copy is disposed when the
+// fade ends, as three r186 keeps an object's render objects until it is. A plain mesh's copy shares
+// the mesh's shader builds; an InstancedMesh's builds its own (three keys its builds by uuid).
+// Hiding and showing fade the mesh itself: a LOD-culled mesh stays visible while it fades out
+// (reconcileObject3DVisibility). Both copies take the per-object fade (setLodObjectFade).
+
+/** Shows a resolved level on a plain mesh at once. */
+const setMeshLevel = (mesh: THREE.Mesh, level: LodResolvedLevel) => {
+  setMeshGeometry(mesh, level.geometry);
+  setMeshMaterial(mesh, level.material);
+  mesh.castShadow = level.castShadow;
+};
+
+/** A copy of what `mesh` shows now, for a fade's outgoing level: added to the mesh, never picked by
+ * raycasts, holding no registry refs (the LOD component holds every level's). */
+const createFadeOutCopy = (mesh: THREE.Mesh) => {
+  const copy = createStandIn(mesh, {
+    geometry: mesh.geometry,
+    material: mesh.material,
+    castShadow: mesh.castShadow,
+  });
+  copy.frustumCulled = mesh.frustumCulled;
+  copy.renderOrder = mesh.renderOrder;
+  copy.layers.mask = mesh.layers.mask;
+  copy.raycast = () => {};
+  copy.userData.isLodFadeCopy = true;
+  mesh.add(copy);
+  return copy;
+};
+
+const applyMeshLevel = (
+  entityId: number,
+  world: ECSWorld,
+  lod: LodData,
+  level: number,
+  fade: boolean
+) => {
+  const mesh = getLodMesh(entityId, world);
+  const resolved = lod._levels[level];
+  if (!mesh || !resolved) return;
+  if (fade) {
+    lod._fadeOut = createFadeOutCopy(mesh);
+    lod._fadeIn = mesh;
+    setLodObjectFade(lod._fadeOut, -LOD_FADE_OPAQUE);
+    setLodObjectFade(mesh, 0);
+  }
+  setMeshLevel(mesh, resolved);
+};
+
+/** Without a fade, TAG_LOD_CULLED's visibility reconcile already hid or showed the mesh. */
+const setMeshCulled = (
+  entityId: number,
+  world: ECSWorld,
+  lod: LodData,
+  isCulled: boolean,
+  fade: boolean
+) => {
+  const mesh = fade ? getLodMesh(entityId, world) : undefined;
+  if (!mesh) return;
+  if (isCulled) {
+    lod._fadeOut = mesh;
+    setLodObjectFade(mesh, -LOD_FADE_OPAQUE);
+  } else {
+    lod._fadeIn = mesh;
+    setLodObjectFade(mesh, 0);
+  }
+};
+
+/** Draws a plain mesh's fade at `progress`; 1 ends it (the copy goes, the mesh is drawn whole). */
+const setMeshFade = (lod: LodData, progress: number) => {
+  const fadeIn = lod._fadeIn;
+  const fadeOut = lod._fadeOut;
+  if (progress < 1) {
+    if (fadeIn) setLodObjectFade(fadeIn, progress);
+    if (fadeOut) setLodObjectFade(fadeOut, progress - 1);
+    return;
+  }
+  lod._fadeIn = undefined;
+  lod._fadeOut = undefined;
+  if (fadeIn) clearLodObjectFade(fadeIn);
+  if (!fadeOut) return;
+  clearLodObjectFade(fadeOut);
+  if (fadeOut.userData.isLodFadeCopy) {
+    fadeOut.removeFromParent();
+    fadeOut.dispose();
+  }
+};
+
+// --- FADES BY KIND: a target's, or a plain mesh's ---
+
+const applyLevelTo = (
+  entityId: number,
+  world: ECSWorld,
+  lod: LodData,
+  level: number,
+  fade: boolean
+) => {
+  if (lod._target) lod._target.applyLevel(entityId, world, level, fade);
+  else applyMeshLevel(entityId, world, lod, level, fade);
+};
+
+const setCulledTo = (
+  entityId: number,
+  world: ECSWorld,
+  lod: LodData,
+  isCulled: boolean,
+  fade: boolean
+) => {
+  if (lod._target) lod._target.setCulled(entityId, world, isCulled, fade);
+  else setMeshCulled(entityId, world, lod, isCulled, fade);
+};
+
+const drawFade = (entityId: number, world: ECSWorld, lod: LodData, progress: number) => {
+  if (lod._target) lod._target.setFade?.(entityId, world, progress);
+  else setMeshFade(lod, progress);
+};
+
+/** A target fades when it has `setFade`, a plain mesh unless it's skinned (a copy wouldn't be). */
+const canFade = (entityId: number, world: ECSWorld, lod: LodData) => {
+  if (lod._target) return lod._target.setFade !== undefined;
+  const mesh = getLodMesh(entityId, world);
+  return mesh !== undefined && !(mesh as THREE.SkinnedMesh).isSkinnedMesh;
+};
+
+/** Ends the entity's running fade, if any: only the incoming copy stays, drawn whole. */
+const endFade = (entityId: number, world: ECSWorld, lod: LodData) => {
+  if (!world.hasComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING)) return;
+  drawFade(entityId, world, lod, 1);
+  lod._fade = undefined;
+  lod._fadeFrom = undefined;
+  world.removeComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING);
+};
+
+/** Before a change of what the entity shows: finishes a running fade, and says whether the change
+ * fades (not the first apply, unless it shows an entity LOD culled since its first selection; not
+ * while the LOD is removed; not for an entity that can't). */
+const prepareChange = (entityId: number, world: ECSWorld, lod: LodData, isShowing = false) => {
+  endFade(entityId, world, lod);
+  return (
+    !areFadesSuppressed &&
+    (lod.applied >= 0 || isShowing) &&
+    getFadeSeconds(lod) > 0 &&
+    canFade(entityId, world, lod)
+  );
+};
+
+/** `from`: the level shown until now, -1 from LOD culled (LodData._fadeFrom). */
+const startFade = (entityId: number, world: ECSWorld, lod: LodData, from: number) => {
+  lod._fade = 0;
+  lod._fadeFrom = from;
+  world.addComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING, true);
+};
 
 ECSWorld.registerComponentHooks(ComponentType.TAG_LOD_CULLED, {
   onAddComponent: (entityId, world) => {
     reconcileObject3DVisibility(entityId, world, { isLodCulled: true });
-    world.getComponent(entityId, ComponentType.LOD)?._target?.setCulled(entityId, world, true);
+    const lod = world.getComponent(entityId, ComponentType.LOD);
+    if (!lod) return;
+    const fade = prepareChange(entityId, world, lod);
+    setCulledTo(entityId, world, lod, true, fade);
+    if (fade) startFade(entityId, world, lod, lod.applied);
   },
   onRemoveComponent: (entityId, world) => {
     reconcileObject3DVisibility(entityId, world, { isLodCulled: false });
-    world.getComponent(entityId, ComponentType.LOD)?._target?.setCulled(entityId, world, false);
+    const lod = world.getComponent(entityId, ComponentType.LOD);
+    if (!lod) return;
+    // Shown for the first time too when it was culled at its first selection (nothing of it drawn)
+    const fade = prepareChange(entityId, world, lod, true);
+    if (fade && lod.level >= 0 && lod.level !== lod.applied) {
+      // Not drawn yet, so the swap shows nothing: it fades in in the selected level, not in the
+      // one it was hidden in (which would then fade into the selected one)
+      applyLevelTo(entityId, world, lod, lod.level, false);
+      lod.applied = lod.level;
+    }
+    setCulledTo(entityId, world, lod, false, fade);
+    if (fade) startFade(entityId, world, lod, -1);
+  },
+});
+
+// A plain mesh fading out to LOD culled stays visible until its fade ends
+ECSWorld.registerComponentHooks(ComponentType.TAG_LOD_TRANSITIONING, {
+  onAddComponent: (entityId, world) => {
+    reconcileObject3DVisibility(entityId, world, { isLodTransitioning: true });
+  },
+  onRemoveComponent: (entityId, world) => {
+    reconcileObject3DVisibility(entityId, world, { isLodTransitioning: false });
   },
 });
 
@@ -158,7 +370,8 @@ const selectionCursors = new WeakMap<ECSWorld, SelectionCursor>();
 
 // --- DEBUG CONTROLS AND STATS ---
 
-/** Overrides of the selection, for inspecting levels (the LOD debug tab). Every world. */
+/** Overrides of the selection and the fades, for inspecting levels (the LOD debug tab). Every
+ * world. */
 export type LodDebugOptions = {
   /** Stops selecting: every entity keeps its level and LOD-culled state. */
   freeze: boolean;
@@ -167,9 +380,17 @@ export type LodDebugOptions = {
   forceLevel: number;
   /** Selects against the active camera (eg. the debug camera) instead of the main camera. */
   useActiveCamera: boolean;
+  /** Multiplies the time cross-fades advance by: 1 = real time, below 1 slow motion (for judging
+   * the dither), 0 holds every running fade. */
+  fadeTimeScale: number;
 };
 
-const debugOptions: LodDebugOptions = { freeze: false, forceLevel: -1, useActiveCamera: false };
+const debugOptions: LodDebugOptions = {
+  freeze: false,
+  forceLevel: -1,
+  useActiveCamera: false,
+  fadeTimeScale: 1,
+};
 
 export const getLodDebugOptions = (): Readonly<LodDebugOptions> => debugOptions;
 
@@ -191,6 +412,10 @@ export type LodFrameStats = {
   totalApplies: number;
   /** lodSelectionSystem's duration. Measured in the debug environment only (else 0). */
   selectionMs: number;
+  /** Entities cross-fading (TAG_LOD_TRANSITIONING) after lodFadeSystem. */
+  fading: number;
+  /** lodFadeSystem's duration. Measured in the debug environment only (else 0). */
+  fadeMs: number;
 };
 
 const frameStats = new WeakMap<ECSWorld, LodFrameStats>();
@@ -198,7 +423,15 @@ const frameStats = new WeakMap<ECSWorld, LodFrameStats>();
 const getFrameStats = (world: ECSWorld) => {
   let stats = frameStats.get(world);
   if (!stats) {
-    stats = { selections: 0, lapFrames: 1, applies: 0, totalApplies: 0, selectionMs: 0 };
+    stats = {
+      selections: 0,
+      lapFrames: 1,
+      applies: 0,
+      totalApplies: 0,
+      selectionMs: 0,
+      fading: 0,
+      fadeMs: 0,
+    };
     frameStats.set(world, stats);
   }
   return stats;
@@ -288,12 +521,13 @@ const createStandIn = (mesh: THREE.Mesh, level: LodResolvedLevel) => {
   return standIn;
 };
 
-/** Pre-warms the levels the mesh doesn't already show (createMeshEntity pre-warmed that one). */
-const preWarmLevels = (mesh: THREE.Mesh, levels: LodResolvedLevel[]) => {
+/** Pre-warms the levels the mesh doesn't already show (createMeshEntity pre-warmed that one), or
+ * every level with `includeOwn` (its material changed since: enableLodDither). */
+const preWarmLevels = (mesh: THREE.Mesh, levels: LodResolvedLevel[], includeOwn: boolean) => {
   const label = mesh.userData.id || 'mesh';
-  const warmed: LodResolvedLevel[] = [
-    { geometry: mesh.geometry, material: mesh.material, castShadow: mesh.castShadow },
-  ];
+  const warmed: LodResolvedLevel[] = includeOwn
+    ? []
+    : [{ geometry: mesh.geometry, material: mesh.material, castShadow: mesh.castShadow }];
   for (const level of levels) {
     const isWarmed = warmed.some(
       (w) =>
@@ -367,7 +601,13 @@ ECSWorld.registerComponentHooks(ComponentType.LOD, {
     lod._levels = resolveLevels(mesh, lod);
     setMeshLodBounds(mesh, lod);
     for (const level of lod._levels) refLevel(level, true);
-    if (mesh.userData.preWarm) preWarmLevels(mesh, lod._levels);
+    // Cross-fades dither the level materials (LodFade.ts). A LOD that never fades leaves them be;
+    // without its own fadeSeconds, the global one can turn fades on later.
+    let isDitherNew = false;
+    if (lod.def.fadeSeconds !== 0) {
+      for (const level of lod._levels) isDitherNew = enableLodDither(level.material) || isDitherNew;
+    }
+    if (mesh.userData.preWarm) preWarmLevels(mesh, lod._levels, isDitherNew);
     queuePrioritySelection(entityId, world);
   },
   // The entity stays: back to level 0 and visible, then release the levels (the mesh took its
@@ -375,23 +615,25 @@ ECSWorld.registerComponentHooks(ComponentType.LOD, {
   onRemoveComponent: (entityId, world) => {
     const lod = world.getComponent(entityId, ComponentType.LOD);
     if (!lod) return;
+    endFade(entityId, world, lod);
     if (world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED)) {
-      world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
+      areFadesSuppressed = true;
+      try {
+        world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
+      } finally {
+        areFadesSuppressed = false;
+      }
     }
     const target = lod._target;
     if (target) {
-      if (lod.applied > 0) target.applyLevel(entityId, world, 0);
+      if (lod.applied > 0) target.applyLevel(entityId, world, 0, false);
       lod._target = undefined;
       lod._levels = [];
       return;
     }
     const mesh = getLodMesh(entityId, world);
     const level0 = lod._levels[0];
-    if (mesh && level0 && lod.applied > 0) {
-      setMeshGeometry(mesh, level0.geometry);
-      setMeshMaterial(mesh, level0.material);
-      mesh.castShadow = level0.castShadow;
-    }
+    if (mesh && level0 && lod.applied > 0) setMeshLevel(mesh, level0);
     for (const level of lod._levels) refLevel(level, false);
     lod._levels = [];
   },
@@ -399,6 +641,8 @@ ECSWorld.registerComponentHooks(ComponentType.LOD, {
     const lod = world.getComponent(entityId, ComponentType.LOD);
     if (!lod) return;
     if (!lod._target) {
+      // A running fade's copy is disposed (TAG_LOD_TRANSITIONING goes with the entity)
+      setMeshFade(lod, 1);
       for (const level of lod._levels) refLevel(level, false);
     }
     lod._levels = [];
@@ -530,10 +774,11 @@ const selectEntity = (entityId: number, lod: LodData, world: ECSWorld, frame: Se
   if (lod._levels.length === 0) return false;
   if (frame.disabled.has(entityId) || frame.frustumCulled.has(entityId)) return false;
 
+  // The level is set before TAG_LOD_CULLED goes: its remove hook shows the entity in that level
   const isCulled = frame.lodCulled.has(entityId);
   if (frame.forceLevel >= 0) {
-    if (isCulled) world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
     lod.level = Math.min(frame.forceLevel, levels.length - 1);
+    if (isCulled) world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
     if (lod.level !== lod.applied) frame.pending.push(entityId);
     return true;
   }
@@ -549,10 +794,9 @@ const selectEntity = (entityId: number, lod: LodData, world: ECSWorld, frame: Se
     if (!isCulled) world.addComponent(entityId, ComponentType.TAG_LOD_CULLED, true);
     return true;
   }
-  if (isCulled) world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
-
   // Coming back from culled, it comes from beyond the last level
   lod.level = selectLevel(levels, s, isCulled ? levels.length - 1 : lod.level, h);
+  if (isCulled) world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
   if (lod.level !== lod.applied) frame.pending.push(entityId);
   return true;
 };
@@ -754,7 +998,7 @@ export const measureLodEntity = (entityId: number, world: ECSWorld, out: LodMeas
 // --- APPLY ---
 
 /** Applies the levels lodSelectionSystem changed this frame: a mesh's geometry, material(s) and
- * `castShadow`, or the entity's {@link LodTarget}. */
+ * `castShadow`, or the entity's {@link LodTarget}, cross-fading when it can. */
 export const lodApplySystem = (world: ECSWorld) => {
   const stats = getFrameStats(world);
   stats.applies = 0;
@@ -766,18 +1010,10 @@ export const lodApplySystem = (world: ECSWorld) => {
     const entityId = pending[i];
     const lod = world.getComponent(entityId, ComponentType.LOD);
     if (!lod || lod.level < 0 || lod.level === lod.applied) continue;
-    const level = lod._levels[lod.level];
-    if (lod._target) {
-      if (level) lod._target.applyLevel(entityId, world, lod.level);
-      lod.applied = lod.level;
-      applies++;
-      continue;
-    }
-    const mesh = getLodMesh(entityId, world);
-    if (mesh && level) {
-      setMeshGeometry(mesh, level.geometry);
-      setMeshMaterial(mesh, level.material);
-      mesh.castShadow = level.castShadow;
+    if (lod._levels[lod.level]) {
+      const fade = prepareChange(entityId, world, lod);
+      applyLevelTo(entityId, world, lod, lod.level, fade);
+      if (fade) startFade(entityId, world, lod, lod.applied);
     }
     lod.applied = lod.level;
     applies++;
@@ -787,8 +1023,47 @@ export const lodApplySystem = (world: ECSWorld) => {
   stats.totalApplies += applies;
 };
 
+/**
+ * Advances every running cross-fade (the TAG_LOD_TRANSITIONING entities) by the frame's `dt` (times
+ * the `fadeTimeScale` debug option) over its `fadeSeconds`, and ends the ones that are done. Runs
+ * right after lodApplySystem, so a fade started this frame is drawn at its first step.
+ */
+export const lodFadeSystem = (world: ECSWorld, dt: number) => {
+  const stats = getFrameStats(world);
+  const storage = world.getStorage(ComponentType.TAG_LOD_TRANSITIONING);
+  stats.fadeMs = 0;
+  if (storage.size === 0) {
+    stats.fading = 0;
+    return;
+  }
+  const start = IS_DEBUG_ENV ? performance.now() : 0;
+
+  const lods = world.getStorage(ComponentType.LOD);
+  const globalSeconds = getLodFadeSeconds();
+  const step = dt * Math.max(debugOptions.fadeTimeScale, 0);
+  // Removing the current entry while iterating a Map is safe
+  for (const [entityId] of storage) {
+    const lod = lods.get(entityId);
+    if (!lod) {
+      world.removeComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING);
+      continue;
+    }
+    const seconds = lod.def.fadeSeconds ?? globalSeconds;
+    const progress = seconds > 0 ? (lod._fade ?? 0) + step / seconds : 1;
+    if (progress >= 1) {
+      endFade(entityId, world, lod);
+      continue;
+    }
+    lod._fade = progress;
+    drawFade(entityId, world, lod, progress);
+  }
+
+  stats.fading = storage.size;
+  if (IS_DEBUG_ENV) stats.fadeMs = performance.now() - start;
+};
+
 ECSWorld.registerPlugin((world) => {
-  // Same order: selection runs first (registration order breaks the tie)
+  // Same order: selection, apply, then the fades (registration order breaks the tie)
   world.addSystem(
     ECSSystemStage.APP_RENDER_SYNC,
     'lodSelectionSystem',
@@ -799,6 +1074,12 @@ ECSWorld.registerPlugin((world) => {
     ECSSystemStage.APP_RENDER_SYNC,
     'lodApplySystem',
     lodApplySystem,
+    APP_RENDER_SYNC_ORDER.LOD_SELECTION
+  );
+  world.addSystem(
+    ECSSystemStage.APP_RENDER_SYNC,
+    'lodFadeSystem',
+    lodFadeSystem,
     APP_RENDER_SYNC_ORDER.LOD_SELECTION
   );
   return world;

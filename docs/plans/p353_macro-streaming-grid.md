@@ -100,6 +100,12 @@ impostors or cross-quads, a terrain block's lowest chain level. Which entries ha
 representation is part of the manifest (an entry with `lod` has one; others are simply not shown
 in `FAR`). Phase 5; until then `FAR` = `UNLOADED`.
 
+**No popping** (p350 §3, p351 §2.4): a switch between a cell's far representation and its full
+content cross-fades with p351's dither, and content a cell creates or deletes while it can be seen
+fades in or out (the LOD fade from and to culled) instead of appearing or vanishing. The option is
+`streaming.fadeSeconds` (default `AppConfig.lod.fadeSeconds`; 0 = instant), and deleting an
+entity that is fading out waits for the fade.
+
 ## 4. Runtime
 
 ### 4.1 The state machine

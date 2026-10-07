@@ -23,6 +23,10 @@ impostor. A whole streaming cell's content can be one proxy when p353 shows it a
   table is dropped at the proxy levels (a proxy isn't editable per member).
 - **Selection:** p348 selects levels per entity by projected screen size. The group entity is the
   LOD unit; p372 refuses `LOD` on members, which stays true.
+- **No popping:** the group's switch to its proxy (and to an impostor or hidden) cross-fades with
+  p351 Phase 2's plain-mesh fade, and a cell switching between its members and its cell proxy
+  fades with p353's content fade. `fadeSeconds: 0` switches instantly. Proxy materials get
+  `enableLodDither`.
 - **Materials:** proxies need one material. Same-material groups already have it; p374's merge
   materials cover mixed groups. Far levels can drop the normal map (p350 §5.1), or bake the
   group's albedo into one small texture (p351's bake path) and use an unlit or simple material.

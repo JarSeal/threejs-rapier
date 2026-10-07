@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { createMeshEntity, getMeshByAppId, type MeshProps } from '../_engine/core/MeshManager';
 import { createMaterial } from '../_engine/core/Material';
-import { createLightEntity } from '../_engine/core/LightManager';
+import { createLightEntity, setLightEnabled } from '../_engine/core/LightManager';
 import { createGeometry, deleteGeometry, saveBufferGeometry } from '../_engine/core/Geometry';
 import {
   createCameraEntity,
@@ -13,22 +13,27 @@ import {
 import { createKeyBinding } from '../_engine/core/Input/KeyboardInput';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
-import { getRootScene } from '../_engine/core/Scene';
+import { getRootScene, registerOnSceneEnter, registerOnSceneExit } from '../_engine/core/Scene';
+import { onSkyBoxChange } from '../_engine/core/SkyBox/SkyBox';
+import { getSkyLightIds } from '../_engine/core/SkyBox/SkyLights';
+import { generateOctahedralImpostor } from '../_engine/core/Lod/Impostors/OctahedralImpostor';
+import { generateAsteroid } from '../toolkit/geometry/generateAsteroid';
 import { existsOrThrow } from '../_engine/utils/assert';
 import { generateTerrain } from '../toolkit/geometry/generateTerrain';
 import { generateBushGeometry, generateTreeGeometry } from '../toolkit/geometry/generateFoliage';
 import { scatterOnSurface } from '../toolkit/geometry/scatterOnSurface';
 import { createInstancedLodPool } from '../_engine/core/Instancing/InstancedMeshPool';
+import { generateCrossQuads } from '../_engine/core/Lod/Impostors/CrossQuads';
 import { registerSpatialDomain } from '../_engine/core/Spatial/SpatialIndexSystem';
 
 /**
  * Phase 4/5 (docs/plans/p090_large-ecs-test-world-scene.md §3): terrain + static overview
  * camera + sun (Phase 4), then foliage scatter + static props + point-light accents (Phase 5).
  * The camera/lights/skybox are declared in `largeWorld.scene.json` and created automatically by
- * the scene loader before this runs — terrain has no JSON authoring support (§1.1), so it's
- * built here imperatively instead. Render-only for now: real colliders (terrain heightfield,
- * static props) are deferred to whichever scene-code convention exists once `PhysicsAPI.ts`
- * lands (§1.3).
+ * the scene loader (the camera before this runs, the lights and the sky box after it) — terrain
+ * has no JSON authoring support (§1.1), so it's built here imperatively instead. Render-only for
+ * now: real colliders (terrain heightfield, static props) are deferred to whichever scene-code
+ * convention exists once `PhysicsAPI.ts` lands (§1.3).
  */
 export const scene = async () => {
   const updateLoaderFn = getLoaderStatusUpdater();
@@ -106,15 +111,25 @@ export const scene = async () => {
     update: 'STATIC',
     sceneId: 'largeWorld',
   });
+  // The farthest level: three alpha-cut planes with the tree baked on them
+  // (docs/plans/p351_impostor-billboard-lod.md §2.1), lit at runtime like the mesh
+  const treeCross = generateCrossQuads(treeGeometry, [treeTrunkMat, treeFoliageMat], {
+    id: 'largeWorldTreeCross',
+  });
   // One InstancedMesh per level, each instance in the one its LOD selects
   // (docs/plans/_DONE_p348_ecs-lod-selection.md §4.2). The thresholds are screen sizes (bounding-sphere
   // diameter / viewport height): from the overview camera a tree at scale 1 crosses 0.04 at about
-  // 145 m.
+  // 145 m and 0.032 at about 180 m.
   const treePool = createInstancedLodPool({
     world: ecsWorld,
     levels: [
       { geometry: treeGeometry, material: [treeTrunkMat, treeFoliageMat], screenSize: 0.04 },
-      { geometry: treeLod1Geometry, material: [treeTrunkMat, treeFoliageMat], screenSize: 0 },
+      {
+        geometry: treeLod1Geometry,
+        material: [treeTrunkMat, treeFoliageMat],
+        screenSize: 0.032,
+      },
+      { geometry: treeCross.geometry, material: treeCross.material, screenSize: 0 },
     ],
     maxInstances: treePlacements.length,
     receiveShadow: true,
@@ -153,6 +168,55 @@ export const scene = async () => {
   });
   rootScene.add(...bushPool.meshes);
   bushPool.spawn(ecsWorld, bushPlacements);
+
+  // Rocks: a toolkit asteroid, the same rock at a lower icosphere detail, and an octahedral
+  // impostor last (docs/plans/p351_impostor-billboard-lod.md §2.2). Hemi: they turn about y only
+  // and sit in the ground, so nothing sees them from below, and the frames cover the upper
+  // hemisphere at twice the density.
+  const rockPlacements = scatterOnSurface({
+    surface: terrainMesh,
+    count: 300,
+    seed: 6,
+    minSpacing: 4,
+    scaleRange: [0.6, 1.6],
+  });
+  const rockShape = { seed: 11, shape: [1.25, 0.75, 1] as [number, number, number] };
+  const rockGeo = saveBufferGeometry(generateAsteroid(rockShape).geometry, {
+    id: 'largeWorldRockGeo',
+  });
+  // A third of its height in the ground, so the impostor's surface depth meets the terrain like
+  // the mesh does
+  rockGeo.computeBoundingBox();
+  const { min: rockMin, max: rockMax } = rockGeo.boundingBox!;
+  // The rock's bottom (min.y below its centre) a third of its height under the surface
+  const rockLift = -rockMin.y - (rockMax.y - rockMin.y) / 3;
+  for (const placement of rockPlacements) placement.position.y += rockLift * placement.scale;
+  const rockLod1Geo = saveBufferGeometry(generateAsteroid({ ...rockShape, detail: 1 }).geometry, {
+    id: 'largeWorldRockLod1Geo',
+  });
+  const rockPoolMat = createMaterial({
+    id: 'largeWorldRockPoolMat',
+    type: 'PHONG',
+    params: { color: '#8f8a80', flatShading: true },
+  });
+  const rockImpostor = generateOctahedralImpostor(rockGeo, rockPoolMat, {
+    id: 'largeWorldRockImpostor',
+    hemi: true,
+  });
+  // From the overview camera a rock at scale 1 (radius about 1.4) crosses 0.05 at about 50 m and
+  // 0.025 at about 100 m
+  const rockPool = createInstancedLodPool({
+    world: ecsWorld,
+    levels: [
+      { geometry: rockGeo, material: rockPoolMat, screenSize: 0.05 },
+      { geometry: rockLod1Geo, material: rockPoolMat, screenSize: 0.025 },
+      { geometry: rockImpostor.geometry, material: rockImpostor.material, screenSize: 0 },
+    ],
+    maxInstances: rockPlacements.length,
+    receiveShadow: true,
+  });
+  rootScene.add(...rockPool.meshes);
+  rockPool.spawn(ecsWorld, rockPlacements);
 
   // --- Static props (Phase 5) — physics-less for now (§1.3). A few are placed behind the
   // static overview camera on purpose and opt into `ecsFrustumCullingEnabled`, exercising
@@ -496,6 +560,24 @@ export const scene = async () => {
       setMainCamera(world, getActiveCameraId() === overviewId ? dynamicId : overviewId);
     },
   });
+
+  // --- Sky lights: the scene also lists the day-night sky box (docs/plans/p351_impostor-billboard-lod.md
+  // Phase 3), which brings its own sun light, and its environment (and its ambient light, when it
+  // has one) lights the shade. While a sky box with a sun light is active, the scene's sun and
+  // ambient are off, so its night falls on everything.
+
+  // The scene's JSON lights are created after this file runs (and after the default sky box is
+  // activated), so they're looked up on every sync and the first one runs on enter.
+  const syncSceneLights = () => {
+    const hasSkySun = getSkyLightIds().suns.some((id) => id !== null);
+    for (const appId of ['largeWorldSun', 'largeWorldAmbient']) {
+      const lightId = getEntityIdByAppId(appId, ecsWorld);
+      if (lightId !== undefined) setLightEnabled(lightId, !hasSkySun, ecsWorld);
+    }
+  };
+  registerOnSceneEnter('largeWorld', syncSceneLights);
+  // (One exit callback per scene: registerOnSceneExit replaces any earlier one.)
+  registerOnSceneExit('largeWorld', onSkyBoxChange(syncSceneLights));
 
   updateLoaderFn({ loadedCount: 1, totalCount: 1 });
 };

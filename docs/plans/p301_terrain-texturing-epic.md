@@ -249,7 +249,7 @@ These are not built here, but nothing may block them:
 - **Shared materials.** One terrain material per biome. Blocks differ only in variant inputs (textures), so the program and pipeline are shared.
 - **Colliders** are per block (HEIGHTFIELD), centred on the block origin.
 - **Merged dressing.** A block's static props and cutout mesh decals can be merged per block and material (p372 groups that never cross a block or streaming cell), and a far block can become one simplified proxy (p376 HLOD). Keep block-owned statics as entities so they can be merged later.
-- **Material LOD hook.** p305's `quality` variants, together with the colour-map far mode, are what a future block LOD (p350) would switch between.
+- **Material LOD hook.** p305's `quality` variants, together with the colour-map far mode, are what a future block LOD (p350) would switch between. That switch cross-fades like every LOD change (p351 Phase 2, `fadeSeconds: 0` = instant), and a block's switch between chain levels is a plain-mesh LOD fade.
 
 ---
 

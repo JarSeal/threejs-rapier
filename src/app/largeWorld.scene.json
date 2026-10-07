@@ -6,7 +6,7 @@
   "description": "Stress/soak test scene for large-world patterns (docs/plans/p090_large-ecs-test-world-scene.md). Phase 4: terrain + static overview camera + sun, no dynamics yet.",
   "cameras": ["largeWorldOverview"],
   "lights": ["largeWorldAmbient", "largeWorldSun"],
-  "skyboxes": ["basicSkybox"],
+  "skyboxes": ["basicSkybox", "dayNight"],
   "postFx": ["ambientOcclusion"],
   "postFxEnabled": true,
   "spatialDomains": [{ "id": "DEFAULT", "cellSize": 24 }]

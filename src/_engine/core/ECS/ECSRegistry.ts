@@ -50,6 +50,7 @@ export enum CoreComponentType {
   // LOD selection (docs/plans/_DONE_p348_ecs-lod-selection.md) — see Lod/LodSystem.ts
   LOD = 'CORE_LOD', // opt-in, user-authored
   TAG_LOD_CULLED = 'CORE_TAG_LOD_CULLED', // runtime-only, beyond the last level
+  TAG_LOD_TRANSITIONING = 'CORE_TAG_LOD_TRANSITIONING', // runtime-only, a LOD cross-fade runs (p351)
   // Instanced mesh pools — see Instancing/InstancedMeshPool.ts
   INSTANCED_MESH_SLOT = 'CORE_INSTANCED_MESH_SLOT', // runtime-only, set by a pool's spawn
   // Debug

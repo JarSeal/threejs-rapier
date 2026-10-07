@@ -71,9 +71,16 @@ export const LodDefSchema = z
       .describe(
         'Multiplies the screen size: >1 keeps detail longer. Default 1. The global bias (AppConfig.lod.bias, setLodBias) applies on top.'
       ),
+    fadeSeconds: z
+      .number()
+      .min(0)
+      .optional()
+      .describe(
+        'How long a level change (or hiding and showing) cross-fades with a dither, in seconds; 0 switches at once and leaves the level materials undithered. Default AppConfig.lod.fadeSeconds (0.25, setLodFadeSeconds).'
+      ),
   })
   .describe(
-    'Levels of detail (p348): each frame the mesh shows the level its screen size reaches, swapping its geometry, material and castShadow.'
+    'Levels of detail (p348): each frame the mesh shows the level its screen size reaches, swapping its geometry, material and castShadow, cross-faded over fadeSeconds.'
   ) satisfies z.ZodType<LodDef>;
 
 /** A mesh's `lod: { auto: true, ... }` (LodAutoDef in core/Lod/LodTypes.ts, p348 §5). */
@@ -90,6 +97,7 @@ export const LodAutoDefSchema = z
     cullScreenSize: LodDefSchema.shape.cullScreenSize,
     hysteresis: LodDefSchema.shape.hysteresis,
     bias: LodDefSchema.shape.bias,
+    fadeSeconds: LodDefSchema.shape.fadeSeconds,
   })
   .describe(
     "Levels of detail (p348) from the geometry's LOD chain (p347: `lodChain` in its *.importedAsset.json): each level is used while its simplification error stays within maxPixelError pixels. Without a chain the mesh stays on level 0 (warned)."

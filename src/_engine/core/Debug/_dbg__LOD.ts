@@ -11,10 +11,12 @@ import { getConfig } from '../Config';
 import {
   getLodBias,
   getLodDebugOptions,
+  getLodFadeSeconds,
   getLodFrameStats,
   getLodMaxSelectionsPerFrame,
   setLodBias,
   setLodDebugOptions,
+  setLodFadeSeconds,
   setLodMaxSelectionsPerFrame,
 } from '../Lod/LodSystem';
 import {
@@ -30,7 +32,8 @@ import {
 } from './Lod/_dbg__LodOverlay';
 
 // The LOD tab (docs/plans/_DONE_p348_ecs-lod-selection.md §6): counts per level, the last frame's
-// selections and applies, the selection's runtime overrides, the level overlay
+// selections, applies and fades, the selection's runtime overrides, the fades' duration and time
+// scale (docs/plans/p351_impostor-billboard-lod.md Phase 2), the level overlay
 // (Lod/_dbg__LodOverlay.ts) and the per-entity LOD windows (Lod/_dbg__LodEntityWindow.ts).
 // Nothing is persisted: it's all for inspecting, and a reload starts from the app's values.
 // Default world only.
@@ -65,13 +68,16 @@ const getMeshListData = (): DebuggerListItem[] => {
       continue;
     }
     let suffix = `L${Math.max(lod.applied, 0)}`;
+    const isFading = world.hasComponent(entityId, ComponentType.TAG_LOD_TRANSITIONING);
     if (
       world.isDisabled(entityId) ||
       world.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED)
     ) {
       suffix = 'out of view';
     } else if (world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED)) {
-      suffix = 'culled';
+      suffix = isFading ? 'fading out' : 'culled';
+    } else if (isFading) {
+      suffix += ' fading';
     }
     items.push({
       itemId: String(entityId),
@@ -144,8 +150,19 @@ export const _createLodDebugGUI = () => {
     freeze: false,
     forceLevel: -1,
     useActiveCamera: false,
+    fadeSeconds: 0.25,
+    fadeTimeScale: 1,
   };
-  const statsState = { selections: 0, lapFrames: 1, applies: 0, totalApplies: 0, selectionMs: 0 };
+  const statsState = {
+    selections: 0,
+    lapFrames: 1,
+    applies: 0,
+    totalApplies: 0,
+    selectionMs: 0,
+    fading: 0,
+    fadeMs: 0,
+  };
+  const getAppFadeSeconds = () => getConfig().lod?.fadeSeconds ?? 0.25;
   const countsState = { text: '' };
 
   /** Levels of the entity with the most, which the counts and the force options list. */
@@ -167,6 +184,8 @@ export const _createLodDebugGUI = () => {
       controls.freeze = opts.freeze;
       controls.forceLevel = opts.forceLevel;
       controls.useActiveCamera = opts.useActiveCamera;
+      controls.fadeSeconds = getLodFadeSeconds();
+      controls.fadeTimeScale = opts.fadeTimeScale;
 
       const stats = getLodFrameStats(world);
       statsState.selections = stats.selections;
@@ -174,6 +193,8 @@ export const _createLodDebugGUI = () => {
       statsState.applies = stats.applies;
       statsState.totalApplies = stats.totalApplies;
       statsState.selectionMs = stats.selectionMs;
+      statsState.fading = stats.fading;
+      statsState.fadeMs = stats.fadeMs;
 
       const counts = countLevels();
       countsState.text = formatCounts(counts);
@@ -246,6 +267,20 @@ export const _createLodDebugGUI = () => {
                   key: 'selectionMs',
                   target: statsState,
                   label: 'Selection (ms)',
+                  readonly: true,
+                  format: (v: number) => v.toFixed(3),
+                },
+                {
+                  key: 'fading',
+                  target: statsState,
+                  label: 'Fading',
+                  readonly: true,
+                  format: formatInt,
+                },
+                {
+                  key: 'fadeMs',
+                  target: statsState,
+                  label: 'Fades (ms)',
                   readonly: true,
                   format: (v: number) => v.toFixed(3),
                 },
@@ -327,6 +362,49 @@ export const _createLodDebugGUI = () => {
                   target: controls,
                   label: 'Use active camera',
                   onChange: (value) => setLodDebugOptions({ useActiveCamera: Boolean(value) }),
+                },
+              ],
+            },
+            {
+              type: 'folder',
+              title: 'Fades',
+              content: [
+                {
+                  // The global value: a LOD's own fadeSeconds wins (the LOD window shows which)
+                  key: 'fadeSeconds',
+                  target: controls,
+                  label: 'Fade seconds (0 = pop)',
+                  min: 0,
+                  max: 2,
+                  step: 0.05,
+                  onChange: (value) => setLodFadeSeconds(Number(value)),
+                },
+                {
+                  type: 'button',
+                  title: "Reset to the app's fade",
+                  disabled: () => getLodFadeSeconds() === getAppFadeSeconds(),
+                  onClick: () => {
+                    setLodFadeSeconds(getAppFadeSeconds());
+                    updateDebuggerTab(TAB_ID);
+                  },
+                },
+                {
+                  key: 'fadeTimeScale',
+                  target: controls,
+                  label: 'Time scale (0 = hold)',
+                  min: 0,
+                  max: 1,
+                  step: 0.01,
+                  onChange: (value) => setLodDebugOptions({ fadeTimeScale: Number(value) }),
+                },
+                {
+                  type: 'button',
+                  title: 'Real time',
+                  disabled: () => getLodDebugOptions().fadeTimeScale === 1,
+                  onClick: () => {
+                    setLodDebugOptions({ fadeTimeScale: 1 });
+                    updateDebuggerTab(TAB_ID);
+                  },
                 },
               ],
             },

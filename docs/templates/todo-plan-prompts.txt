@@ -8,6 +8,7 @@ Fix or tweak these list items:
 - If a custom domain Spatial index has wirefame set on and we change a scene the console warns: Calling [RenderPassEncoder (unlabeled)].Draw with a vertex count of 0 is unusual. This should be fixed (probably is trying to draw lines for something that isn't there).
 - When the master loop is turned of (from the on-screen tools or from the Loop controls debugger drawer tab), disable the debug camera transforms. What happens is that panning/dragging is still recorded on the screen even if the master loop is not on. After the master loop is toggled on, all the transforms made are actualized by the debug camera moving to a new position.
 - Make the Top-down test scene's and the GYM (3rd person) scene's key input's be in the scene scope. Now when I open the App key shortcuts dialog, it lists them under the All scenes list. In the Gym scene there is also the phyisc stress test. That should be scene scoped as well. Then in the ECS test scene there are the ECS stress test keys (two keys) and those should be scoped to the scene as well.
+- The on-screen tools' left top corner groups should have equal spacing. Now the AE symbol (about button) and the undo/redo buttons are in the same group but the view switchers are in a separate group. They should be in the same group.
 
 If any of these fixes/tweaks are large refactorings/fixes then produce a separate plan for each large one.
 

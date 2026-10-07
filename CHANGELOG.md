@@ -4,6 +4,43 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-07 — impostor-billboard-lod
+
+### Engine 4.11.0 (Afternoon)
+
+**Added**
+
+- Cross-quad impostors (`core/Lod/Impostors/CrossQuads.ts`): `generateCrossQuads(geometry, material, opts?)` bakes an object into two or three intersecting alpha-cut planes through its vertical axis, a far LOD level for vegetation. It returns a registered `{ geometry, material, albedo, normal }`, which goes straight into `createInstancedLodPool`'s last level.
+  - The bake renders the object (a per-group material array works) from each plane's direction with an orthographic camera fitted to its bounds, into one albedo atlas (sRGB) and one normal atlas, with mipmaps. Transparent texels take the nearest opaque colour, so filtering and mips leave no dark fringes.
+  - Nothing is lit in the bake: the impostor material shades with the scene's lights, shadows and environment at runtime, with each texel's baked normal. It uses the shading model of the source material drawing the most triangles (Phong, Lambert, unlit, else standard). The planes are double-sided, cast alpha-cut shadows, and a plane seen from behind is lit correctly.
+  - Options: `id` (default `${geometry id}#crossQuads`), `planes` (2 or 3, default 3), `frameSize` (default 128), `gutter`, `alphaTest`, `normals` and `shading`. Its assets are owned by the loading scene and released with it; a later call with the same `id` returns them while they're registered.
+  - The bake helpers both kinds of impostor share (bake materials, frame and atlas targets, the dilating copy, the shading model pick) are in `core/Lod/Impostors/ImpostorBake.ts`.
+- Octahedral impostors (`core/Lod/Impostors/OctahedralImpostor.ts`): `generateOctahedralImpostor(geometry, material, opts?)` bakes an object from a grid of directions on a sphere into two atlases, and draws it with one quad per instance that faces the camera from any angle, overhead included. A far LOD level for rocks, buildings and anything seen from above. It returns a registered `{ id, layout, geometry, material, albedo, normalDepth }`, which goes into `createInstancedLodPool`'s last level (or onto a plain mesh).
+  - The atlases hold albedo and coverage, and the object-space normal with the depth in alpha; never light, so the impostor is lit by the scene's lights, shadows and day-night cycle at runtime. `hemi: true` bakes the upper hemisphere only, for objects never seen from below: twice the frames per direction.
+  - The material blends the three frames nearest to the view direction with barycentric weights, each sampled where the pixel's view ray meets the object's surface (a depth parallax), so the frames line up and nothing pops as the camera orbits. A hemi impostor seen from well below the horizon draws its horizon frames flat.
+  - Shadows: in the shadow pass the quad faces the light and casts the silhouette seen from it. The impostor writes its surface's depth in both passes and receives shadows on that surface, so it meets the ground and shadows itself like the mesh. `surfaceDepth: false` draws the flat quad and receives no shadows instead: about a quarter of the GPU cost where impostors cover many pixels, for objects standing on the ground.
+  - Options: `id` (default `${geometry id}#octahedral`), `frames` (2-32, default 12), `hemi`, `frameSize` (default 64), `gutter`, `alphaTest`, `shading` and `surfaceDepth`. Owned by the loading scene, and a later call with the same `id` returns the registered assets, like cross-quads. It gets `enableLodDither` from the pool like any level material, so switching to and from it cross-fades.
+  - The octahedral maps and frame bases, on the CPU and in TSL (`Octahedral.ts`), and the material's nodes (`createOctahedralImpostorNodes`, `createOctahedralImpostorQuad` in `OctahedralImpostorMaterial.ts`) are exported for custom materials.
+- Dithered LOD cross-fades (`core/Lod/LodFade.ts`): a level change, and hiding or showing at `cullScreenSize`, no longer pops. For `fadeSeconds` both levels are drawn and dissolve into each other through a screen-space dither. Everything stays opaque, so there's no sorting, and shadows and post effects work as before. Shadows dither with the same split, so they don't darken during a fade.
+  - `fadeSeconds` on a `LodDef` (and `lod` in `*.mesh.json`, scene mesh overrides, `AUTO` LODs and `createInstancedLodPool`'s `lod`), else `AppConfig.lod.fadeSeconds` (default 0.25), changed at runtime with `setLodFadeSeconds` / read with `getLodFadeSeconds`. 0 switches at once and leaves the level materials undithered.
+  - Instanced LOD pools fade per instance: during a fade the instance is in both level meshes, so a fade adds no draw call. Plain meshes and `InstancedMesh` entities draw the outgoing level through a temporary copy of the mesh for the fade. Skinned meshes don't fade.
+  - `lodDither(fade)` (a TSL mask for custom node materials), `enableLodDither(material)` (pools and LOD meshes call it on their level materials; it keeps an existing `maskNode`), `createLodFadeAttribute(mesh)` and `setLodObjectFade` / `clearLodObjectFade`.
+  - `TAG_LOD_TRANSITIONING` (runtime only) marks a fading entity, and `lodFadeSystem` runs right after `lodApplySystem`, over the fading entities only (about 0.3 ms for 3,000 fading pool instances). `LodFrameStats` gets `fading` and `fadeMs`.
+  - `LodTarget`: `applyLevel` and `setCulled` get a `fade` flag, and a target fades when it has the new optional `setFade(entityId, world, progress)`. Existing targets keep switching at once.
+  - Debug: the LOD tab's Fades folder (a global fade seconds override and a time scale for slow motion, `setLodDebugOptions`'s `fadeTimeScale`), the fading count in its stats and rows, and the LOD window's fade state, progress and duration.
+
+**Changed**
+
+- LOD changes cross-fade by default (0.25 s). Set `AppConfig.lod.fadeSeconds: 0` (or a LOD's `fadeSeconds: 0`) for the old instant switch.
+
+### App 1.6.1 (Preschooler)
+
+**Changed**
+
+- largeWorld's trees get a third LOD level, cross-quads, below a screen size of 0.032 (about 180 m from the overview camera); level 1 now ends there.
+- largeWorld gets 300 rocks in an instanced LOD pool: a toolkit asteroid (500 triangles), the same rock at 80 triangles from a screen size of 0.05 (about 50 m) and a hemi octahedral impostor below 0.025 (about 100 m), a third of each in the ground.
+- largeWorld also lists the `dayNight` sky box (its default stays `basicSkybox`). While a sky box with a sun light is active, the scene's own sun and ambient light are off, so its night falls on the whole scene.
+
 ## 2026-10-06 — physics-simulation-tiers
 
 ### Engine 4.10.0 (Afternoon)

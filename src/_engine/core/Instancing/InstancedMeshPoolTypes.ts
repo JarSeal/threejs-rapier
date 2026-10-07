@@ -12,6 +12,12 @@ export interface InstancedMeshSlotData {
   /** Its slot in `mesh`, -1 while it's in no mesh (LOD culled). Changes when another instance is
    * removed from the mesh: read it from the component, never keep it. */
   index: number;
+  /** An instanced LOD pool's outgoing copy during a LOD cross-fade (TAG_LOD_TRANSITIONING): the
+   * level mesh the instance fades out of (a fade to LOD culled: `mesh` itself, with `index` -1),
+   * else null. */
+  _fadeOutMesh: THREE.InstancedMesh | null;
+  /** The outgoing copy's slot in `_fadeOutMesh`, -1 without one. Changes like `index`. */
+  _fadeOutIndex: number;
   /** Last `Transform.version` baked into `mesh`'s instance matrix — skips the write once a
    * (typically static, e.g. foliage) instance's transform stops changing. */
   _lastVersion: number;
