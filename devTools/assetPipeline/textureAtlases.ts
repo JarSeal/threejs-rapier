@@ -3,11 +3,13 @@ import path from 'path';
 import type { TextureSlot } from '../../src/_engine/schemas/assetsConfigSchema';
 import {
   DEFAULT_ATLAS_PADDING,
+  getFullMipLevelCount,
+  type AtlasMipChain,
   type TextureAtlasAsset,
   type TextureAtlasCellInfo,
   type TextureAtlasSlot,
 } from '../../src/_engine/schemas/textureAtlasSchema';
-import { createImage, flipY, halve, toChannels, type Img } from './images';
+import { createImage, flipY, halve, resizeImage, toChannels, type Img } from './images';
 import { encodeKtx2Levels, type KtxProvider, type KtxSettings } from './ktxEncode';
 import { getAtlasLogicalPath, writeOutput, type PipelineOutput } from './outputs';
 import { toRepoPath } from './sources';
@@ -35,7 +37,11 @@ import { describeEncodedTexture, type EncodedTexture } from './textures';
  * and no block then holds two cells (a block's shared endpoints pull its texels toward each other),
  * and a bilinear tap at a cell's edge lands in its own padding. The chain stops at the last such
  * level (with box filtered levels; a wider filter, like ktx's default lanczos4, would reach
- * further).
+ * further), unless the atlas asks for the full chain (`mipChain: "FULL"`, p351 Phase 4: cells whose
+ * neighbours are near-identical, which may mix at the smallest levels).
+ *
+ * A slot with an `image` (p351 Phase 4) is a ready-made image of the whole layout, eg. an exported
+ * impostor's atlas: it isn't composed, so its cells are where their `rect`s say.
  */
 
 /** x, y, width, height in px, top-left origin */
@@ -57,7 +63,10 @@ export type TextureAtlasLayout = {
   padding: number;
   /** Mip levels the layout keeps apart, level 0 included */
   levels: number;
+  mipChain: AtlasMipChain;
   cells: AtlasCellLayout[];
+  /** The slots with a ready-made image (`slots.<name>.image`), by slot */
+  images: Record<string, TextureArrayLayer>;
 };
 
 /** Block compression's grid: every rect is on it */
@@ -90,11 +99,14 @@ export type AtlasCellInput = {
  * rounded up to the alignment grid (4·2^⌊log2 padding⌋: whole blocks at every level the padding
  * protects). Returns each cell's padded rect (null for one that failed), the levels the layout
  * keeps apart, and every problem, each naming its cell.
+ * @param opts.mipChain 'FULL' stores every level whatever the layout keeps apart, so it doesn't
+ * warn about what shortens the protected chain
  */
 export const layoutAtlasCells = (
   size: [number, number],
   padding: number,
-  cells: AtlasCellInput[]
+  cells: AtlasCellInput[],
+  opts: { mipChain?: AtlasMipChain } = {}
 ) => {
   const [width, height] = size;
   const errors: string[] = [];
@@ -188,7 +200,7 @@ export const layoutAtlasCells = (
     }
     level = Math.min(level, rectLevel);
   });
-  if (limits.length) {
+  if (limits.length && opts.mipChain !== 'FULL') {
     warnings.push(
       `the mip chain stops at level ${level} (${2 ** level} px), where the padding (${padding} px) keeps levels 0-${paddingLevel} apart: ${limits.join('; ')}`
     );
@@ -197,37 +209,87 @@ export const layoutAtlasCells = (
 };
 
 /**
- * Resolves an atlas: its cells' sources (see `resolveTextureSourceRef`; a source in an sRGB slot
- * is read as sRGB), their content sizes (a `rect` less its padding, a `size`, else the first
- * source's, in the order of `slots`, from its file header) and the layout (see
- * {@link layoutAtlasCells}). Every problem is in `errors`, each naming its cell; `layout` is null
- * when there is one. `warnings` are worth a look, eg. a rect that shortens the mip chain.
+ * Resolves an atlas: the slots' ready-made images (`image`, resolved like a cell source; their
+ * size must be the layout's, from the file header), its cells' sources (see
+ * `resolveTextureSourceRef`; a source in an sRGB slot is read as sRGB), their content sizes (a
+ * `rect` less its padding, a `size`, else the first source's, in the order of `slots`, from its
+ * file header) and the layout (see {@link layoutAtlasCells}). With an image slot every cell needs
+ * a `rect` (where it is in the image) and none has a source in that slot. Every problem is in
+ * `errors`, each naming its cell or slot; `layout` is null when there is one. `warnings` are worth
+ * a look, eg. a rect that shortens the mip chain.
  * @param jsonFile The atlas's JSON, absolute or relative to the repo root
  */
 export const resolveTextureAtlas = (
   jsonFile: string,
-  data: Pick<TextureAtlasAsset, 'size' | 'padding' | 'slots' | 'cells'>,
+  data: Pick<TextureAtlasAsset, 'size' | 'padding' | 'mipChain' | 'slots' | 'cells'>,
   findTexture: TextureLookup
 ): { layout: TextureAtlasLayout | null; errors: string[]; warnings: string[] } => {
   const padding = data.padding ?? DEFAULT_ATLAS_PADDING;
+  const mipChain = data.mipChain ?? 'PROTECTED';
   const slotNames = Object.keys(data.slots);
   const errors: string[] = [];
   const ids = new Map<string, number>();
   const inputs: AtlasCellInput[] = [];
   const cells: Omit<AtlasCellLayout, 'rect' | 'content'>[] = [];
 
+  const images: Record<string, TextureArrayLayer> = {};
+  for (const [slot, { image, texOpts }] of Object.entries(data.slots)) {
+    if (!image) continue;
+    const label = `slots.${slot}.image ("${image}")`;
+    const source = resolveTextureSourceRef(jsonFile, image, findTexture, {
+      isSrgb: texOpts?.colorSpace === 'srgb',
+      target: `the slot "${slot}"`,
+    });
+    if (typeof source === 'string') {
+      errors.push(`${label}: ${source}`);
+      continue;
+    }
+    try {
+      const size = readTextureSourceSizeSync(source);
+      if (!size) {
+        errors.push(
+          `${label}: its size isn't read without decoding it (only PNG, JPEG and WebP headers are), and it must be the atlas's ${data.size.join('×')}`
+        );
+      } else if (size.width !== data.size[0] || size.height !== data.size[1]) {
+        errors.push(
+          `${label}: it is ${size.width}×${size.height} and the atlas ${data.size.join('×')} ("size"): a slot's image is the whole layout, never resized`
+        );
+      } else {
+        images[slot] = source;
+      }
+    } catch (error) {
+      errors.push(`${label}: ${(error as Error).message}`);
+    }
+  }
+  const imageSlots = slotNames.filter((slot) => data.slots[slot].image);
+  const composedSlots = slotNames.filter((slot) => !data.slots[slot].image);
+
   data.cells.forEach((cell, index) => {
     const label = `cells[${index}] ("${cell.id}")`;
     const other = ids.get(cell.id);
     if (other !== undefined) errors.push(`${label}: cells[${other}] has the same id`);
     else ids.set(cell.id, index);
+    if (imageSlots.length && !cell.rect) {
+      errors.push(
+        `${label}: no "rect", and slots.${imageSlots[0]} is a ready-made image: every cell needs its rect in it`
+      );
+    }
 
     const sources: Record<string, TextureArrayLayer> = {};
-    const refs = Object.entries(cell.sources);
-    if (!refs.length) errors.push(`${label}: no sources (a cell is an image in one slot or more)`);
+    const refs = Object.entries(cell.sources ?? {});
+    // A cell is in every image slot already
+    if (!refs.length && !imageSlots.length) {
+      errors.push(`${label}: no sources (a cell is an image in one slot or more)`);
+    }
     for (const [slot, ref] of refs) {
       if (!data.slots[slot]) {
         errors.push(`${label}: sources.${slot}: no such slot (slots: ${slotNames.join(', ')})`);
+        continue;
+      }
+      if (data.slots[slot].image) {
+        errors.push(
+          `${label}: sources.${slot}: the slot is a ready-made image (slots.${slot}.image), so the cell is already in it`
+        );
         continue;
       }
       const source = resolveTextureSourceRef(jsonFile, ref, findTexture, {
@@ -253,7 +315,7 @@ export const resolveTextureAtlas = (
             contentSize = [size.width, size.height];
           } else {
             errors.push(
-              `${label}: the size of sources.${slot} ("${cell.sources[slot]}") isn't read without decoding it (only PNG, JPEG and WebP headers are): set the cell's "size"`
+              `${label}: the size of sources.${slot} ("${cell.sources?.[slot]}") isn't read without decoding it (only PNG, JPEG and WebP headers are): set the cell's "size"`
             );
           }
         } catch (error) {
@@ -266,9 +328,9 @@ export const resolveTextureAtlas = (
   });
   if (errors.length) return { layout: null, errors, warnings: [] };
 
-  const layout = layoutAtlasCells(data.size, padding, inputs);
+  const layout = layoutAtlasCells(data.size, padding, inputs, { mipChain });
   if (layout.errors.length) return { layout: null, errors: layout.errors, warnings: [] };
-  for (const slot of slotNames) {
+  for (const slot of composedSlots) {
     if (!cells.some(({ sources }) => sources[slot])) {
       layout.warnings.push(`slots.${slot}: no cell has a source in it, so it is its fill alone`);
     }
@@ -278,6 +340,8 @@ export const resolveTextureAtlas = (
       size: data.size,
       padding,
       levels: layout.levels,
+      mipChain,
+      images,
       cells: cells.map((cell, index) => {
         const rect = layout.rects[index]!;
         const [cw, ch] = inputs[index].contentSize;
@@ -325,9 +389,13 @@ export type AtlasSlotSource = {
   padding: number;
   /** Mip levels the layout keeps apart (level 0 included) */
   levels: number;
+  /** Set when the file stores every level down to 1 × 1, past `levels` */
+  mipChain?: 'FULL';
   /** The slot's `fill`, as the JSON has it */
   fill?: TextureAtlasSlot['fill'];
-  /** In the JSON's order; `source` unset: the slot's fill */
+  /** The slot's ready-made image of the whole layout: then no cell has a `source` */
+  image?: TextureArrayLayer;
+  /** In the JSON's order; `source` unset: the slot's fill (or its image) */
   cells: { id: string; rect: AtlasRect; content: AtlasRect; source?: TextureArrayLayer }[];
 };
 
@@ -348,7 +416,9 @@ export const createAtlasSlotSource = (
     size: layout.size,
     padding: layout.padding,
     levels: layout.levels,
+    ...(layout.mipChain === 'FULL' ? { mipChain: 'FULL' as const } : {}),
     ...(fill ? { fill } : {}),
+    ...(layout.images[slot] ? { image: layout.images[slot] } : {}),
     cells: layout.cells.map(({ id, rect, content, sources }) => ({
       id,
       rect,
@@ -359,21 +429,26 @@ export const createAtlasSlotSource = (
 };
 
 /**
- * Every file a slot's encode reads, cell by cell (a pack's files in its order). A file two cells
- * read is listed twice: the cache key hashes the files in this order.
+ * Every file a slot's encode reads: its image, else cell by cell (a pack's files in its order). A
+ * file two cells read is listed twice: the cache key hashes the files in this order.
  */
 export const listTextureAtlasFiles = (source: AtlasSlotSource) =>
-  source.cells.flatMap((cell) => (cell.source ? listTextureSourceFiles(cell.source) : []));
+  source.image
+    ? listTextureSourceFiles(source.image)
+    : source.cells.flatMap((cell) => (cell.source ? listTextureSourceFiles(cell.source) : []));
 
 /**
  * The cache key's inputs (besides the files, the settings and the colour space): the layout as
  * this slot draws it (each cell's rects and what its source is, a file, a pack's recipe or the
- * fill), the fill and the output's name.
+ * fill), the fill, the image, the full chain and the output's name. The last two only when set,
+ * so the keys of the atlases without them didn't change.
  */
 export const getTextureAtlasKeyParams = (source: AtlasSlotSource) => ({
   size: source.size,
   padding: source.padding,
   levels: source.levels,
+  ...(source.mipChain ? { mipChain: source.mipChain } : {}),
+  ...(source.image ? { image: getTextureSourceKeyParam(source.image) } : {}),
   fill: source.fill ?? null,
   cells: source.cells.map(({ rect, content, source: cellSource }) => ({
     rect,
@@ -409,12 +484,14 @@ const drawCell = (atlas: Img, img: Img, rect: AtlasRect, content: AtlasRect) => 
 /**
  * Encodes an atlas slot (p299 D3): the layout filled with the slot's `fill` (RGB(A), linear;
  * default transparent black, an RGB fill is opaque), each cell's source resized into its content
- * rect and edge-extended over its padding, then box-filtered levels (exact 2×2 halving, as
- * `images.ts` does) down to the last one the layout keeps apart, as one KTX2 with
+ * rect and edge-extended over its padding (or the slot's ready-made `image`, as it is), then
+ * box-filtered levels (exact 2×2 halving, as `images.ts` does) down to the last one the layout
+ * keeps apart, or with the full chain down to 1×1 (an odd size area-filtered), as one KTX2 with
  * `ktx create --levels`. A source with alpha, or a fill with alpha below 1, makes the slot RGBA.
  * `maxSize` drops the top levels until one fits (the cells stay aligned), with a warning. Warns
  * for a source that is upscaled or stretched into its cell. Throws, naming the cell, for a source
- * that can't be read, and when `maxSize` leaves none of the levels the layout keeps apart.
+ * that can't be read, for an image that isn't the layout's size, and when `maxSize` leaves none of
+ * the levels the layout keeps apart.
  */
 export const encodeTextureAtlasSlot = async (
   source: AtlasSlotSource,
@@ -432,6 +509,22 @@ export const encodeTextureAtlasSlot = async (
       throw new Error(`${label}: ${(error as Error).message}`);
     }
   };
+
+  const { image } = source;
+  const imageProbe = image
+    ? await (async () => {
+        try {
+          return await probeTextureSource(image, isNormal);
+        } catch (error) {
+          throw new Error(`slots.${source.slot}.image: ${(error as Error).message}`);
+        }
+      })()
+    : null;
+  if (imageProbe && (imageProbe.width !== width || imageProbe.height !== height)) {
+    throw new Error(
+      `slots.${source.slot}.image is ${imageProbe.width}×${imageProbe.height} and the atlas ${width}×${height}: a slot's image is the whole layout, never resized`
+    );
+  }
 
   const probes: (Awaited<ReturnType<typeof probeTextureSource>> | null)[] = [];
   for (let index = 0; index < source.cells.length; index++) {
@@ -456,10 +549,15 @@ export const encodeTextureAtlasSlot = async (
     }
   });
   const { fill } = source;
-  const hasAlpha = probes.some((probe) => probe?.hasAlpha) || (fill?.length === 4 && fill[3] < 1);
+  const hasAlpha = imageProbe
+    ? imageProbe.hasAlpha
+    : probes.some((probe) => probe?.hasAlpha) || (fill?.length === 4 && fill[3] < 1);
   const channels = hasAlpha ? 4 : 3;
 
-  // The levels stored: from the first that fits maxSize to the last the layout keeps apart
+  // The levels stored: from the first that fits maxSize to the last the layout keeps apart (or
+  // to 1×1 with the full chain)
+  const isFullChain = source.mipChain === 'FULL';
+  const chainLevels = isFullChain ? getFullMipLevelCount(width, height) : source.levels;
   let first = 0;
   if (settings.maxSize) {
     while (Math.max(width, height) >> first > settings.maxSize) first++;
@@ -477,15 +575,29 @@ export const encodeTextureAtlasSlot = async (
       `maxSize ${settings.maxSize} stores the ${width}×${height} atlas from its level ${first}, ${topWidth}×${topHeight}, which isn't a multiple of 4 (a block-compressed texture's size): make "size" a multiple of ${4 << first}, or raise maxSize`
     );
   }
-  const last = settings.mipmaps ? source.levels - 1 : first;
+  const last = settings.mipmaps ? chainLevels - 1 : first;
   const levelCount = last - first + 1;
   if (first) {
     opts.warn(
-      `maxSize ${settings.maxSize}: the ${width}×${height} layout is stored from its level ${first} (${topWidth}×${topHeight}), ${levelCount} of the ${source.levels} mip levels it keeps apart`
+      `maxSize ${settings.maxSize}: the ${width}×${height} layout is stored from its level ${first} (${topWidth}×${topHeight}), ${levelCount} of the ${chainLevels} mip levels ${isFullChain ? 'of its full chain' : 'it keeps apart'}`
     );
   }
+  // Exact halving while the layout keeps the cells apart (its size is aligned to 2^levels); the
+  // full chain's levels past that can have an odd size, area-filtered to the GPU's floor(size / 2)
+  const nextLevel = (img: Img) =>
+    img.width % 2 || img.height % 2
+      ? resizeImage(img, Math.max(1, img.width >> 1), Math.max(1, img.height >> 1), isNormal)
+      : halve(img, isNormal);
 
   const composeLevel0 = async () => {
+    if (image) {
+      const img = await readTextureSource(
+        image,
+        { width, height },
+        { isSrgb: opts.isSrgb, isNormal }
+      );
+      return toChannels(img, channels);
+    }
     const atlas = createImage(width, height, channels);
     const fillValues = [...(fill ?? [0, 0, 0, 0])];
     if (fillValues.length === 3) fillValues.push(1);
@@ -511,9 +623,9 @@ export const encodeTextureAtlasSlot = async (
     async () => {
       if (!level) {
         level = await composeLevel0();
-        for (let i = 0; i < first; i++) level = halve(level, isNormal);
+        for (let i = 0; i < first; i++) level = nextLevel(level);
       } else {
-        level = halve(level, isNormal);
+        level = nextLevel(level);
       }
       // Flipped as stored, like a texture's KTX2
       return flipY(level);

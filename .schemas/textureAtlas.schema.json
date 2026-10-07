@@ -32,6 +32,14 @@
       "minimum": 0,
       "maximum": 9007199254740991
     },
+    "mipChain": {
+      "description": "PROTECTED (default): the mip chain stops at the last level the padding and the rects keep apart, so a cell never reads its neighbour. FULL: every level down to 1 × 1 (the exact 2 × 2 box, area-filtered past an odd size), so the cells mix below the protected levels: for cells whose neighbours are near-identical (an impostor's neighbouring views), where a short chain would shimmer at distance.",
+      "type": "string",
+      "enum": [
+        "PROTECTED",
+        "FULL"
+      ]
+    },
     "slots": {
       "type": "object",
       "propertyNames": {
@@ -84,8 +92,13 @@
             },
             "additionalProperties": false
           },
+          "image": {
+            "description": "A ready-made image of the whole layout (the atlas's `size`), relative to this JSON (\"./bake.png\") or served from src/public, or a texture asset's id: the slot isn't composed from its cells (no resize, edge extension or fill), so it holds them where their `rect`s say (every cell needs one) and no cell has a source in it. For an atlas a tool already composed, eg. an exported impostor's.",
+            "type": "string",
+            "minLength": 1
+          },
           "fill": {
-            "description": "RGB(A), linear 0..1 like a pack constant: the atlas outside the cells, and the cells without a source in this slot (default transparent black; a normal map wants [0.5, 0.5, 1]).",
+            "description": "RGB(A), linear 0..1 like a pack constant: the atlas outside the cells, and the cells without a source in this slot (default transparent black; a normal map wants [0.5, 0.5, 1]). Not with `image`.",
             "anyOf": [
               {
                 "type": "array",
@@ -765,6 +778,7 @@
             ]
           },
           "sources": {
+            "description": "Per slot: the image resized into the cell. A slot left out gets its fill; a slot with an `image` takes none. Only left out when every slot has an `image`.",
             "type": "object",
             "propertyNames": {
               "type": "string"
@@ -773,8 +787,7 @@
               "type": "string",
               "minLength": 1,
               "description": "A texture asset's id (its source file or pack, not its output), or a source image relative to this JSON (\"./source/crack.png\") or served from src/public (\"/textures/crack.png\")."
-            },
-            "description": "Per slot: the image resized into the cell. A slot left out gets its fill."
+            }
           },
           "data": {
             "description": "Free-form, passed through to the cell table (eg. a decal's physical size).",
@@ -786,8 +799,7 @@
           }
         },
         "required": [
-          "id",
-          "sources"
+          "id"
         ],
         "additionalProperties": false
       }

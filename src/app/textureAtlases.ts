@@ -40,8 +40,17 @@ import { lerror, llog } from '../_engine/utils/Logger';
  * - column 6 (between the slots), lit: a sphere remapped into the checker cell
  *   (`remapUVsToAtlasCell`, a clone) with the albedo slot as its `map`, the same sphere with the
  *   cell's source file, and a box remapped in place into the metal cell.
- * A cell's quads have its content's aspect. `window.__textureAtlases` holds the checks' results
- * and `screenRect(name)` for the harness.
+ * A cell's quads have its content's aspect.
+ *
+ * p351 Phase 4 section 1, off to the side with its own camera ("Ready-made image atlas"): the
+ * `p299TestAtlasImage` asset, two slots from ready-made images of the layout (`slots.<name>.image`,
+ * an impostor-like bake of 3 × 3 frames) with the full mip chain (`mipChain: "FULL"`, 192² to 1²).
+ * The albedo slot in columns 0-8, the normalDepth slot in columns 10-18, quad names prefixed
+ * `image_`: row 0 the slot at each level and its source image after them, rows 1…levels each cell
+ * through its UV rect at that level (below the 3 levels the layout keeps apart, the cells mix).
+ *
+ * `window.__textureAtlases` holds the checks' results and `screenRect(name)` for the harness (in
+ * the active camera).
  */
 
 const ATLAS_ID = 'p299TestAtlas';
@@ -54,6 +63,14 @@ const X0 = -CELL * 6;
 const Y0 = CELL * 3.5;
 /** In front of the debug helpers at the world origin */
 const Z = 2;
+
+/** p351 Phase 4 section 1's atlas: slots from ready-made images, the full chain */
+const IMAGE_ATLAS_ID = 'p299TestAtlasImage';
+const IMAGE_SLOTS = ['albedo', 'normalDepth'] as const;
+const IMAGE_SLOT_COLUMNS = 10;
+/** Out of the main camera's view */
+const IMAGE_X0 = 60;
+const IMAGE_Y0 = CELL * 4;
 
 /** A file next to this module as a file name loadTextureAsync resolves against the page (`./`
  * plus the name, so no leading slash) */
@@ -75,6 +92,14 @@ const CELL_SOURCES: Record<(typeof SLOTS)[number], Record<string, string>> = {
     blue: local(new URL('./textures/source/p299Atlas/maskGradient.png', import.meta.url)),
     yellow: local(new URL('./textures/source/p299Atlas/maskRings.png', import.meta.url)),
   },
+};
+
+/** Each image slot's ready-made image (the atlas JSON's `image`) */
+const IMAGE_SOURCES: Record<(typeof IMAGE_SLOTS)[number], string> = {
+  albedo: local(new URL('./textures/source/p299Atlas/imageAtlasAlbedo.png', import.meta.url)),
+  normalDepth: local(
+    new URL('./textures/source/p299Atlas/imageAtlasNormalDepth.png', import.meta.url)
+  ),
 };
 
 const sampleTexture = texture as unknown as (tex: THREE.Texture, uvNode: Node) => TextureNode;
@@ -117,14 +142,22 @@ const state: {
 
 let quadGeo: THREE.BufferGeometry;
 
-/** A quad of `aspect` (width / height) fit into a 1 × 1 cell of the grid */
-const addQuad = (name: string, colorNode: Node<'vec4'>, row: number, col: number, aspect = 1) => {
+/** A quad of `aspect` (width / height) fit into a 1 × 1 cell of the grid (the main one, or the
+ * image atlas's at `origin`) */
+const addQuad = (
+  name: string,
+  colorNode: Node<'vec4'>,
+  row: number,
+  col: number,
+  aspect = 1,
+  origin = { x0: X0, y0: Y0 }
+) => {
   const mat = new THREE.MeshBasicNodeMaterial();
   mat.colorNode = colorNode;
   saveMaterial(mat, `textureAtlases/${name}`);
   const scale = aspect >= 1 ? { x: 1, y: 1 / aspect } : { x: aspect, y: 1 };
-  const x = X0 + col * CELL;
-  const y = Y0 - row * CELL;
+  const x = origin.x0 + col * CELL;
+  const y = origin.y0 - row * CELL;
   state.quads[name] = { x, y, halfW: scale.x / 2, halfH: scale.y / 2 };
   createMeshEntity(
     { geo: quadGeo, mat, position: { x, y, z: Z }, scale: { ...scale, z: 1 } },
@@ -279,6 +312,42 @@ const buildSlot = async (tex: THREE.Texture, slotIndex: number) => {
   }
 };
 
+/** The image atlas's slot (p351 Phase 4 section 1): row 0 the slot at each level, then its
+ * source image; rows 1…levels each cell through its UV rect at that level. */
+const buildImageSlot = async (tex: THREE.Texture, slotIndex: number) => {
+  const info = getTextureAtlasInfo(tex)!;
+  const slot = info.slot as (typeof IMAGE_SLOTS)[number];
+  const origin = { x0: IMAGE_X0 + slotIndex * IMAGE_SLOT_COLUMNS * CELL, y0: IMAGE_Y0 };
+  for (let level = 0; level < info.storedLevels; level++) {
+    addQuad(`image_${slot}_atlas_L${level}`, atlasLevelNode(tex, info, level), 0, level, 1, origin);
+  }
+  const source = await loadSource(
+    `image_${slot}_source`,
+    IMAGE_SOURCES[slot],
+    tex.colorSpace as THREE.ColorSpace
+  );
+  addQuad(
+    `image_${slot}_source`,
+    vec4(sampleTexture(source, meshUv()).rgb, 1) as unknown as Node<'vec4'>,
+    0,
+    info.storedLevels,
+    1,
+    origin
+  );
+  for (const [c, cellId] of Object.keys(info.cells).entries()) {
+    for (let level = 0; level < info.storedLevels; level++) {
+      addQuad(
+        `image_${slot}_${cellId}_L${level}`,
+        cellLevelNode(tex, cellId, level),
+        1 + level,
+        c,
+        1,
+        origin
+      );
+    }
+  }
+};
+
 /** A UV attribute's range, `[minU, minV, maxU, maxV]` */
 const uvRange = (geometry: THREE.BufferGeometry) => {
   const attr = geometry.getAttribute('uv');
@@ -399,7 +468,7 @@ const checkErrors = async () => {
   );
   if (!albedo?.__atlas) throw new Error('No albedo slot entry in the scene data');
   llog(
-    '[textureAtlases] Expected: the next 5 errors (noOutputFallback, noOutput, tooManyLevels, droppedPlusStored, sizeMismatch) test how loadTextureAsync fails for an atlas slot.'
+    '[textureAtlases] Expected: the next 6 errors (noOutputFallback, noOutput, tooManyLevels, droppedPlusStored, sizeMismatch, fullChainAsProtected) test how loadTextureAsync fails for an atlas slot.'
   );
   const fallback = await loadTextureAsync({
     id: 'textureAtlases/noOutputFallback',
@@ -432,6 +501,22 @@ const checkErrors = async () => {
     // 1024² would mean one dropped level: 1 + 5 > 5
     droppedPlusStored: await badLayout('droppedPlusStored', { size: [1024, 1024] }),
     sizeMismatch: await badLayout('sizeMismatch', { size: [384, 512] }),
+    // The image atlas's full chain (8 levels) read as a protected one (3 kept apart)
+    fullChainAsProtected: await (async () => {
+      const imageAlbedo = (getGeneratedSceneData('textureAtlases')?.textures ?? []).find(
+        (tex): tex is TextureProps =>
+          typeof tex !== 'string' && tex.id === `${IMAGE_ATLAS_ID}.albedo`
+      );
+      if (!imageAlbedo?.__atlas) return 'FAILED: no image atlas albedo slot entry';
+      return expectError(() =>
+        loadTextureAsync({
+          id: 'textureAtlases/fullChainAsProtected',
+          __url: imageAlbedo.__url,
+          __atlas: { ...imageAlbedo.__atlas!, mipChain: undefined },
+          throwOnError: true,
+        })
+      );
+    })(),
   };
 };
 
@@ -478,10 +563,17 @@ const build = async (assets: ScenePrimitiveAssets) => {
     }
     await buildSlot(tex, i);
   }
+  const imageSlotTextures = IMAGE_SLOTS.map((slot) => assets.textures[`${IMAGE_ATLAS_ID}.${slot}`]);
+  for (const [i, tex] of imageSlotTextures.entries()) {
+    if (!tex || !getTextureAtlasInfo(tex)) {
+      throw new Error(`Image atlas slot "${IMAGE_SLOTS[i]}" didn't load as an atlas slot`);
+    }
+    await buildImageSlot(tex, i);
+  }
   await checkErrors();
   checkHelpers(slotTextures[0]);
   buildRemappedMeshes(slotTextures[0]);
-  return slotTextures;
+  return { slotTextures, imageSlotTextures };
 };
 
 type Backend = { isWebGPUBackend?: boolean };
@@ -500,6 +592,20 @@ export const scene = async ({ assets }: { assets: ScenePrimitiveAssets }) => {
       active: true,
     },
     { appId: 'textureAtlasesCam', debugData: { name: 'Texture atlases' } }
+  );
+  // The image atlas's block: 19 columns × 9 rows
+  const imageCenter = {
+    x: IMAGE_X0 + ((2 * IMAGE_SLOT_COLUMNS - 2) * CELL) / 2,
+    y: IMAGE_Y0 - (8 * CELL) / 2,
+  };
+  createCameraEntity(
+    {
+      type: 'PERSPECTIVE',
+      fov: 45,
+      position: { ...imageCenter, z: Z + 19 },
+      lookAtPoint: { ...imageCenter, z: Z },
+    },
+    { appId: 'textureAtlasesImageCam', debugData: { name: 'Ready-made image atlas' } }
   );
   // For the lit meshes only: the quads are unlit
   createLightEntity(
@@ -522,7 +628,7 @@ export const scene = async ({ assets }: { assets: ScenePrimitiveAssets }) => {
   if (quadGeo !== quad) quad.dispose();
 
   try {
-    const slotTextures = await build(assets);
+    const { slotTextures, imageSlotTextures } = await build(assets);
     // The slots' state once they are on the GPU (nothing is drawn while the scene loads)
     void nextFrames(10).then(() => {
       const { results } = state;
@@ -530,6 +636,9 @@ export const scene = async ({ assets }: { assets: ScenePrimitiveAssets }) => {
       results.backend = backend.isWebGPUBackend ? 'WebGPU' : 'WebGL2';
       results.slots = Object.fromEntries(
         slotTextures.map((tex, i) => [SLOTS[i], describeSlot(tex)])
+      );
+      results.imageSlots = Object.fromEntries(
+        imageSlotTextures.map((tex, i) => [IMAGE_SLOTS[i], describeSlot(tex)])
       );
       results.done = true;
     });

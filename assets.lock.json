@@ -63,6 +63,30 @@
       ],
       "ktxVersion": "4.4.2"
     },
+    "89b8aa63f903aef5a94425333943ffe8858c9f70af53ef043ff3737c417cd659": {
+      "source": "src/app/textures/p299TestAtlasImage.textureAtlas.json",
+      "url": "/aek-assets/app/textures/p299TestAtlasImage.atlas.normalDepth.339cb09e.ktx2",
+      "bytes": 12373,
+      "textures": [
+        {
+          "slot": "data",
+          "bytes": 12373,
+          "source": {
+            "width": 192,
+            "height": 192,
+            "bytes": 60702
+          },
+          "codec": "uastc",
+          "width": 192,
+          "height": 192,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
     "9442fd32164cc23d52fef0976d43336dcfa4f2d708ff7273f0008fabbab37d21": {
       "source": "src/app/textures/p299TestArray.textureArray.json",
       "url": "/aek-assets/app/textures/p299TestArray.array.5c60d088.ktx2",
@@ -109,6 +133,30 @@
           "hasAlpha": false,
           "mipmaps": true,
           "normalMode": false
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "cb28af28b93099b6941a5e45da89557a49cae347ba7645d77b12549032bf6453": {
+      "source": "src/app/textures/p299TestAtlasImage.textureAtlas.json",
+      "url": "/aek-assets/app/textures/p299TestAtlasImage.atlas.albedo.19a35ea8.ktx2",
+      "bytes": 4089,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 4089,
+          "source": {
+            "width": 192,
+            "height": 192,
+            "bytes": 2322
+          },
+          "codec": "uastc",
+          "width": 192,
+          "height": 192,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
         }
       ],
       "ktxVersion": "4.4.2"

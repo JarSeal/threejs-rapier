@@ -1,0 +1,72 @@
+{
+  "$schema": "../../../.schemas/textureAtlas.schema.json",
+  "id": "p299TestAtlasImage",
+  "size": [192, 192],
+  "padding": 4,
+  "mipChain": "FULL",
+  "slots": {
+    "albedo": {
+      "texOpts": {
+        "colorSpace": "srgb"
+      },
+      "image": "./source/p299Atlas/imageAtlasAlbedo.png",
+      "optimize": {
+        "slot": "baseColor"
+      }
+    },
+    "normalDepth": {
+      "image": "./source/p299Atlas/imageAtlasNormalDepth.png",
+      "optimize": {
+        "slot": "data",
+        "textures": {
+          "data": {
+            "codec": "uastc",
+            "rdo": 0
+          }
+        }
+      }
+    }
+  },
+  "cells": [
+    {
+      "id": "f00",
+      "rect": [0, 0, 64, 64]
+    },
+    {
+      "id": "f10",
+      "rect": [64, 0, 64, 64]
+    },
+    {
+      "id": "f20",
+      "rect": [128, 0, 64, 64]
+    },
+    {
+      "id": "f01",
+      "rect": [0, 64, 64, 64]
+    },
+    {
+      "id": "f11",
+      "rect": [64, 64, 64, 64]
+    },
+    {
+      "id": "f21",
+      "rect": [128, 64, 64, 64]
+    },
+    {
+      "id": "f02",
+      "rect": [0, 128, 64, 64]
+    },
+    {
+      "id": "f12",
+      "rect": [64, 128, 64, 64]
+    },
+    {
+      "id": "f22",
+      "rect": [128, 128, 64, 64]
+    }
+  ],
+  "debugData": {
+    "name": "p299 test atlas (ready-made images)",
+    "description": "p351 Phase 4 section 1: a 2-slot atlas from ready-made images of its layout (slots.<name>.image, an impostor-like bake: 3 \u00d7 3 frames of 56 px with a 4 px gutter), every cell placed by its rect, with the full mip chain (mipChain FULL: 192\u00b2 down to 1\u00b2, through an odd 3\u00b2)."
+  }
+}

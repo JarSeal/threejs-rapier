@@ -143,6 +143,10 @@ One layout, one output per map slot:
     down to 1 × 1 with the exact 2 × 2 box, past the levels the padding protects, so cells mix at
     the smallest levels. For content whose neighbouring cells are near-identical (an impostor's
     neighbouring views), where a short chain would shimmer at distance.
+  - Both implemented (p351 Phase 4 section 1, its notes have the details): a cell needs no
+    `sources` once one slot has an `image`; past an odd size the full chain is area-filtered;
+    `__atlas` gets `mipChain: "FULL"` and `fromImage: true` (`levels` stays the levels kept
+    apart). Test asset `p299TestAtlasImage`, drawn in the `textureAtlases` scene.
 
 ### D4 — Helpers
 

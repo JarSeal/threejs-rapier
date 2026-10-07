@@ -838,6 +838,8 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
               size: layout.size,
               padding: layout.padding,
               levels: layout.levels,
+              ...(layout.mipChain === 'FULL' ? { mipChain: 'FULL' as const } : {}),
+              ...(slotJSON.image ? { fromImage: true as const } : {}),
               cells,
             },
             ...getTextureAtlasSlotGeneratedFields(opts.pipeline, fullPath, slot),

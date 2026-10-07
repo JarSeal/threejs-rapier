@@ -610,7 +610,31 @@ Sections, each reviewed before the next:
    with `images.ts`'s exact box and doesn't warn about unprotected levels). Both in the schema,
    `textureAtlases.ts` (layout, cache key, composition) and the cell table's `levels`. A third test
    atlas in the `textureAtlases` scene: a ready-made 2-slot image with a full chain, each cell
-   through its rect at every level. p299's D3 notes these (done with this plan update).
+   through its rect at every level. p299's D3 notes these (done with this plan update). — done:
+   `image` is resolved like a cell source (a file relative to the JSON or served from src/public,
+   or a texture asset's id); its header size must be the atlas's `size`, else the gather fails
+   naming it, and the encode checks it again. With an image slot every cell needs a `rect`, and a
+   cell's source in an image slot is an error. Changed from the rule above: a cell with no
+   `sources` is fine as soon as _one_ slot has an image (it is in that image), not only when every
+   slot has one; a composed slot without the cell gets its fill as before. `image` and `fill`
+   exclude each other (schema). `mipChain: "FULL"` stores every level down to 1 × 1: exact halving
+   while the size is even, then `resizeImage`'s area filter to the GPU's `floor(size / 2)` (a
+   192² layout goes 6² → 3² → 1²), and the protected chain's warnings are off. `__atlas.levels`
+   keeps its meaning (the levels kept apart) and `__atlas` gets `mipChain: "FULL"` and
+   `fromImage: true` when set; the runtime's level check takes the full chain's count for a FULL
+   slot (`getAtlasSlotInfo`, `Texture.ts`, inline: core imports no zod), and the Assets tab shows
+   the mip chain and "a ready-made image". The cache key gets `mipChain` and `image` only when set,
+   so the existing atlases kept their keys (all cache hits). The run labels an image slot "9 cells
+   in an image, full chain". Test asset: `p299TestAtlasImage` (192², padding 4, 3 × 3 frames of
+   56 px, an albedo slot of alpha-cut discs with dilated colour and a `normalDepth` slot, decision
+   3's `data` / UASTC / `rdo: 0`), from two generated PNGs in `source/p299Atlas/`. Decoded: level
+   0 of albedo equals its image exactly, `normalDepth` within 1.3 / 255; 8 levels, the 1 × 1
+   texel's alpha 95 / 255, the discs' area share. The scene draws it off to the side with its own
+   camera ("Ready-made image atlas", quads `image_*`): each slot at each level and its source
+   image, each cell at every level; `results.imageSlots`, and `errors.fullChainAsProtected` (the
+   file read without `mipChain` fails). Checked on WebGL2 (SwiftShader, WSL2): frames upright,
+   levels 0-2 clean, the cells mixing from level 3. WebGPU not checked here (no headless WebGPU on
+   WSL2).
 2. **Asset type and registry:** `schemas/impostorSchema.ts` (decision 4, a discriminated union by
    `kind`), the `.impostor.json` suffix in `gatherAppData.ts` (validated, its atlas must exist and
    have the kind's slots; impostor ids in their own id space), the generated data's impostors, the

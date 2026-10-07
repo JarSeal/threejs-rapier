@@ -1286,7 +1286,7 @@
     "textureAtlases": {
       "isDebugScene": true,
       "name": "Texture atlases (p299)",
-      "description": "p299's atlas verification scene: each slot of the p299TestAtlas asset (*.textureAtlas.json, listed by its atlas id) whole at each mip level the file has, with the cell rects outlined, and each cell sampled through its UV rect at every level, next to its source file.",
+      "description": "p299's atlas verification scene: each slot of the p299TestAtlas asset (*.textureAtlas.json, listed by its atlas id) whole at each mip level the file has, with the cell rects outlined, and each cell sampled through its UV rect at every level, next to its source file. Off to the side (camera \"Ready-made image atlas\"): p299TestAtlasImage, slots from ready-made images with the full mip chain (p351 Phase 4).",
       "textures": [
         {
           "id": "p299TestAtlas.albedo",
@@ -1496,6 +1496,287 @@
           "__vramBytes": {
             "in": 1398100,
             "out": 349184
+          },
+          "__codec": "uastc"
+        },
+        {
+          "id": "p299TestAtlasImage.albedo",
+          "texOpts": {
+            "colorSpace": "srgb"
+          },
+          "debugData": {
+            "name": "p299 test atlas (ready-made images)",
+            "description": "p351 Phase 4 section 1: a 2-slot atlas from ready-made images of its layout (slots.<name>.image, an impostor-like bake: 3 × 3 frames of 56 px with a 4 px gutter), every cell placed by its rect, with the full mip chain (mipChain FULL: 192² down to 1², through an odd 3²)."
+          },
+          "__atlas": {
+            "id": "p299TestAtlasImage",
+            "slot": "albedo",
+            "size": [
+              192,
+              192
+            ],
+            "padding": 4,
+            "levels": 3,
+            "mipChain": "FULL",
+            "fromImage": true,
+            "cells": {
+              "f00": {
+                "uv": [
+                  0.020833333333333332,
+                  0.6875,
+                  0.3125,
+                  0.9791666666666666
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f10": {
+                "uv": [
+                  0.3541666666666667,
+                  0.6875,
+                  0.6458333333333334,
+                  0.9791666666666666
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f20": {
+                "uv": [
+                  0.6875,
+                  0.6875,
+                  0.9791666666666666,
+                  0.9791666666666666
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f01": {
+                "uv": [
+                  0.020833333333333332,
+                  0.35416666666666663,
+                  0.3125,
+                  0.6458333333333333
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f11": {
+                "uv": [
+                  0.3541666666666667,
+                  0.35416666666666663,
+                  0.6458333333333334,
+                  0.6458333333333333
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f21": {
+                "uv": [
+                  0.6875,
+                  0.35416666666666663,
+                  0.9791666666666666,
+                  0.6458333333333333
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f02": {
+                "uv": [
+                  0.020833333333333332,
+                  0.02083333333333337,
+                  0.3125,
+                  0.3125
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f12": {
+                "uv": [
+                  0.3541666666666667,
+                  0.02083333333333337,
+                  0.6458333333333334,
+                  0.3125
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f22": {
+                "uv": [
+                  0.6875,
+                  0.02083333333333337,
+                  0.9791666666666666,
+                  0.3125
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              }
+            }
+          },
+          "__url": "/aek-assets/app/textures/p299TestAtlasImage.atlas.albedo.19a35ea8.ktx2",
+          "__bytes": {
+            "in": 2322,
+            "out": 4089
+          },
+          "__vramBytes": {
+            "in": 196600,
+            "out": 49200
+          },
+          "__codec": "uastc"
+        },
+        {
+          "id": "p299TestAtlasImage.normalDepth",
+          "debugData": {
+            "name": "p299 test atlas (ready-made images)",
+            "description": "p351 Phase 4 section 1: a 2-slot atlas from ready-made images of its layout (slots.<name>.image, an impostor-like bake: 3 × 3 frames of 56 px with a 4 px gutter), every cell placed by its rect, with the full mip chain (mipChain FULL: 192² down to 1², through an odd 3²)."
+          },
+          "__atlas": {
+            "id": "p299TestAtlasImage",
+            "slot": "normalDepth",
+            "size": [
+              192,
+              192
+            ],
+            "padding": 4,
+            "levels": 3,
+            "mipChain": "FULL",
+            "fromImage": true,
+            "cells": {
+              "f00": {
+                "uv": [
+                  0.020833333333333332,
+                  0.6875,
+                  0.3125,
+                  0.9791666666666666
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f10": {
+                "uv": [
+                  0.3541666666666667,
+                  0.6875,
+                  0.6458333333333334,
+                  0.9791666666666666
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f20": {
+                "uv": [
+                  0.6875,
+                  0.6875,
+                  0.9791666666666666,
+                  0.9791666666666666
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f01": {
+                "uv": [
+                  0.020833333333333332,
+                  0.35416666666666663,
+                  0.3125,
+                  0.6458333333333333
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f11": {
+                "uv": [
+                  0.3541666666666667,
+                  0.35416666666666663,
+                  0.6458333333333334,
+                  0.6458333333333333
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f21": {
+                "uv": [
+                  0.6875,
+                  0.35416666666666663,
+                  0.9791666666666666,
+                  0.6458333333333333
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f02": {
+                "uv": [
+                  0.020833333333333332,
+                  0.02083333333333337,
+                  0.3125,
+                  0.3125
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f12": {
+                "uv": [
+                  0.3541666666666667,
+                  0.02083333333333337,
+                  0.6458333333333334,
+                  0.3125
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              },
+              "f22": {
+                "uv": [
+                  0.6875,
+                  0.02083333333333337,
+                  0.9791666666666666,
+                  0.3125
+                ],
+                "size": [
+                  56,
+                  56
+                ]
+              }
+            }
+          },
+          "__url": "/aek-assets/app/textures/p299TestAtlasImage.atlas.normalDepth.339cb09e.ktx2",
+          "__bytes": {
+            "in": 60702,
+            "out": 12373
+          },
+          "__vramBytes": {
+            "in": 196600,
+            "out": 49200
           },
           "__codec": "uastc"
         }
@@ -2932,6 +3213,289 @@
       "__vramBytes": {
         "in": 1398100,
         "out": 349184
+      },
+      "__codec": "uastc"
+    },
+    "p299TestAtlasImage.albedo": {
+      "id": "p299TestAtlasImage.albedo",
+      "texOpts": {
+        "colorSpace": "srgb"
+      },
+      "debugData": {
+        "name": "p299 test atlas (ready-made images)",
+        "description": "p351 Phase 4 section 1: a 2-slot atlas from ready-made images of its layout (slots.<name>.image, an impostor-like bake: 3 × 3 frames of 56 px with a 4 px gutter), every cell placed by its rect, with the full mip chain (mipChain FULL: 192² down to 1², through an odd 3²)."
+      },
+      "__sourcePath": "src/app/textures/p299TestAtlasImage.textureAtlas.json",
+      "__atlas": {
+        "id": "p299TestAtlasImage",
+        "slot": "albedo",
+        "size": [
+          192,
+          192
+        ],
+        "padding": 4,
+        "levels": 3,
+        "mipChain": "FULL",
+        "fromImage": true,
+        "cells": {
+          "f00": {
+            "uv": [
+              0.020833333333333332,
+              0.6875,
+              0.3125,
+              0.9791666666666666
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f10": {
+            "uv": [
+              0.3541666666666667,
+              0.6875,
+              0.6458333333333334,
+              0.9791666666666666
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f20": {
+            "uv": [
+              0.6875,
+              0.6875,
+              0.9791666666666666,
+              0.9791666666666666
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f01": {
+            "uv": [
+              0.020833333333333332,
+              0.35416666666666663,
+              0.3125,
+              0.6458333333333333
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f11": {
+            "uv": [
+              0.3541666666666667,
+              0.35416666666666663,
+              0.6458333333333334,
+              0.6458333333333333
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f21": {
+            "uv": [
+              0.6875,
+              0.35416666666666663,
+              0.9791666666666666,
+              0.6458333333333333
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f02": {
+            "uv": [
+              0.020833333333333332,
+              0.02083333333333337,
+              0.3125,
+              0.3125
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f12": {
+            "uv": [
+              0.3541666666666667,
+              0.02083333333333337,
+              0.6458333333333334,
+              0.3125
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f22": {
+            "uv": [
+              0.6875,
+              0.02083333333333337,
+              0.9791666666666666,
+              0.3125
+            ],
+            "size": [
+              56,
+              56
+            ]
+          }
+        }
+      },
+      "__url": "/aek-assets/app/textures/p299TestAtlasImage.atlas.albedo.19a35ea8.ktx2",
+      "__bytes": {
+        "in": 2322,
+        "out": 4089
+      },
+      "__vramBytes": {
+        "in": 196600,
+        "out": 49200
+      },
+      "__codec": "uastc"
+    },
+    "p299TestAtlasImage.normalDepth": {
+      "id": "p299TestAtlasImage.normalDepth",
+      "debugData": {
+        "name": "p299 test atlas (ready-made images)",
+        "description": "p351 Phase 4 section 1: a 2-slot atlas from ready-made images of its layout (slots.<name>.image, an impostor-like bake: 3 × 3 frames of 56 px with a 4 px gutter), every cell placed by its rect, with the full mip chain (mipChain FULL: 192² down to 1², through an odd 3²)."
+      },
+      "__sourcePath": "src/app/textures/p299TestAtlasImage.textureAtlas.json",
+      "__atlas": {
+        "id": "p299TestAtlasImage",
+        "slot": "normalDepth",
+        "size": [
+          192,
+          192
+        ],
+        "padding": 4,
+        "levels": 3,
+        "mipChain": "FULL",
+        "fromImage": true,
+        "cells": {
+          "f00": {
+            "uv": [
+              0.020833333333333332,
+              0.6875,
+              0.3125,
+              0.9791666666666666
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f10": {
+            "uv": [
+              0.3541666666666667,
+              0.6875,
+              0.6458333333333334,
+              0.9791666666666666
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f20": {
+            "uv": [
+              0.6875,
+              0.6875,
+              0.9791666666666666,
+              0.9791666666666666
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f01": {
+            "uv": [
+              0.020833333333333332,
+              0.35416666666666663,
+              0.3125,
+              0.6458333333333333
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f11": {
+            "uv": [
+              0.3541666666666667,
+              0.35416666666666663,
+              0.6458333333333334,
+              0.6458333333333333
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f21": {
+            "uv": [
+              0.6875,
+              0.35416666666666663,
+              0.9791666666666666,
+              0.6458333333333333
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f02": {
+            "uv": [
+              0.020833333333333332,
+              0.02083333333333337,
+              0.3125,
+              0.3125
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f12": {
+            "uv": [
+              0.3541666666666667,
+              0.02083333333333337,
+              0.6458333333333334,
+              0.3125
+            ],
+            "size": [
+              56,
+              56
+            ]
+          },
+          "f22": {
+            "uv": [
+              0.6875,
+              0.02083333333333337,
+              0.9791666666666666,
+              0.3125
+            ],
+            "size": [
+              56,
+              56
+            ]
+          }
+        }
+      },
+      "__url": "/aek-assets/app/textures/p299TestAtlasImage.atlas.normalDepth.339cb09e.ktx2",
+      "__bytes": {
+        "in": 60702,
+        "out": 12373
+      },
+      "__vramBytes": {
+        "in": 196600,
+        "out": 49200
       },
       "__codec": "uastc"
     }
