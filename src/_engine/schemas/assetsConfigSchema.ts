@@ -166,6 +166,17 @@ export const TextureOptimizeSchema = z
     'Asset optimization (p300): a profile, the slot and per-slot overrides, or false to keep the file as it is.'
   );
 
+/**
+ * A `*.textureArray.json`'s `optimize` (p299 D2): like a texture's, but never `false`. An array
+ * is only ever a KTX2 file `ktx` encodes, so it has no form "as it is".
+ */
+export const TextureArrayOptimizeSchema = z
+  .strictObject(OptimizeObjectShape)
+  .omit({ mesh: true })
+  .describe(
+    "Asset optimization (p300): a profile, the slot and per-slot overrides, applied to every layer. The codec can't be none: an array is a KTX2 file."
+  );
+
 /** A `*.importedAsset.json`'s `optimize`: its textures are classified by their material slot. */
 export const ImportedAssetOptimizeSchema = z
   .union([z.literal(false), z.strictObject(OptimizeObjectShape).omit({ slot: true })])

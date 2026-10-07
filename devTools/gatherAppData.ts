@@ -8,6 +8,10 @@ import { CameraAsset, CameraAssetSchema } from '../src/_engine/schemas/cameraSch
 import { LightAsset, LightAssetSchema } from '../src/_engine/schemas/lightSchema';
 import { GeoAsset, GeoAssetSchema } from '../src/_engine/schemas/geometrySchema';
 import { TextureAsset, TextureAssetSchema } from '../src/_engine/schemas/textureSchema';
+import {
+  TextureArrayAsset,
+  TextureArrayAssetSchema,
+} from '../src/_engine/schemas/textureArraySchema';
 import { MaterialAsset, MaterialAssetSchema } from '../src/_engine/schemas/materialSchema';
 import { MeshAsset, MeshAssetSchema } from '../src/_engine/schemas/meshSchema';
 import { ImportedAsset, ImportedAssetSchema } from '../src/_engine/schemas/importedAssetSchema';
@@ -47,7 +51,9 @@ import {
   getAssetSourceFileSize,
   resolveAssetSource,
   resolvePackFile,
+  toRepoPath,
 } from './assetPipeline/sources';
+import { resolveTextureArrayLayers } from './assetPipeline/textureArrays';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
@@ -64,6 +70,7 @@ const JSON_ENDING_SIGNATURES = {
   light: '.light.json',
   geometry: '.geometry.json',
   texture: '.texture.json',
+  textureArray: '.textureArray.json',
   material: '.material.json',
   mesh: '.mesh.json',
   importedAsset: '.importedAsset.json',
@@ -266,6 +273,7 @@ const compileJsonSchemas = () => {
     { name: 'light.schema.json', schema: LightAssetSchema },
     { name: 'geometry.schema.json', schema: GeoAssetSchema },
     { name: 'texture.schema.json', schema: TextureAssetSchema },
+    { name: 'textureArray.schema.json', schema: TextureArrayAssetSchema },
     { name: 'material.schema.json', schema: MaterialAssetSchema },
     { name: 'mesh.schema.json', schema: MeshAssetSchema },
     { name: 'importedAsset.schema.json', schema: ImportedAssetSchema },
@@ -338,7 +346,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
     cameras: Record<string, CameraAsset>;
     lights: Record<string, LightAsset>;
     geometries: Record<string, GeoAsset>;
-    textures: Record<string, TextureAsset>;
+    textures: Record<string, TextureAsset | TextureArrayAsset>;
     materials: Record<string, MaterialAsset>;
     meshes: Record<string, unknown>;
     importedAssets: Record<string, unknown>;
@@ -599,7 +607,65 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
         logJSONError(file);
       }
     }
-    combinedData.textures = texRegistry;
+
+    // Texture arrays (p299 D2): textures at runtime, in the textures' registry and id space. After
+    // the textures: a layer can be a texture asset's source.
+    const arrayRegistry: Record<string, TextureArrayAsset> = {};
+    const arrayFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.textureArray)
+    ) as string[];
+    for (const file of arrayFiles) {
+      const fullPath = path.resolve(srcDir, file);
+      const fileContent = fs.readFileSync(fullPath, 'utf-8');
+      try {
+        const parsedData = JSON.parse(fileContent);
+        const validation = TextureArrayAssetSchema.safeParse(parsedData);
+        if (!validation.success) {
+          logValidationError(
+            `Validation error inside texture array file ${file}`,
+            validation.error.issues
+          );
+          hasError = true;
+          continue;
+        }
+        const arrayJSON = validation.data;
+        const { layers, errors } = resolveTextureArrayLayers(
+          fullPath,
+          arrayJSON.layers,
+          (id) =>
+            texRegistry[id] && {
+              jsonFile: path.resolve(__dirname, '..', texRegistry[id].__sourcePath || ''),
+              data: texRegistry[id],
+            }
+        );
+        try {
+          resolveSettings({ sourcePath: toRepoPath(fullPath), optimize: arrayJSON.optimize });
+        } catch (e) {
+          errors.push((e as Error).message);
+        }
+        if (errors.length) {
+          for (const error of errors) {
+            console.error(`\x1b[31m✗ [Scene Gatherer] ${file}: ${error}\x1b[0m`);
+          }
+          hasError = true;
+          continue;
+        }
+        const arrayId = arrayJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.textureArray);
+        if (ids.textures.includes(arrayId)) {
+          logDuplicateIdError('texture (or texture array)', arrayId, file);
+          continue;
+        }
+        ids.textures.push(arrayId);
+        arrayJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        arrayJSON.__layers = layers.map((layer) => layer.key);
+        arrayJSON.id = arrayId;
+        delete arrayJSON.$schema;
+        arrayRegistry[arrayId] = arrayJSON;
+      } catch {
+        logJSONError(file);
+      }
+    }
+    combinedData.textures = { ...texRegistry, ...arrayRegistry };
 
     // Materials
     const matRegistry: Record<string, MaterialAsset> = {};
@@ -1062,6 +1128,13 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
             delete texData.__sourcePath;
             delete texData.__saveData;
             return texData;
+          }
+          if (arrayRegistry[texId]) {
+            // Build time only: the runtime loads the encoded array
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { layers, size, optimize, __sourcePath, ...arrayData } = arrayRegistry[texId];
+            if (isProduction) delete arrayData.debugData;
+            return arrayData;
           }
           return texId; // Fallback to raw string ID if asset file doesn't exist yet
         });

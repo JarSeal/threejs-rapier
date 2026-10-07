@@ -1079,18 +1079,7 @@
             "wrapS": 1000,
             "wrapT": 1000
           },
-          "__fileSize": 967035,
-          "__sourceUrl": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
-          "__url": "/aek-assets/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.316c3c57.ktx2",
-          "__bytes": {
-            "in": 967035,
-            "out": 1122854
-          },
-          "__vramBytes": {
-            "in": 22369620,
-            "out": 1398128
-          },
-          "__codec": "uastc"
+          "__fileSize": 967035
         }
       ],
       "materials": [
@@ -1179,17 +1168,7 @@
         {
           "id": "testImport",
           "fileName": "/debugger/assets/testModels/box01.glb",
-          "__fileSize": 46676,
-          "__sourceUrl": "/debugger/assets/testModels/box01.glb",
-          "__url": "/aek-assets/debugger/assets/testModels/box01.2acf7d9b.glb",
-          "__bytes": {
-            "in": 46676,
-            "out": 14664
-          },
-          "__vramBytes": {
-            "in": 45544,
-            "out": 33824
-          }
+          "__fileSize": 46676
         }
       ],
       "skyboxes": [
@@ -2348,18 +2327,37 @@
         ]
       },
       "__sourcePath": "src/app/textures/testTexture.texture.json",
-      "__fileSize": 967035,
-      "__sourceUrl": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
-      "__url": "/aek-assets/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.316c3c57.ktx2",
-      "__bytes": {
-        "in": 967035,
-        "out": 1122854
+      "__fileSize": 967035
+    },
+    "p299TestArray": {
+      "id": "p299TestArray",
+      "layers": [
+        "testTexture",
+        "/debugger/assets/testOptimized/p299/l1.png",
+        "/debugger/assets/testTextures/cubemap01_positive_y.png"
+      ],
+      "size": [
+        512,
+        512
+      ],
+      "texOpts": {
+        "wrapS": 1000,
+        "wrapT": 1000,
+        "colorSpace": "srgb"
       },
-      "__vramBytes": {
-        "in": 22369620,
-        "out": 1398128
+      "optimize": {
+        "slot": "baseColor"
       },
-      "__codec": "uastc"
+      "debugData": {
+        "name": "p299 test array",
+        "description": "p299 Phase 2: a build-time array of three layers of mixed sizes (a texture asset's 2048² source, a 256² and a 2048² file), resized to 512²."
+      },
+      "__sourcePath": "src/app/textures/p299TestArray.textureArray.json",
+      "__layers": [
+        "testTexture",
+        "l1",
+        "cubemap01_positive_y"
+      ]
     }
   },
   "materials": {
@@ -2598,17 +2596,7 @@
       "id": "testImport",
       "fileName": "/debugger/assets/testModels/box01.glb",
       "__sourcePath": "src/app/importedAssets/testImport.importedAsset.json",
-      "__fileSize": 46676,
-      "__sourceUrl": "/debugger/assets/testModels/box01.glb",
-      "__url": "/aek-assets/debugger/assets/testModels/box01.2acf7d9b.glb",
-      "__bytes": {
-        "in": 46676,
-        "out": 14664
-      },
-      "__vramBytes": {
-        "in": 45544,
-        "out": 33824
-      }
+      "__fileSize": 46676
     }
   },
   "skyboxes": {
