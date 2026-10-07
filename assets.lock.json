@@ -10,6 +10,33 @@
         "out": 33824
       }
     },
+    "9442fd32164cc23d52fef0976d43336dcfa4f2d708ff7273f0008fabbab37d21": {
+      "source": "src/app/textures/p299TestArray.textureArray.json",
+      "url": "/aek-assets/app/textures/p299TestArray.array.5c60d088.ktx2",
+      "bytes": 446409,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 446409,
+          "source": {
+            "width": 512,
+            "height": 512,
+            "bytes": 4471280
+          },
+          "codec": "uastc",
+          "width": 512,
+          "height": 512,
+          "hasAlpha": false,
+          "mipmaps": true,
+          "normalMode": false,
+          "layers": 3
+        }
+      ],
+      "warnings": [
+        "layers[1] (\"l1\"): 256×256 is upscaled to 512×512"
+      ],
+      "ktxVersion": "4.4.2"
+    },
     "bb41509e55e41c15158e076d861356eed3de426d22937c669ec6c46688d5362c": {
       "source": "src/public/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
       "url": "/aek-assets/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.316c3c57.ktx2",

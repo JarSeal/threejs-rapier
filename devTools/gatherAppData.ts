@@ -53,7 +53,10 @@ import {
   resolvePackFile,
   toRepoPath,
 } from './assetPipeline/sources';
-import { resolveTextureArrayLayers } from './assetPipeline/textureArrays';
+import {
+  getTextureArraySlotSettings,
+  resolveTextureArrayLayers,
+} from './assetPipeline/textureArrays';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
@@ -636,10 +639,13 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
             texRegistry[id] && {
               jsonFile: path.resolve(__dirname, '..', texRegistry[id].__sourcePath || ''),
               data: texRegistry[id],
-            }
+            },
+          { isSrgb: arrayJSON.texOpts?.colorSpace === 'srgb' }
         );
         try {
-          resolveSettings({ sourcePath: toRepoPath(fullPath), optimize: arrayJSON.optimize });
+          getTextureArraySlotSettings(
+            resolveSettings({ sourcePath: toRepoPath(fullPath), optimize: arrayJSON.optimize })
+          );
         } catch (e) {
           errors.push((e as Error).message);
         }

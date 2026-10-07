@@ -4,10 +4,13 @@ import type { Plugin, ViteDevServer } from 'vite';
 import type { AppConfig } from '../src/_engine/core/Config';
 import { runAssetsCommand } from './assetPipeline/command';
 import { AEK_ASSETS_DIR } from './assetPipeline/outputs';
-import { listAssetSourceFiles, type PipelineAsset } from './assetPipeline/pipeline';
+import {
+  listAssetJsonFiles,
+  listAssetSourceFiles,
+  type PipelineAsset,
+} from './assetPipeline/pipeline';
 import type { PipelineRun, PipelineRunResult } from './assetPipeline/run';
 import { ASSETS_CONFIG_FILE } from './assetPipeline/settings';
-import { ROOT } from './assetPipeline/sources';
 import { CONFIG_FILE, resolveProjectOptOut, type ProjectOptOut } from './assetPipeline/switches';
 import {
   gatherSceneData,
@@ -19,7 +22,8 @@ import {
 /**
  * The dev server's gatherer (`yarn dev`): re-gathers the generated data when an asset JSON is
  * added, changed or deleted, and runs the asset pipeline (p300) first when what it reads changed:
- * - an asset JSON (`*.texture.json`, `*.importedAsset.json`): its assets are built;
+ * - an asset JSON (`*.texture.json`, `*.importedAsset.json`, `*.textureArray.json`): its assets
+ *   are built, and the arrays that have one of its textures as a layer;
  * - a source file of an asset (a pack's files and a .gltf's external files too): the assets that
  *   read it are built;
  * - `assets.config.json`, or the switches in `src/CONFIG.ts` (`assets.optimization`, loaded
@@ -30,7 +34,7 @@ import {
  * changes that come in during a run go into the next one.
  */
 
-const ASSET_JSON_SUFFIXES = ['.texture.json', '.importedAsset.json'];
+const ASSET_JSON_SUFFIXES = ['.texture.json', '.importedAsset.json', '.textureArray.json'];
 
 /** Lets a burst of saves (eg. a debug tool writing several JSONs) go into one run */
 const DEBOUNCE_MS = 100;
@@ -115,7 +119,7 @@ export const sceneGathererPlugin = (): Plugin => ({
         // The first run only looks up: `yarn dev` built everything just before
         if (!previous) return false;
         if (work.isAllSelected || !previous.results.has(key)) return true;
-        if (work.files.has(path.resolve(ROOT, asset.jsonFile))) return true;
+        if (listAssetJsonFiles(asset).some((file) => work.files.has(file))) return true;
         try {
           return listAssetSourceFiles(asset).some((file) => work.files.has(file));
         } catch {

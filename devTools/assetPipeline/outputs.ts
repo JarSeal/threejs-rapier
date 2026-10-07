@@ -28,9 +28,20 @@ export const getLogicalPath = (source: Extract<AssetSource, { file: string }>) =
   return relative.slice(0, relative.length - path.extname(relative).length);
 };
 
+/** An output named after its asset JSON: the JSON's path under `src/` without `.<type>.json` */
+const getJsonLogicalPath = (jsonFile: string, suffix: string) =>
+  `${toPosix(path.relative(SRC_DIR, jsonFile)).replace(/(\.[^./]+)?\.json$/, '')}${suffix}`;
+
 /** A packed texture's logical path: its JSON's, eg. 'app/textures/rock.pack' for rock.texture.json */
 export const getPackLogicalPath = (source: PackSource) =>
-  `${toPosix(path.relative(SRC_DIR, source.jsonFile)).replace(/(\.[^./]+)?\.json$/, '')}.pack`;
+  getJsonLogicalPath(source.jsonFile, '.pack');
+
+/**
+ * A texture array's logical path (p299 D2): its JSON's, eg. 'app/textures/rocks.array' for
+ * rocks.textureArray.json
+ * @param jsonFile Absolute
+ */
+export const getArrayLogicalPath = (jsonFile: string) => getJsonLogicalPath(jsonFile, '.array');
 
 export type PipelineOutput = {
   /** Absolute path on disk */

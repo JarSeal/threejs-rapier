@@ -6,10 +6,15 @@ import {
   type ImportedAsset,
 } from '../../src/_engine/schemas/importedAssetSchema';
 import {
+  TextureArrayAssetSchema,
+  type TextureArrayAsset,
+} from '../../src/_engine/schemas/textureArraySchema';
+import {
   resolveLodChainOptions,
   type ResolvedLodChainOptions,
 } from '../../src/_engine/core/Lod/LodChainOptions';
 import type { PipelineAsset } from './pipeline';
+import { createArraySource, resolveTextureArrayLayers, type TextureLookup } from './textureArrays';
 import {
   createPackSource,
   resolveAssetSource,
@@ -23,9 +28,9 @@ import {
 /**
  * The pipeline's asset list (p300 Phase 2 step 7): every source file a `*.texture.json` or
  * `*.importedAsset.json` loads, its own and each scene's latest save entry's (step 2's decision:
- * a scene's file is optimized with the asset's one `optimize`). One {@link PipelineAsset} per
- * distinct encode, and a key both the run and the gatherer compute the same way, so the gatherer
- * finds each scene entry's output.
+ * a scene's file is optimized with the asset's one `optimize`), and every `*.textureArray.json`
+ * (p299 D2). One {@link PipelineAsset} per distinct encode, and a key both the run and the
+ * gatherer compute the same way, so the gatherer finds each scene entry's output.
  */
 
 export type PipelineAssetType = PipelineAsset['type'];
@@ -94,22 +99,33 @@ const listAssetUses = (data: AssetData) => [
   ),
 ];
 
-export type AssetJson = {
-  type: PipelineAssetType;
+/**
+ * A texture array's key (p299 D2): its JSON. It has one use, with no scene entries.
+ * @param jsonFile The array's JSON, absolute or relative to the repo root
+ */
+export const getTextureArrayAssetKey = (jsonFile: string) =>
+  `textureArray:${toRepoPath(path.resolve(ROOT, jsonFile))}`;
+
+type AssetJsonBase = {
   id: string;
   /** Absolute */
   jsonFile: string;
-  data: TextureAsset | ImportedAsset;
 };
 
-const JSON_SUFFIXES: Record<PipelineAssetType, string> = {
-  texture: '.texture.json',
-  importedAsset: '.importedAsset.json',
-};
+export type AssetJson =
+  | (AssetJsonBase & { type: 'texture'; data: TextureAsset })
+  | (AssetJsonBase & { type: 'importedAsset'; data: ImportedAsset })
+  | (AssetJsonBase & { type: 'textureArray'; data: TextureArrayAsset });
+
+const ASSET_SCHEMAS = {
+  texture: { suffix: '.texture.json', schema: TextureAssetSchema },
+  importedAsset: { suffix: '.importedAsset.json', schema: ImportedAssetSchema },
+  textureArray: { suffix: '.textureArray.json', schema: TextureArrayAssetSchema },
+} as const;
 
 /**
- * Reads every `*.texture.json` and `*.importedAsset.json` under `src/`. An invalid one is
- * skipped: the gatherer reports it.
+ * Reads every `*.texture.json`, `*.importedAsset.json` and `*.textureArray.json` under `src/`.
+ * An invalid one is skipped: the gatherer reports it.
  */
 export const readAssetJsons = (srcDir = SRC_DIR): AssetJson[] => {
   const files = fs
@@ -117,8 +133,8 @@ export const readAssetJsons = (srcDir = SRC_DIR): AssetJson[] => {
     .filter((file): file is string => typeof file === 'string')
     .sort();
   const assets: AssetJson[] = [];
-  for (const type of ['texture', 'importedAsset'] as const) {
-    const suffix = JSON_SUFFIXES[type];
+  for (const type of ['texture', 'importedAsset', 'textureArray'] as const) {
+    const { suffix, schema } = ASSET_SCHEMAS[type];
     for (const file of files.filter((f) => f.endsWith(suffix))) {
       const jsonFile = path.join(srcDir, file);
       let json: unknown;
@@ -127,23 +143,54 @@ export const readAssetJsons = (srcDir = SRC_DIR): AssetJson[] => {
       } catch {
         continue;
       }
-      const schema = type === 'texture' ? TextureAssetSchema : ImportedAssetSchema;
       const validation = schema.safeParse(json);
       if (!validation.success) continue;
       const data = validation.data;
-      assets.push({ type, id: data.id || path.basename(file, suffix), jsonFile, data });
+      const id = data.id || path.basename(file, suffix);
+      assets.push({ type, id, jsonFile, data } as AssetJson);
     }
   }
   return assets;
 };
 
+/** An array's encode, or null when its layers don't resolve (the gatherer reports it) */
+const collectTextureArray = (
+  { id, jsonFile, data }: Extract<AssetJson, { type: 'textureArray' }>,
+  findTexture: TextureLookup
+): PipelineAsset | null => {
+  const isSrgb = data.texOpts?.colorSpace === 'srgb';
+  const { layers, errors } = resolveTextureArrayLayers(jsonFile, data.layers, findTexture, {
+    isSrgb,
+  });
+  if (errors.length) return null;
+  return {
+    type: 'textureArray',
+    id,
+    jsonFile: toRepoPath(jsonFile),
+    source: createArraySource(jsonFile, layers, data.size),
+    ...(data.optimize !== undefined ? { optimize: data.optimize } : {}),
+    isSrgb,
+  };
+};
+
 /**
- * Every encode the asset JSONs need, one per key ({@link getPipelineAssetKey}). A use whose
- * source doesn't resolve is left out (the gatherer reports it).
+ * Every encode the asset JSONs need, one per key ({@link getPipelineAssetKey},
+ * {@link getTextureArrayAssetKey}). A use whose source doesn't resolve is left out (the gatherer
+ * reports it).
  */
 export const collectPipelineAssets = (assetJsons: AssetJson[]) => {
   const assets = new Map<string, PipelineAsset>();
-  for (const { type, id, jsonFile, data } of assetJsons) {
+  const textures = new Map(
+    assetJsons.flatMap((asset) => (asset.type === 'texture' ? [[asset.id, asset] as const] : []))
+  );
+  const findTexture: TextureLookup = (id) => textures.get(id);
+  for (const assetJson of assetJsons) {
+    if (assetJson.type === 'textureArray') {
+      const asset = collectTextureArray(assetJson, findTexture);
+      if (asset) assets.set(getTextureArrayAssetKey(assetJson.jsonFile), asset);
+      continue;
+    }
+    const { type, id, jsonFile, data } = assetJson;
     for (const useData of listAssetUses(data)) {
       const use = resolveAssetUse(jsonFile, useData);
       if (!use || 'error' in use) continue;

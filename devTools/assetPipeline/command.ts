@@ -40,8 +40,12 @@ const formatDuration = (ms: number) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).
 
 const getAssetLabel = (asset: PipelineAsset) => {
   const source = asset.source.kind === 'remote' ? asset.source.url : asset.source.repoPath;
-  const colorSpace = asset.type === 'texture' && asset.isSrgb ? ', sRGB' : '';
-  return `${asset.id} ${DIM}(${source}${colorSpace})${RESET}`;
+  const layers =
+    asset.source.kind === 'array'
+      ? `, ${asset.source.layers.length} layer${asset.source.layers.length === 1 ? '' : 's'}`
+      : '';
+  const colorSpace = asset.type !== 'importedAsset' && asset.isSrgb ? ', sRGB' : '';
+  return `${asset.id} ${DIM}(${source}${layers}${colorSpace})${RESET}`;
 };
 
 const STATUS_LABELS: Record<PipelineRunResult['status'], string> = {

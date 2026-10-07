@@ -69,10 +69,14 @@ export const estimateVramBytes = (
     ? getLevelsBytes(width, height, 1, 4, true)
     : getLevelsBytes(width, height, 4, 16, mipmaps);
 
-export const estimateTextureVramBytes = (texture: EncodedTexture) => ({
-  in: estimateVramBytes(texture.source.width, texture.source.height, 'none', true),
-  out: estimateVramBytes(texture.width, texture.height, texture.codec, texture.mipmaps),
-});
+/** An array's (p299 D2) is every layer's: `in` as the runtime would assemble its sources (RGBA8) */
+export const estimateTextureVramBytes = (texture: EncodedTexture) => {
+  const layers = texture.layers ?? 1;
+  return {
+    in: estimateVramBytes(texture.source.width, texture.source.height, 'none', true) * layers,
+    out: estimateVramBytes(texture.width, texture.height, texture.codec, texture.mipmaps) * layers,
+  };
+};
 
 /**
  * A result's download figure (`__bytes`) and, for an optimized one, its VRAM estimate

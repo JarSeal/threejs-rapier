@@ -5,9 +5,10 @@ import type { PipelineAsset } from './assetPipeline/pipeline';
 import { loadProjectOptOut } from './assetPipeline/switches';
 
 /**
- * The asset optimization pipeline (p300): turns the sources of every `*.texture.json` and
- * `*.importedAsset.json` into the outputs in `src/public/aek-assets/` (KTX2 textures, meshopt
- * GLBs), records them in `assets.lock.json`, then gathers the generated data with their `__url`s.
+ * The asset optimization pipeline (p300): turns the sources of every `*.texture.json`,
+ * `*.importedAsset.json` and `*.textureArray.json` into the outputs in `src/public/aek-assets/`
+ * (KTX2 textures and arrays, meshopt GLBs), records them in `assets.lock.json`, then gathers the
+ * generated data with their `__url`s.
  * Unchanged assets come from the cache (§7), so a second run encodes nothing.
  *
  * Usage: `yarn assets [--only <id|glob>]...`

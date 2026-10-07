@@ -7,7 +7,12 @@ import {
 } from '../../src/_engine/core/Lod/LodChainOptions';
 import type { AssetOptimize } from '../../src/_engine/schemas/assetsConfigSchema';
 import { encodePng } from './images';
-import { createKtxProvider, EncoderMissingError, type KtxProvider } from './ktxEncode';
+import {
+  createKtxProvider,
+  EncoderMissingError,
+  type KtxProvider,
+  type KtxSettings,
+} from './ktxEncode';
 import { getCacheKey, type CacheEntry, type CacheHit, type PipelineCache } from './cache';
 import { hasColliderNodes, listExternalGLTFFiles, readGLTFJson, type GLTFJson } from './gltfJson';
 import { KTX_VERSION } from './ktxTool';
@@ -26,24 +31,34 @@ import type {
   ResolvedAssetSettings,
   ResolvedTextureSettings,
 } from './settings';
-import { resolvePackFile, type AssetSource, type PackSource } from './sources';
+import { resolvePackFile, ROOT, type AssetSource, type PackSource } from './sources';
+import {
+  encodeTextureArray,
+  getTextureArrayKeyParams,
+  getTextureArraySlotSettings,
+  listTextureArrayFiles,
+  type ArraySource,
+} from './textureArrays';
 import { encodeTextureAsset, type EncodedTexture } from './textures';
 
 /**
  * One asset JSON's source through the pipeline (p300 §7): pass it through as it is (DD8), or
  * optimize it: a texture into KTX2 (or a PNG for `codec: "none"`), a GLB / glTF into a
- * compressed .glb. A packed texture (DD5) is built either way: passed through, it's written as
- * a PNG.
+ * compressed .glb, a texture array's layers into one KTX2 array (p299 D2). A packed texture
+ * (DD5) is built either way: passed through, it's written as a PNG. An array is never passed
+ * through: without its textures side, it has no output.
  */
 
 export type PipelineAsset = {
-  type: 'texture' | 'importedAsset';
+  type: 'texture' | 'importedAsset' | 'textureArray';
   id: string;
   /** The asset JSON, relative to the repo root */
   jsonFile: string;
-  source: AssetSource | PackSource;
+  /** An array's is always an {@link ArraySource}, and only an array's is */
+  source: AssetSource | PackSource | ArraySource;
   optimize?: AssetOptimize;
-  /** A texture whose `texOpts.colorSpace` is sRGB: its colour channels are sRGB-encoded */
+  /** A texture (or an array) whose `texOpts.colorSpace` is sRGB: its colour channels are
+   * sRGB-encoded */
   isSrgb?: boolean;
   /**
    * An imported asset whose textures the runtime registers: `importTextures` in its JSON or in
@@ -109,6 +124,7 @@ const COMPRESSED_TEXTURE_EXTENSIONS = ['.ktx2', '.basis'];
 
 const getPassThroughReason = (asset: PipelineAsset, settings: ResolvedAssetSettings) => {
   const { passThrough } = settings;
+  if (asset.type === 'textureArray') return passThrough.textures ?? null;
   if (asset.type === 'texture') {
     if (passThrough.textures) return passThrough.textures;
     const ext = 'file' in asset.source ? path.extname(asset.source.file).toLowerCase() : '';
@@ -162,13 +178,14 @@ const listGLTFFiles = (file: string, json: GLTFJson) => [
 ];
 
 /**
- * Every file an asset's encode reads: the file, every file a pack reads, or a glTF with its
- * external files. Empty for a remote or missing source. Throws like `resolvePackFile` and
- * `readGLTFJson`.
+ * Every file an asset's encode reads: the file, every file a pack reads, a glTF with its
+ * external files, or every file an array's layers read. Empty for a remote or missing source.
+ * Throws like `resolvePackFile` and `readGLTFJson`.
  */
 export const listAssetSourceFiles = (asset: PipelineAsset) => {
   const { source } = asset;
   if (source.kind === 'remote') return [];
+  if (source.kind === 'array') return listTextureArrayFiles(source);
   if (source.kind !== 'pack' && !fs.existsSync(source.file)) return [];
   return asset.type === 'importedAsset' && source.kind !== 'pack'
     ? listGLTFFiles(source.file, readGLTFJson(source.file))
@@ -176,13 +193,28 @@ export const listAssetSourceFiles = (asset: PipelineAsset) => {
 };
 
 /**
- * The bytes the runtime downloads without the pipeline: the file, every file a pack reads, or a
- * glTF with its external files. Undefined for a remote or missing source.
+ * The asset JSONs an asset is built from (absolute): its own and, for an array, its layers'
+ * texture JSONs (their source or pack is the layer).
+ */
+export const listAssetJsonFiles = (asset: PipelineAsset) => [
+  path.resolve(ROOT, asset.jsonFile),
+  ...(asset.source.kind === 'array'
+    ? asset.source.layers.flatMap((layer) => (layer.texture ? [layer.texture.jsonFile] : []))
+    : []),
+];
+
+/**
+ * The bytes the runtime downloads without the pipeline: the file, every file a pack reads, a
+ * glTF with its external files, or the files of an array's layers (each once). Undefined for a
+ * remote or missing source.
  */
 export const getSourceBytes = (asset: PipelineAsset) => {
-  const files = listAssetSourceFiles(asset);
-  if (!files.length) return undefined;
-  return files.reduce((sum, file) => sum + (fs.existsSync(file) ? fs.statSync(file).size : 0), 0);
+  const files = new Set(listAssetSourceFiles(asset));
+  if (!files.size) return undefined;
+  return [...files].reduce(
+    (sum, file) => sum + (fs.existsSync(file) ? fs.statSync(file).size : 0),
+    0
+  );
 };
 
 /** The entry a hit restores: the output and the result's metadata (the settings aren't kept). */
@@ -233,6 +265,12 @@ const runAsset = async (
   const reason = getPassThroughReason(asset, settings);
   const isSrgb = !!asset.isSrgb;
   if (reason) {
+    if (source.kind === 'array') {
+      return {
+        status: 'skipped',
+        reason: `an array is only built as a KTX2 file, and textures are kept as they are: ${reason}`,
+      };
+    }
     if (source.kind !== 'pack') {
       const { isCopy, ...output } = passThroughSource(source);
       return { status: 'passThrough', reason, isCopy, output, settings };
@@ -275,7 +313,24 @@ const runAsset = async (
   // The settings are the cache key's: a GLB's collider default (DD6) is found before encoding
   let keyInput: CacheKeyInput;
   let slotSettings: ResolvedTextureSettings | undefined;
-  if (asset.type === 'texture') {
+  let arraySettings: KtxSettings | undefined;
+  if (source.kind === 'array') {
+    // Not passed through, so its textures side is on
+    arraySettings = getTextureArraySlotSettings(settings) ?? undefined;
+    if (!arraySettings) throw new Error(`${asset.jsonFile}: no texture settings`);
+    // A texture's tools: sharp reads the layers, ktx encodes them
+    keyInput = {
+      type: 'texture',
+      files: listTextureArrayFiles(source),
+      params: {
+        kind: 'textureArray',
+        slot: settings.slot,
+        settings: arraySettings,
+        isSrgb,
+        ...getTextureArrayKeyParams(source),
+      },
+    };
+  } else if (asset.type === 'texture') {
     // Not passed through, so its textures side is on
     slotSettings = (settings.textures && settings.textures[settings.slot]) || undefined;
     if (!slotSettings) throw new Error(`${asset.jsonFile}: no texture settings`);
@@ -341,7 +396,15 @@ const runAsset = async (
   const warn = (message: string) => warnings.push(message);
   let result: Extract<PipelineOutcome, { status: 'optimized' }>;
   try {
-    if (slotSettings) {
+    if (source.kind === 'array') {
+      if (!arraySettings) throw new Error(`${asset.jsonFile}: no texture settings`);
+      const { output, texture } = await encodeTextureArray(source, settings.slot, arraySettings, {
+        isSrgb,
+        getKtx,
+        warn,
+      });
+      result = { status: 'optimized', output, settings, textures: [texture], warnings };
+    } else if (slotSettings) {
       const { output, texture } = await encodeTextureAsset(source, settings.slot, slotSettings, {
         isSrgb,
         getKtx,

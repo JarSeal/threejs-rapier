@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-1 implemented
+Status: in progress | Phases 0-1 implemented, Phase 2 sections 1-2 implemented
 Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
@@ -257,6 +257,55 @@ debugData? })`, `setTextureArrayLayer(id, layer, member)` (async; swaps of one a
 Schema, gatherer suffix, pipeline step (resize + `--layers` encode), lock and budget, runtime
 load. **Exit:** `yarn assets --only <array>` builds a 3-layer array from mixed-size sources; a
 clone with `assets.lock.json` and no `ktx` loads it from the cache.
+
+#### Section 1: Schema, gatherer suffix, layer resolution — done
+
+`schemas/textureArraySchema.ts`, the `.textureArray.json` suffix in `gatherAppData.ts` (arrays
+share the textures' registry and id space) and `devTools/assetPipeline/textureArrays.ts`'s
+`resolveTextureArrayLayers`. Test asset: `src/app/textures/p299TestArray.textureArray.json`.
+
+As built:
+
+- `__layers` is an array of layer names in layer order (a texture's id, or a file's name without
+  its extension), not D2's id → index map. Two layers with the same name fail the gather.
+- A texture layer is its source (its file or pack recipe), never its output, its `optimize` or a
+  scene's override of it.
+
+#### Section 2: Pipeline step (resize + `--layers` encode, cache and lock) — done
+
+A `textureArray` pipeline asset type with an `ArraySource` (`textureArrays.ts`), through
+`collectPipelineAssets`, `processAsset`, the cache and the lock. `encodeKtx2Layers`
+(`ktxEncode.ts`) writes one PNG per layer before reading the next, then runs
+`ktx create --layers N`. Output: `aek-assets/<json path>.array.<hash>.ktx2`.
+
+As built:
+
+- Size: the JSON's `size`, else the layers' common size (they must agree), then fit to `maxSize`
+  and multiples of 4 like a texture. Layers are stored flipped. A layer with alpha makes the whole
+  array RGBA. Upscaled or stretched layers get a warning.
+- Every layer is read in the array's colour space. Only a pack layer whose texture is in another
+  colour space fails (its recipe decodes and multiplies in its own).
+- `optimize.textures: false` is rejected by the schema; a slot resolving to codec `none` (eg.
+  `data`) fails the gather and the build. An array whose textures side is off (a rule's
+  `textures: false`, the project switches) is `skipped`: no output.
+- `EncodedTexture.layers`: VRAM figures and the per-texture budget ceiling count every layer.
+- The dev server also rebuilds an array when one of its layers' `*.texture.json` changes
+  (`listAssetJsonFiles`).
+- `ktx create --layers 1` writes `layerCount: 1`, which three's KTX2Loader loads as a plain
+  `CompressedTexture` (it builds a `CompressedArrayTexture` only for `layerCount > 1`): section 4
+  wraps it or requires two layers.
+
+#### Section 3: Generated data and budgets
+
+`__url`, `__bytes`, `__vramBytes` and `__codec` on the gathered array (`generated.ts`, keyed by
+`getTextureArrayAssetKey`); the production gather's missing-output and budget checks for the
+arrays shipped scenes use, including a `skipped` array (no output to ship);
+`assetOutputsBuildPlugin.ts` ships its output.
+
+#### Section 4: Runtime load and verification
+
+`loadTextureAsync` loads the array's `__url` (a one-layer array too); the exit criteria in the
+`textureArrays` scene on WebGPU and WebGL2; this phase's "As built" and the status line.
 
 ### Phase 3 — Atlases (D3)
 

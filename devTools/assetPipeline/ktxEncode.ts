@@ -74,6 +74,65 @@ const toRgb = (img: Img): Img => {
 };
 
 /**
+ * A layer of an array as the array's `channels` (3 or 4; its layers share one format): grey
+ * becomes RGB (as {@link toRgb}), two channels (R, G) get B = 0 (as `encodePng` writes them) and
+ * a layer without alpha is opaque.
+ */
+const toChannels = (img: Img, channels: 3 | 4): Img => {
+  const from = img.channels;
+  if (from === channels) return img;
+  if (from > channels) {
+    throw new Error(`a ${from}-channel layer can't be stored with ${channels} channels`);
+  }
+  // Where R, G and B come from (-1: zero)
+  const rgb = from === 1 ? [0, 0, 0] : from === 2 ? [0, 1, -1] : [0, 1, 2];
+  const pixels = img.width * img.height;
+  const out: Img = { ...img, channels, data: new Float32Array(pixels * channels) };
+  for (let i = 0; i < pixels; i++) {
+    for (let c = 0; c < 3; c++) {
+      out.data[i * channels + c] = rgb[c] < 0 ? 0 : img.data[i * from + rgb[c]];
+    }
+    if (channels === 4) out.data[i * channels + 3] = 1;
+  }
+  return out;
+};
+
+/**
+ * Writes the inputs into a temp folder (each `writeInput` returns its PNG's bytes), runs
+ * `ktx create` on them and returns the KTX2. The folder is removed either way.
+ */
+const runKtxCreate = async (
+  tool: KtxTool,
+  args: string[],
+  inputCount: number,
+  writeInput: (index: number) => Promise<Uint8Array>
+): Promise<Uint8Array> => {
+  fs.mkdirSync(TMP_DIR, { recursive: true });
+  const dir = fs.mkdtempSync(path.join(TMP_DIR, 'ktx-'));
+  try {
+    const inputFiles: string[] = [];
+    for (let i = 0; i < inputCount; i++) {
+      const inputFile = path.join(dir, inputCount === 1 ? 'input.png' : `input${i}.png`);
+      fs.writeFileSync(inputFile, await writeInput(i));
+      inputFiles.push(inputFile);
+    }
+    const outputFile = path.join(dir, 'output.ktx2');
+    try {
+      await promisify(execFile)(tool.path, ['create', ...args, ...inputFiles, outputFile], {
+        env: getKtxEnv(tool),
+        maxBuffer: 16 * 1024 * 1024,
+      });
+    } catch (error) {
+      const { stderr, stdout, message } = error as { stderr?: string; stdout?: string } & Error;
+      throw new Error(`ktx create ${args.join(' ')} failed: ${stderr || stdout || message}`);
+    }
+    return new Uint8Array(fs.readFileSync(outputFile));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+/**
  * Encodes linear float channels (already resized and flipped as they should be stored) as KTX2.
  * Throws {@link EncoderMissingError} without `ktx`, and an Error when `ktx create` fails.
  */
@@ -89,23 +148,24 @@ export const encodeKtx2 = async (
     isSrgb: opts.isSrgb,
     isNormal: opts.isNormal,
   });
-  fs.mkdirSync(TMP_DIR, { recursive: true });
-  const dir = fs.mkdtempSync(path.join(TMP_DIR, 'ktx-'));
-  try {
-    const inputFile = path.join(dir, 'input.png');
-    const outputFile = path.join(dir, 'output.ktx2');
-    fs.writeFileSync(inputFile, await encodePng(input, opts.isSrgb));
-    try {
-      await promisify(execFile)(tool.path, ['create', ...args, inputFile, outputFile], {
-        env: getKtxEnv(tool),
-        maxBuffer: 16 * 1024 * 1024,
-      });
-    } catch (error) {
-      const { stderr, stdout, message } = error as { stderr?: string; stdout?: string } & Error;
-      throw new Error(`ktx create ${args.join(' ')} failed: ${stderr || stdout || message}`);
-    }
-    return new Uint8Array(fs.readFileSync(outputFile));
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  return runKtxCreate(tool, args, 1, async () => encodePng(input, opts.isSrgb));
+};
+
+/**
+ * Encodes `layerCount` images as one KTX2 array texture (`ktx create --layers`, p299 D2), layer
+ * `i` from `readLayer(i)`: linear float channels, at the array's size and flipped as they should
+ * be stored. Each layer is written out before the next is read, so only one is in memory.
+ * `channels` is the array's (every layer is converted to it). Throws like {@link encodeKtx2}.
+ */
+export const encodeKtx2Layers = async (
+  layerCount: number,
+  readLayer: (index: number) => Promise<Img>,
+  settings: KtxSettings,
+  opts: { channels: 3 | 4; isSrgb: boolean; isNormal: boolean; getKtx: KtxProvider }
+): Promise<Uint8Array> => {
+  const tool = await opts.getKtx();
+  const args = [...getKtxCreateArgs(settings, opts), '--layers', String(layerCount)];
+  return runKtxCreate(tool, args, layerCount, async (index) =>
+    encodePng(toChannels(await readLayer(index), opts.channels), opts.isSrgb)
+  );
 };

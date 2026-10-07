@@ -56,6 +56,13 @@ export const readSourceImage = async (input: string | Buffer): Promise<SourceIma
   };
 };
 
+/** An image file's size and channel count, from its header (no pixels are decoded) */
+export const readImageInfo = async (input: string | Buffer) => {
+  const sharp = await loadSharp();
+  const { width, height, channels } = await sharp(input).metadata();
+  return { width, height, channels };
+};
+
 /**
  * Where a channel letter is in an image's samples: grey (+ alpha) images have their grey in r, g
  * and b. Returns -1 for alpha in an image without one.

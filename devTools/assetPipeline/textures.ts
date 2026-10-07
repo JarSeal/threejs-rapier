@@ -34,7 +34,10 @@ export type EncodedTexture = {
   mipmaps: boolean;
   normalMode: boolean;
   bytes: number;
+  /** An array's (p299 D2): its size is the size before `maxSize`, its bytes every layer's files */
   source: { width: number; height: number; bytes: number };
+  /** A texture array's layer count (p299 D2); unset for a texture */
+  layers?: number;
 };
 
 export type TextureImageOpts = {

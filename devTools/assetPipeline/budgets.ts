@@ -45,12 +45,16 @@ export const getBudgetViolations = (result: PipelineRunResult): string[] => {
     const allowed = budget.profileTextures[texture.slot];
     if (allowed.maxSize === null) continue;
     const mipmaps = allowed.codec !== 'none' && allowed.mipmaps;
-    const ceiling = estimateVramBytes(allowed.maxSize, allowed.maxSize, allowed.codec, mipmaps);
+    // An array (p299 D2) gets the ceiling per layer
+    const layers = texture.layers ?? 1;
+    const ceiling =
+      estimateVramBytes(allowed.maxSize, allowed.maxSize, allowed.codec, mipmaps) * layers;
     const vram = estimateTextureVramBytes(texture).out;
     if (vram <= ceiling) continue;
     const label = texture.name ? `texture "${texture.name}"` : 'the texture';
+    const size = `${texture.width}×${texture.height}${texture.layers ? `×${layers} layers` : ''}`;
     violations.push(
-      `${label} (${texture.slot}, ${texture.width}×${texture.height} ${texture.codec}): VRAM ${formatBytes(vram)} is over the ${formatBytes(ceiling)} its slot's settings allow without the asset JSON's overrides (maxSize ${allowed.maxSize}, ${allowed.codec}${profile ? `, ${profile}` : ''})`
+      `${label} (${texture.slot}, ${size} ${texture.codec}): VRAM ${formatBytes(vram)} is over the ${formatBytes(ceiling)} its slot's settings allow without the asset JSON's overrides (maxSize ${allowed.maxSize}, ${allowed.codec}${texture.layers ? ' per layer' : ''}${profile ? `, ${profile}` : ''})`
     );
   }
   return violations;
