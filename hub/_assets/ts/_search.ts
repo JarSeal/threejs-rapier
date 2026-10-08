@@ -1,5 +1,6 @@
 import MiniSearch, { type SearchResult } from 'minisearch';
 import {
+  apiSearchName,
   HUB_SEARCH_OPTIONS,
   type HubSearchDoc,
   type HubSearchStored,
@@ -14,7 +15,8 @@ import type { HubDataPage, HubNavItem } from '../../../devTools/hub/types';
  *
  * Results are grouped by top-level section (Examples, Features, …) in the order of each group's
  * best result, each with its breadcrumb (pages, then the headings above it) and a snippet with
- * the match marked. The input is a combobox over the results' listbox: the arrow keys move,
+ * the match marked. An API module, symbol or member (p553) shows its kind and name instead of a
+ * heading; its pages aren't in `hub-data.js`'s `pages`, so its breadcrumb comes from its path. The input is a combobox over the results' listbox: the arrow keys move,
  * Enter opens, Escape closes (the native `<dialog>`).
  */
 
@@ -76,19 +78,27 @@ const loadIndex = (hubJsUrl: string) =>
 type PageInfo = { page: HubDataPage; label: string };
 
 let pageInfos: Map<string, PageInfo> | null = null;
+let menuLabels: Map<string, string> | null = null;
+
+/** Every menu entry's label by path */
+const getMenuLabels = () => {
+  if (menuLabels) return menuLabels;
+  const labels = new Map<string, string>();
+  const walk = (items: HubNavItem[]) => {
+    for (const item of items) {
+      labels.set(item.path, item.title);
+      walk(item.children);
+    }
+  };
+  walk(window.AEK_HUB?.nav ?? []);
+  return (menuLabels = labels);
+};
 
 /** Every page by path, labelled by its menu entry where it has one (else its title) */
 const getPageInfos = () => {
   if (pageInfos) return pageInfos;
   const data = window.AEK_HUB;
-  const menuLabels = new Map<string, string>();
-  const walk = (items: HubNavItem[]) => {
-    for (const item of items) {
-      menuLabels.set(item.path, item.title);
-      walk(item.children);
-    }
-  };
-  walk(data?.nav ?? []);
+  const menuLabels = getMenuLabels();
   pageInfos = new Map(
     (data?.pages ?? []).map((page) => [
       page.path,
@@ -103,6 +113,24 @@ const pagePathTrail = (pagePath: string) => {
   const parts = pagePath.split('/').filter(Boolean);
   return parts.map((_part, i) => `${parts.slice(0, i + 1).join('/')}/`);
 };
+
+/**
+ * A page's breadcrumb label: its menu entry or title, else its folder's name (an API module's
+ * page: `documentation/engine/core/SceneLoader/` → `SceneLoader`)
+ */
+const pathLabel = (pagePath: string) => {
+  const parts = pagePath.split('/').filter(Boolean);
+  return (
+    getPageInfos().get(pagePath)?.label ??
+    getMenuLabels().get(pagePath) ??
+    parts[parts.length - 1] ??
+    pagePath
+  );
+};
+
+/** The top-level section's path: the group a result goes in */
+const sectionOf = (pagePath: string) =>
+  getPageInfos().get(pagePath)?.page.section ?? pagePathTrail(pagePath)[0] ?? '';
 
 /** The headings above the result's heading on its page, outermost first */
 const parentHeadings = (page: HubDataPage, anchor: string) => {
@@ -206,13 +234,13 @@ const renderResult = (result: HubSearchResult, info: PageInfo | undefined, n: nu
   option.setAttribute('role', 'option');
   option.setAttribute('aria-selected', 'false');
 
-  const pageInfos = getPageInfos();
+  // An API symbol's page is its module, in the breadcrumb; a module's is itself
   const crumbs = [
     // The section is the group's label
     ...pagePathTrail(result.path)
       .slice(1, result.anchor ? undefined : -1)
-      .map((path) => pageInfos.get(path)?.label ?? path),
-    ...(info && result.anchor ? parentHeadings(info.page, result.anchor) : []),
+      .map(pathLabel),
+    ...(info && result.anchor && !result.kind ? parentHeadings(info.page, result.anchor) : []),
   ];
   if (crumbs.length) {
     const crumb = document.createElement('span');
@@ -222,12 +250,24 @@ const renderResult = (result: HubSearchResult, info: PageInfo | undefined, n: nu
   }
   const title = document.createElement('span');
   title.className = 'hubSearchTitle';
-  appendMarked(title, result.anchor ? result.heading : info?.page.title ?? result.path, regex);
+  if (result.kind) {
+    const kind = document.createElement('span');
+    // The API pages' kind badge and colours (`_api.scss`)
+    kind.className = `hubSearchKind hubApiKind hubApiKind_${result.kind.replace(/\W/g, '')}`;
+    kind.textContent = result.kind;
+    const name = document.createElement('code');
+    appendMarked(name, apiSearchName(result), regex);
+    title.append(kind, name);
+  } else {
+    const text = result.anchor ? result.heading ?? '' : info?.page.title ?? result.path;
+    appendMarked(title, text, regex);
+  }
   option.append(title);
-  if (result.text) {
+  const snippetText = result.text || result.summary;
+  if (snippetText) {
     const snippet = document.createElement('span');
     snippet.className = 'hubSearchSnippet';
-    appendMarked(snippet, snippetOf(result.text, regex), regex);
+    appendMarked(snippet, snippetOf(snippetText, regex), regex);
     option.append(snippet);
   }
   return option;
@@ -279,7 +319,7 @@ const runSearch = () => {
   const pageInfos = getPageInfos();
   const groups = new Map<string, HubSearchResult[]>();
   for (const result of results) {
-    const section = pageInfos.get(result.path)?.page.section ?? '';
+    const section = sectionOf(result.path);
     groups.set(section, [...(groups.get(section) ?? []), result]);
   }
   let n = 0;

@@ -18,6 +18,8 @@ import type { HubHeading, HubPage } from './types';
  *   Nest one in another with a longer marker on the outer one (`::::`);
  * - `hub:` links (`[physics](hub:examples/physics#setup)`), resolved relative to the page and
  *   checked after every page is rendered (`HubMarkdownEnv.links`);
+ * - `api:` links (`[loadScene](api:loadScene)`, p553 §2.3), resolved against the API model as
+ *   they're rendered: an unknown or ambiguous name is an error listing the candidates;
  * - relative images, copied (PNG and JPEG to WebP) to `_assets/images/pages/<page path>`.
  */
 
@@ -39,6 +41,12 @@ export type HubImageJob = {
   isConverted: boolean;
 };
 
+/** Where an `api:` link's name points: a page of the API docs and its anchor, or why it can't */
+export type HubApiLinkResult = { pagePath: string; anchor: string } | { error: string };
+
+/** Resolves an `api:` link's name (`loadScene`, `SceneLoader.loadScene`) */
+export type HubApiLinkResolver = (ref: string) => HubApiLinkResult;
+
 /** One page's render state, shared by its slots */
 export type HubMarkdownEnv = {
   page: HubPage;
@@ -56,12 +64,15 @@ export type HubMarkdownEnv = {
   images: HubImageJob[];
   /** The files its snippet includes read (`<<<`, `code.ts`): the dev plugin watches them */
   includes: string[];
+  /** The API section's (p553), null when the API docs didn't build */
+  apiLinks: HubApiLinkResolver | null;
 };
 
 export const createMarkdownEnv = (
   page: HubPage,
   root: string,
-  diag: HubDiagnostics
+  diag: HubDiagnostics,
+  apiLinks: HubApiLinkResolver | null = null
 ): HubMarkdownEnv => ({
   page,
   file: page.file,
@@ -74,6 +85,7 @@ export const createMarkdownEnv = (
   links: [],
   images: [],
   includes: [],
+  apiLinks,
 });
 
 // --- Directives ---
@@ -249,6 +261,28 @@ export const resolveHubLink = (href: string, env: HubMarkdownEnv, file: string, 
 
 export const isHubLink = (href: string) => href.startsWith(HUB_LINK_PREFIX);
 
+const API_LINK_PREFIX = 'api:';
+
+export const isApiLink = (href: string) => href.startsWith(API_LINK_PREFIX);
+
+/**
+ * Resolves an `api:` href to the symbol's page and anchor; an unknown or ambiguous name is an
+ * error (with its candidates), and the link points nowhere (`#`)
+ */
+export const resolveApiLink = (href: string, env: HubMarkdownEnv, file: string, line: number) => {
+  const ref = decodeURI(href.slice(API_LINK_PREFIX.length)).trim();
+  if (!env.apiLinks) {
+    env.diag.warn(file, undefined, `api: links are unchecked here: the API docs didn't build`);
+    return '#';
+  }
+  const result = env.apiLinks(ref);
+  if ('error' in result) {
+    env.diag.error(file, line, result.error);
+    return '#';
+  }
+  return `${env.root}${result.pagePath}#${result.anchor}`;
+};
+
 const isRelativeUrl = (url: string) => !!url && !/^([a-z][\w+.-]*:|\/|#)/i.test(url);
 
 const CONVERTED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
@@ -284,6 +318,7 @@ const linksRule = (state: StateCore) => {
       if (token.type === 'link_open') {
         const href = token.attrGet('href') ?? '';
         if (isHubLink(href)) token.attrSet('href', resolveHubLink(href, env, env.file, line));
+        else if (isApiLink(href)) token.attrSet('href', resolveApiLink(href, env, env.file, line));
       } else if (token.type === 'image') {
         const src = token.attrGet('src') ?? '';
         if (!isRelativeUrl(src)) continue;
@@ -299,9 +334,9 @@ const linksRule = (state: StateCore) => {
 
 export const createHubMarkdown = () => {
   const md = new MarkdownIt({ html: true, linkify: true, typographer: false });
-  // markdown-it drops `hub:` hrefs as unknown schemes; they're resolved by linksRule
+  // markdown-it drops `hub:` and `api:` hrefs as unknown schemes; they're resolved by linksRule
   const defaultValidateLink = md.validateLink.bind(md);
-  md.validateLink = (url) => isHubLink(url) || defaultValidateLink(url);
+  md.validateLink = (url) => isHubLink(url) || isApiLink(url) || defaultValidateLink(url);
 
   md.block.ruler.before('fence', 'hub_directive', directiveRule, {
     alt: ['paragraph', 'reference', 'blockquote', 'list'],

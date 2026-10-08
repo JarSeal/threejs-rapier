@@ -26,7 +26,9 @@ import { loadHubIcons } from './icons';
 import {
   createHubMarkdown,
   createMarkdownEnv,
+  isApiLink,
   renderMarkdown,
+  resolveApiLink,
   resolveHubLink,
   type HubImageJob,
   type HubMarkdownEnv,
@@ -102,8 +104,11 @@ export type HubBuildResult = {
   /** The pages and the 404 page as written; empty when nothing was */
   pages: HubBuiltPage[];
   assets: HubBuildAssets;
-  /** The search index's size (`hub:build` reports it) and its sections, null when not built */
-  search: { bytes: number; docCount: number } | null;
+  /**
+   * The search index's size (`hub:build` reports it), its documents and how many of them are
+   * page sections (the rest are the API's), null when not built
+   */
+  search: { bytes: number; docCount: number; pageDocCount: number } | null;
   /** The API docs (p553): whether the model was reused, its size, null when it didn't build */
   api: ApiBuildStats | null;
 };
@@ -133,8 +138,8 @@ const NETLIFY_HEADERS = `/_assets/*
 
 type RenderedPage = { page: HubPage; body: string; env: HubMarkdownEnv };
 
-/** `href="hub:…"` and `src="hub:…"` in a page's own markup */
-const HTML_HUB_LINK_REGEX = /\b(href|src)=(["'])(hub:[^"']*)\2/g;
+/** `href="hub:…"` and `src="hub:…"` in a page's own markup, and `href="api:…"` */
+const HTML_HUB_LINK_REGEX = /\b(href|src)=(["'])((?:hub|api):[^"']*)\2/g;
 
 /** The markup helpers a page's own markup can use (`{{link:…}}` is the shell's: pages use `hub:`) */
 const PAGE_HELPERS = ['icon', 'asset'] as const;
@@ -151,7 +156,7 @@ const resolvePageMarkup = (
     .replace(
       HTML_HUB_LINK_REGEX,
       (_match, attr: string, quote: string, href: string, at: number) =>
-        `${attr}=${quote}${resolveHubLink(href, env, env.page.file, lineOf(at))}${quote}`
+        `${attr}=${quote}${(isApiLink(href) ? resolveApiLink : resolveHubLink)(href, env, env.page.file, lineOf(at))}${quote}`
     )
     .replace(PLACEHOLDER_REGEX, (match, key: string, arg: string | undefined, at: number) => {
       if (arg === undefined) return key === 'root' ? env.root : match;
@@ -358,7 +363,7 @@ export const buildHub = async ({
     icons,
   });
   for (const page of tree?.pages ?? []) {
-    const env = createMarkdownEnv(page, relativeRoot(page.path), diag);
+    const env = createMarkdownEnv(page, relativeRoot(page.path), diag, api.links);
     rendered.push({ page, env, body: renderPageBody(page, env, md, helpers, generators) });
   }
   if (tree) checkLinks(rendered, tree, diag);
@@ -368,8 +373,16 @@ export const buildHub = async ({
   );
   const assetUrl = (root: string, file: HubAssetFile | null | undefined) =>
     file ? `${root}${file.outPath}?v=${file.hash}` : '';
-  const search = tree ? buildSearchIndex(rendered) : null;
-  if (search) searchStats = { bytes: search.content.length, docCount: search.docCount };
+  const search = tree
+    ? buildSearchIndex(
+        rendered,
+        sections.flatMap((section) => section.searchDocs ?? [])
+      )
+    : null;
+  if (search) {
+    const { content, docCount, pageDocCount } = search;
+    searchStats = { bytes: content.length, docCount, pageDocCount };
+  }
   if (search && search.content.length > SEARCH_INDEX_WARN_BYTES) {
     diag.warn(
       HUB_PAGES_DIR,

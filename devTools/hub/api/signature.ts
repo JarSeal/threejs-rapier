@@ -107,7 +107,9 @@ export const printType = (
     case 'literal':
       return w.write(printLiteral(type.value));
     case 'reference': {
-      w.write(type.name, typeof type.target === 'number' ? type.target : undefined);
+      // A type parameter's target is its declaration's: `T` would link the function it's on
+      const isLinked = typeof type.target === 'number' && !type.refersToTypeParameter;
+      w.write(type.name, isLinked ? (type.target as number) : undefined);
       if (type.typeArguments?.length) {
         w.write('<');
         list(type.typeArguments, ', ', Prec.Top);

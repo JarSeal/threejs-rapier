@@ -11,22 +11,29 @@ import { escapeHtml } from '../html';
 import {
   renderMarkdownText,
   uniqueId,
+  type HubApiLinkResolver,
   type HubImageJob,
   type HubLinkRef,
   type HubMarkdownEnv,
 } from '../markdown';
 import { ROOT, TSCONFIG_FILE } from '../paths';
+import type { HubSearchExtraDoc } from '../search';
 import type { HubBuildMode, HubHeading } from '../types';
 import {
   firstSentence,
   getBlockTags,
   hasBlockTag,
   hasModifierTag,
+  linkName,
   partsToMarkdown,
   tagLabel,
   toInlineCode,
+  type CommentLinkResolver,
+  type CommentParts,
+  type InlineTagPart,
 } from './comments';
 import { loadApiModel, type ApiExtractMessage } from './extract';
+import { getApiLinks, type ApiLinks } from './links';
 import {
   API_SECTION_PATH,
   API_SUBTREES,
@@ -38,6 +45,7 @@ import {
   type ApiFolder,
   type ApiIndex,
   type ApiModule,
+  type ApiTarget,
   type Comment,
   type Coverage,
   type DeclarationReflection,
@@ -56,6 +64,7 @@ import {
   printVariable,
   renderCodeBlock,
   renderInlineCode,
+  type TargetHref,
 } from './signature';
 
 /**
@@ -87,7 +96,12 @@ export type ApiBuildStats = {
   coverage: Coverage;
 };
 
-export type ApiSectionResult = { section: HubGeneratedSection; stats: ApiBuildStats | null };
+export type ApiSectionResult = {
+  section: HubGeneratedSection;
+  stats: ApiBuildStats | null;
+  /** Every page's `api:` links (§2.3), null when the model didn't build */
+  links: HubApiLinkResolver | null;
+};
 
 // --- Memo ---
 
@@ -169,6 +183,7 @@ type SourceLink = (source: JSONOutput.SourceReference) => string;
 
 type Ctx = {
   index: ApiIndex;
+  links: ApiLinks;
   highlighter: Highlighter;
   md: MarkdownIt;
   env: HubMarkdownEnv;
@@ -204,6 +219,45 @@ const href = (ctx: Ctx, pagePath: string, anchor = '') => {
   if (pagePath === ctx.env.page.path) return `#${anchor}`;
   return `${relativeUrl(ctx.env.page.path, pagePath)}${anchor ? `#${anchor}` : ''}`;
 };
+
+const targetHref = (ctx: Ctx, target: ApiTarget) =>
+  href(ctx, target.module.pagePath, target.anchor);
+
+/** A type in a signature or a table links its symbol (or its nearest owner with an anchor) */
+const typeHref =
+  (ctx: Ctx): TargetHref =>
+  (id) => {
+    const target = ctx.links.resolveId(id);
+    return target && targetHref(ctx, target);
+  };
+
+/** Another package's symbol (three's), which stays text */
+const isForeignTarget = (index: ApiIndex, part: InlineTagPart) =>
+  typeof part.target === 'object' && part.target.packageName !== index.project.packageName;
+
+/**
+ * A `{@link}`'s target: the reflection TypeDoc resolved it to, or a name in this package it
+ * found no reflection for (not exported, or another file's), looked up like an `api:` link
+ */
+const resolveCommentLink = (index: ApiIndex, links: ApiLinks, part: InlineTagPart) => {
+  const { target } = part;
+  if (typeof target === 'number') return links.resolveId(target);
+  if (typeof target !== 'object' || isForeignTarget(index, part)) return undefined;
+  const result = links.resolveName(target.qualifiedName);
+  return result.isOk ? result.target : undefined;
+};
+
+const commentLinks =
+  (ctx: Ctx): CommentLinkResolver =>
+  (part) => {
+    if (typeof part.target === 'string') return part.target; // `{@link https://…}`
+    const target = resolveCommentLink(ctx.index, ctx.links, part);
+    return target && targetHref(ctx, target);
+  };
+
+/** A comment's parts as Markdown, its `{@link}`s linked from the page being rendered */
+const commentMarkdown = (ctx: Ctx, parts: CommentParts) =>
+  partsToMarkdown(parts, commentLinks(ctx));
 
 /** JSDoc is text, not markup: `Array<Mesh>` in a comment is no tag */
 const withoutHtml = <T>(md: MarkdownIt, fn: () => T) => {
@@ -249,9 +303,10 @@ const sectionHeading = (ctx: Ctx, title: string, id: string) =>
   heading(ctx, 2, uniqueId(ctx.env, id), title);
 
 const inlineType = (ctx: Ctx, type: SomeType | undefined, collapseObjects = false) =>
-  renderInlineCode(ctx.highlighter, printTypeOnly(type, { collapseObjects }));
+  renderInlineCode(ctx.highlighter, printTypeOnly(type, { collapseObjects }), typeHref(ctx));
 
-const codeBlock = (ctx: Ctx, w: CodeWriter) => renderCodeBlock(ctx.highlighter, w);
+const codeBlock = (ctx: Ctx, w: CodeWriter, prefix?: string) =>
+  renderCodeBlock(ctx.highlighter, w, typeHref(ctx), prefix);
 
 // --- Coverage and summaries ---
 
@@ -274,22 +329,24 @@ const SUMMARY_KINDS: number[] = [Kind.Function, Kind.Class];
 
 /**
  * A module's one line: its `@module` comment's first sentence, else its first documented function
- * or class's (by source line), else its first documented export's
+ * or class's (by source line), else its first documented export's. Its `{@link}`s are code unless
+ * `resolveLink` links them.
  */
-const getModuleSummary = (module: ApiModule) => {
+const getModuleSummary = (module: ApiModule, resolveLink?: CommentLinkResolver) => {
   if (module.reflection.comment?.summary.length) {
-    return firstSentence(partsToMarkdown(module.reflection.comment.summary));
+    return firstSentence(partsToMarkdown(module.reflection.comment.summary, resolveLink));
   }
   const documented = module.symbols
     .filter((symbol) => symbol.kind !== Kind.Reference && symbolSummary(symbol))
     .sort((a, b) => (a.sources?.[0]?.line ?? 0) - (b.sources?.[0]?.line ?? 0));
   const first = documented.find((symbol) => SUMMARY_KINDS.includes(symbol.kind)) ?? documented[0];
-  return first ? firstSentence(partsToMarkdown(symbolSummary(first))) : '';
+  return first ? firstSentence(partsToMarkdown(symbolSummary(first), resolveLink)) : '';
 };
 
-/** Markdown to plain text, for `<meta name="description">` */
+/** Markdown to plain text, for `<meta name="description">` and the search's snippets */
 const toPlainText = (markdown: string) =>
   markdown
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/`+([^`]*)`+/g, '$1')
     .replace(/[*_]{1,2}([^*_]+)[*_]{1,2}/g, '$1')
     .replace(/\s+/g, ' ')
@@ -312,7 +369,7 @@ const isDeprecated = (symbol: DeclarationReflection) =>
 const renderDefault = (ctx: Ctx, comment: Comment | undefined, defaultValue?: string) => {
   const tag = (comment?.blockTags ?? []).find((block) => DEFAULT_TAGS.includes(block.tag));
   const value = tag
-    ? partsToMarkdown(tag.content).trim()
+    ? commentMarkdown(ctx, tag.content).trim()
     : defaultValue && defaultValue !== '...'
       ? toInlineCode(defaultValue)
       : '';
@@ -326,12 +383,12 @@ const renderCommentHead = (ctx: Ctx, comment: Comment | undefined, line?: number
   if (!comment) return '';
   let html = '';
   for (const tag of getBlockTags(comment, '@deprecated')) {
-    const note = partsToMarkdown(tag.content);
+    const note = commentMarkdown(ctx, tag.content);
     html += `<aside class="hubCallout hubCallout_warning"><p class="hubCalloutTitle">Deprecated</p>${renderBlock(ctx, note, line)}</aside>\n`;
   }
-  html += renderBlock(ctx, partsToMarkdown(comment.summary), line);
+  html += renderBlock(ctx, commentMarkdown(ctx, comment.summary), line);
   for (const tag of getBlockTags(comment, '@remarks')) {
-    html += renderBlock(ctx, partsToMarkdown(tag.content), line);
+    html += renderBlock(ctx, commentMarkdown(ctx, tag.content), line);
   }
   return html;
 };
@@ -342,15 +399,15 @@ const renderCommentTail = (ctx: Ctx, comment: Comment | undefined, line?: number
   let html = '';
   for (const tag of comment.blockTags ?? []) {
     if (PLACED_TAGS.includes(tag.tag) || DEFAULT_TAGS.includes(tag.tag)) continue;
-    html += `<div class="hubApiTag"><p class="hubApiLabel">${escapeHtml(tagLabel(tag.tag))}</p>${renderBlock(ctx, partsToMarkdown(tag.content), line)}</div>\n`;
+    html += `<div class="hubApiTag"><p class="hubApiLabel">${escapeHtml(tagLabel(tag.tag))}</p>${renderBlock(ctx, commentMarkdown(ctx, tag.content), line)}</div>\n`;
   }
   for (const tag of getBlockTags(comment, '@example')) {
-    html += `<div class="hubApiTag"><p class="hubApiLabel">Example</p>${renderBlock(ctx, partsToMarkdown(tag.content), line)}</div>\n`;
+    html += `<div class="hubApiTag"><p class="hubApiLabel">Example</p>${renderBlock(ctx, commentMarkdown(ctx, tag.content), line)}</div>\n`;
   }
   const sees = getBlockTags(comment, '@see');
   if (sees.length) {
     const items = sees.map(
-      (tag) => `<li>${renderInline(ctx, partsToMarkdown(tag.content).trim())}</li>`
+      (tag) => `<li>${renderInline(ctx, commentMarkdown(ctx, tag.content).trim())}</li>`
     );
     html += `<div class="hubApiTag"><p class="hubApiLabel">See</p><ul>${items.join('')}</ul></div>\n`;
   }
@@ -483,7 +540,7 @@ const renderReturns = (ctx: Ctx, signature: SignatureReflection, line?: number) 
   const isVoid = type?.type === 'intrinsic' && type.name === 'void';
   if (!type || (isVoid && !tags.length)) return '';
   const members = getObjectMembers(unwrapPromise(type));
-  const text = tags.map((tag) => partsToMarkdown(tag.content)).join('\n\n');
+  const text = tags.map((tag) => commentMarkdown(ctx, tag.content)).join('\n\n');
   return `<div class="hubApiReturns"><p class="hubApiLabel">Returns</p><p>${inlineType(ctx, type)}</p>${renderBlock(ctx, text, line)}</div>\n${renderTable('Property', memberRows(ctx, members), 'Returned object')}`;
 };
 
@@ -511,6 +568,13 @@ const SECTIONS: { title: string; id: string; kinds: number[] }[] = [
   { title: 'Namespaces', id: 'namespaces', kinds: [Kind.Namespace, Kind.Module] },
   { title: 'Re-exports', id: 're-exports', kinds: [Kind.Reference] },
 ];
+
+const MEMBER_KIND_LABELS: Record<number, string> = {
+  [Kind.Constructor]: 'constructor',
+  [Kind.Method]: 'method',
+  [Kind.Accessor]: 'property',
+  [Kind.Property]: 'property',
+};
 
 const kindLabel = (symbol: DeclarationReflection) =>
   symbol.kind === Kind.Variable && !symbol.flags.isConst
@@ -554,7 +618,7 @@ const renderMember = (ctx: Ctx, member: DeclarationReflection) => {
       returns: !isConstructor,
     });
     html +=
-      renderCodeBlock(ctx.highlighter, w, undefined, MEMBER_POSITION_PREFIX) +
+      codeBlock(ctx, w, MEMBER_POSITION_PREFIX) +
       renderSignatureDocs(ctx, signature, !isConstructor);
   }
   return `<div class="hubApiMemberBlock">${html}${renderSource(ctx, member)}</div>\n`;
@@ -691,7 +755,7 @@ const renderModuleList = (ctx: Ctx, modules: ApiModule[]) => {
   if (!modules.length) return '';
   const items = modules.map((module) => {
     ctx.file = module.file;
-    const summary = renderInline(ctx, getModuleSummary(module));
+    const summary = renderInline(ctx, getModuleSummary(module, commentLinks(ctx)));
     return `<li><div class="hubApiListHead"><a href="${escapeHtml(href(ctx, module.pagePath))}"><code>${escapeHtml(path.posix.basename(module.relPath))}</code></a>${renderCoverage(module.coverage)}</div>${summary ? `<p class="hubApiSummary">${summary}</p>` : ''}</li>`;
   });
   return `<ul class="hubApiList">${items.join('')}</ul>\n`;
@@ -853,6 +917,95 @@ const createSourceLink = (mode: HubBuildMode, meta: ProjectMetadata): SourceLink
   };
 };
 
+/**
+ * The `{@link}`s that link nowhere, once per build (not per render: a module's summary is on
+ * several pages). Another package's symbol (three's) is fine as text.
+ */
+const reportCommentLinks = (diag: HubDiagnostics, index: ApiIndex, links: ApiLinks) => {
+  for (const { part, ownerId, fileName, line } of links.namedLinks) {
+    if (typeof part.target === 'string' || isForeignTarget(index, part)) continue;
+    // A member inherited from three: its comment is three's, and the pages leave it out
+    if (fileName?.startsWith('node_modules/')) continue;
+    if (resolveCommentLink(index, links, part)) continue;
+    const owner = links.resolveId(ownerId);
+    if (!owner) continue; // Not on any page
+    const file = fileName ? path.join(ROOT, fileName) : owner.module.file;
+    const why = part.target ? 'it isn’t in the API docs' : 'TypeDoc found no such symbol';
+    diag.warn(file, line, `{@link ${linkName(part)}} links nowhere (${why}): shown as text`);
+  }
+};
+
+/** `api:` links on every page, by name (§2.3) */
+const createLinkResolver =
+  (links: ApiLinks): HubApiLinkResolver =>
+  (ref) => {
+    const result = links.resolveName(ref);
+    return result.isOk
+      ? { pagePath: result.target.module.pagePath, anchor: result.target.anchor }
+      : { error: result.message };
+  };
+
+/**
+ * The search's API documents (§2.4): each module, symbol and class or interface member, found by
+ * its name, with its kind and its summary's first sentence for the result (stored, not indexed:
+ * the index stays under p552's 1 MB). Empty values are left out, not stored.
+ */
+const createSearchDocs = (index: ApiIndex): HubSearchExtraDoc[] => {
+  const doc = (
+    pagePath: string,
+    anchor: string,
+    symbol: string,
+    kind: string,
+    summary: string
+  ): HubSearchExtraDoc => {
+    const text = toPlainText(summary);
+    return {
+      path: pagePath,
+      ...(anchor && { anchor }),
+      symbol,
+      kind,
+      ...(text && { summary: text }),
+    };
+  };
+  const sentence = (reflection: DeclarationReflection) => {
+    const summary =
+      symbolSummary(reflection) ??
+      reflection.getSignature?.comment?.summary ??
+      reflection.setSignature?.comment?.summary;
+    return summary ? firstSentence(partsToMarkdown(summary)) : '';
+  };
+  const docs: HubSearchExtraDoc[] = [];
+  for (const module of index.modules) {
+    const name = path.posix.basename(module.relPath);
+    docs.push(doc(module.pagePath, '', name, 'module', getModuleSummary(module)));
+    for (const symbol of module.symbols) {
+      if (symbol.kind === Kind.Reference) continue;
+      const target = index.targets.get(symbol.id);
+      if (!target) continue;
+      docs.push(
+        doc(module.pagePath, target.anchor, symbol.name, kindLabel(symbol), sentence(symbol))
+      );
+      if (symbol.kind !== Kind.Class && symbol.kind !== Kind.Interface) continue;
+      for (const member of getOwnMembers(symbol)) {
+        const memberTarget = index.targets.get(member.id);
+        if (!memberTarget || member.flags.isPrivate) continue;
+        const memberName = member.kind === Kind.Constructor ? 'constructor' : member.name;
+        const kind = MEMBER_KIND_LABELS[member.kind] ?? 'property';
+        docs.push(
+          doc(
+            module.pagePath,
+            memberTarget.anchor,
+            `${symbol.name}.${memberName}`,
+            kind,
+            sentence(member)
+          )
+        );
+      }
+    }
+  }
+  return docs;
+};
+
 const reportMessages = (diag: HubDiagnostics, messages: ApiExtractMessage[]) => {
   for (const { level, message, file, line } of messages) {
     const text = `TypeDoc: ${message}`;
@@ -863,6 +1016,22 @@ const reportMessages = (diag: HubDiagnostics, messages: ApiExtractMessage[]) => 
 
 const pageBody = (title: string) =>
   `<h1 class="hubApiTitle">${escapeHtml(title)}</h1>\n<div id="${PAGE_SLOT}"></div>\n`;
+
+/** The index, its links and its search documents are the model's: built once per model */
+const indexes = new WeakMap<ApiIndex['project'], ApiIndex>();
+const searchDocs = new WeakMap<ApiIndex, HubSearchExtraDoc[]>();
+
+const getIndex = (project: ApiIndex['project']) => {
+  let index = indexes.get(project);
+  if (!index) indexes.set(project, (index = indexApiModel(project)));
+  return index;
+};
+
+const getSearchDocs = (index: ApiIndex) => {
+  let docs = searchDocs.get(index);
+  if (!docs) searchDocs.set(index, (docs = createSearchDocs(index)));
+  return docs;
+};
 
 export type ApiSectionOptions = {
   mode: HubBuildMode;
@@ -895,10 +1064,13 @@ export const createApiSection = async ({
         dirs: [],
       },
       stats: null,
+      links: null,
     };
   }
 
-  const index = indexApiModel(extract.model.project);
+  const index = getIndex(extract.model.project);
+  const links = getApiLinks(index);
+  reportCommentLinks(diag, index, links);
   const highlighter = await loadHubHighlighter();
   const sourceLink = createSourceLink(mode, meta);
   resetMemo(
@@ -906,7 +1078,7 @@ export const createApiSection = async ({
   );
   const generator = (key: string, render: (ctx: Ctx) => string): HubSlotGenerator =>
     memoized(key, (md, env) =>
-      render({ index, highlighter, md, env, file: env.page.file, sourceLink })
+      render({ index, links, highlighter, md, env, file: env.page.file, sourceLink })
     );
 
   const pages: HubGeneratedPage[] = [];
@@ -962,7 +1134,9 @@ export const createApiSection = async ({
       pages,
       files,
       dirs: [],
+      searchDocs: getSearchDocs(index),
     },
+    links: createLinkResolver(links),
     stats: {
       isCached: extract.isCached,
       extractMs: extract.durationMs,

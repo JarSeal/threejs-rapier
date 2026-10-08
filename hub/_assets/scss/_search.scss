@@ -167,6 +167,23 @@ html:has(.hubSearch[open]) {
   line-height: 1.35;
 }
 
+// An API result (p553): its kind, coloured like the API pages' (`.hubApiKind`), and its name
+.hubSearchKind {
+  margin-right: 0.5rem;
+  padding-block: 0;
+  font-size: 0.6875rem;
+  vertical-align: 0.1em;
+}
+
+.hubSearchTitle code {
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: var(--hub-font-mono);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
 .hubSearchSnippet {
   display: -webkit-box;
   overflow: hidden;

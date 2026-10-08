@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Dev tooling, Hub, Documentation
 Epic: p550_aekasha-hub-epic.md
 Blocks: p555_hub-features-and-homepage-content.md (its `api:` links)
@@ -195,7 +195,7 @@ As built:
   in the table): the schema's own fields aren't expanded. `ImpostorDef` prints as its conditional
   type, a branch per line.
 
-### Phase 2 — Links and search
+### Phase 2 — Links and search — done
 
 §2.3, §2.4.
 
@@ -205,6 +205,56 @@ As built:
   the symbol's anchor.
 - An unknown `api:` link fails the build and lists candidates.
 - Searching for `createPhysicsEntity` finds the symbol first.
+
+As built:
+
+- **Files:** `devTools/hub/api/links.ts` (`getApiLinks(index)`, built once per model): the owner
+  of every reflection (one walk of the model), `resolveId`, the `api:` name table and
+  `resolveName`, and the `{@link}`s without a reflection id. The index, its links and its search
+  documents are kept per model (`WeakMap`s on the project), so a dev rebuild doesn't redo them.
+- **Ids without an anchor:** of the 412 `{@link}`s, 303 have a reflection id, but not all of it is
+  anchored (29 point at properties, 10 at parameters). `resolveId` walks up to the nearest owner
+  with an anchor (a type alias's property → the alias). Type references to a type parameter carry
+  its declaration's id: the printer leaves them unlinked (`refersToTypeParameter`), or `T` would
+  link its function.
+- **`{@link}` text:** `{@link X | text}` shows its own text as Markdown, a bare one the name as
+  code (`@linkplain` as text). TypeDoc leaves the whole `X | text` in `text` when it didn't
+  resolve the link, and for some TS-resolved ones (`tsLinkText` has the text then). A string
+  target (`{@link https://…}`) links the URL.
+- **Unresolved `{@link}`s:** another package's symbol (three's, 44) is text without a warning.
+  One TypeDoc only found as a name in this package (`aekasha-js:LoadSceneProps`: not exported) is
+  looked up like an `api:` link, else text. The rest warn once per build at their source line
+  (`reportCommentLinks`, not during the render: a module's summary is on several pages): 11 today.
+  Comments on members inherited from three (`node_modules/` sources) are skipped: the pages leave
+  those members out.
+- **`api:` names:** a bare name is a top-level export; a member needs its owner
+  (`ECSWorld.addSystem`), so `addSystem` alone can't match every class's. Any module path suffix
+  qualifies (`PhysicsAPI.createRigidBody`, `core/PhysicsAPI.…`, `toolkit/…`; the subtree is the
+  first segment). Re-exports aren't names (they'd make their original ambiguous). A value and a
+  type of one name in one module (`ComponentType`) resolve to the bare anchor. Errors list each
+  candidate by its shortest unique name; an unknown name suggests up to 5 by edit distance.
+  `HubMarkdownEnv.apiLinks` carries the section's resolver (`null` when the model didn't build:
+  the link points to `#` with a warning). `href="api:…"` works in a page's markup too.
+- **Search documents:** a module, symbol or class / interface member each (2,679: 221 + 2,017 +
+  441). They're found by name only: a `symbol` field (×4, split at camelCase like the rest). The
+  first sentence is stored as `summary` for the snippet, not indexed, and nothing empty is stored.
+  The name isn't stored either: it's the anchor without a `-2`, or a module page's folder
+  (`apiSearchName` in `searchProtocol.ts`). The dialog shows the kind badge (the API pages'
+  colours) and the name, with the module in the breadcrumb (from the path: the API pages aren't
+  in `hub-data.js`'s `pages`).
+- **Index size:** the first layout (every field, empty strings stored) took the index from 345 kB
+  to 1.52 MB. The lean documents plus a single-quoted `JSON.parse('…')` (the JSON's own quotes
+  aren't escaped any more, about 12% off every index) bring it to 991 kB (233 kB gzipped),
+  just under p552's 1 MB warning. Building it takes about 30 ms more per dev rebuild. The next
+  cuts, if needed: members (about 125 kB) or the stored summaries (about 170 kB).
+- **Ranking:** `createPhysicsEntity`, `loadScene` and `ECSWorld.addSystem` come first for their
+  names. A broad word (`mesh`, `sky box`) now lists API symbols before prose pages, which p555's
+  feature pages will compete with (their titles and headings weigh the same as a symbol's name).
+- **Content:** the Documentation intro links its entry points with `api:`. The authoring how-to
+  (`docs/techniques/hub-authoring.md`) has `api:` links, the API search and the new messages.
+- **Types in signatures and tables** link with `.hubApiTypeLink`: the token keeps its colour,
+  with a faint dotted underline. 3,044 type links in the build; every anchored link in it lands on
+  an id.
 
 ### Phase 3 — Dev staleness
 

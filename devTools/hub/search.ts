@@ -217,10 +217,26 @@ export const splitSections = (body: string) => {
   }));
 };
 
-export type HubSearchIndexFile = HubAssetFile & { docCount: number };
+export type HubSearchIndexFile = HubAssetFile & { docCount: number; pageDocCount: number };
 
-/** Builds `_assets/hub-search.js` from the pages' rendered bodies */
-export const buildSearchIndex = (pages: { page: HubPage; body: string }[]): HubSearchIndexFile => {
+/** A document a generated section adds by itself (p553's API symbols), without its id */
+export type HubSearchExtraDoc = Omit<HubSearchDoc, 'id'>;
+
+/**
+ * The index as `JSON.parse('…')`: parsed faster than the same object as a JS literal, and in
+ * single quotes, so the JSON's own double quotes (most of its punctuation) aren't escaped
+ */
+const toModuleSource = (json: string) =>
+  `export default JSON.parse('${json.replace(/[\\']/g, '\\$&')}');\n`;
+
+/**
+ * Builds `_assets/hub-search.js` from the pages' rendered bodies, and the documents the
+ * generated sections add (`extraDocs`)
+ */
+export const buildSearchIndex = (
+  pages: { page: HubPage; body: string }[],
+  extraDocs: HubSearchExtraDoc[] = []
+): HubSearchIndexFile => {
   const docs: HubSearchDoc[] = [];
   for (const { page, body } of pages) {
     if (!page.path || !page.isSearchable) continue; // The homepage
@@ -244,14 +260,16 @@ export const buildSearchIndex = (pages: { page: HubPage; body: string }[]): HubS
       });
     });
   }
+  const pageDocCount = docs.length;
+  for (const doc of extraDocs) docs.push({ ...doc, id: docs.length });
   const index = new MiniSearch(HUB_SEARCH_OPTIONS);
   index.addAll(docs);
-  // A string literal for JSON.parse: parsed faster than the same object as a JS literal
-  const content = `export default JSON.parse(${JSON.stringify(JSON.stringify(index))});\n`;
+  const content = toModuleSource(JSON.stringify(index));
   return {
     outPath: `${ASSETS_URL_DIR}${HUB_SEARCH_FILE}`,
     content,
     hash: hashContent(content),
     docCount: docs.length,
+    pageDocCount,
   };
 };

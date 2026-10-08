@@ -120,6 +120,22 @@ Back to the [Hub](hub:).
 - A plain `#hash` link to the same page isn't checked. Use `hub:<this page>#hash` when you want it checked.
 - Write external links as full URLs. Never write a root-relative `/hub/…` link: it breaks the site on a domain root.
 
+### API links
+
+Link to an engine or toolkit export's entry in the Documentation section with `api:` and its name:
+
+```md
+Start a scene with [`loadScene`](api:loadScene).
+Systems run in stages: see [`addSystem`](api:ECSWorld.addSystem).
+Bodies are made through [the facade](api:PhysicsAPI.createRigidBody).
+```
+
+- **A bare name is an export:** `api:loadScene`. A class's or an interface's member needs its owner: `api:ECSWorld.addSystem`.
+- **A name two modules export needs its module:** `api:PhysicsAPI.createRigidBody`, or more of the path when the file name isn't enough (`api:core/PhysicsAPI.createRigidBody`, `api:toolkit/…`). Re-exports don't count: they point at the original.
+- **Every `api:` link is checked as it's rendered.** An unknown name fails the build and suggests close ones (`Unknown api:createPhysicEntity (did you mean api:createPhysicsEntity?)`), and an ambiguous one lists each candidate as a link you can copy.
+- `api:` works in a page's markup too: `<a href="api:loadScene">`.
+- In the engine's and the toolkit's JSDoc, `{@link loadScene}` links the same way. TypeDoc resolves it from the file's imports. One that resolves to nothing documented is shown as text, with a warning at its file and line. A link to three's own classes is shown as text, without a warning.
+
 ## Callouts
 
 ```md
@@ -250,6 +266,7 @@ The search box (⌘K, Ctrl+K or `/`) searches every page except the homepage. `y
 - **A heading with an id is a search result.** Each section from a heading to the next is one result, with the headings above it as the breadcrumb. The text before a page's first heading is the page's own result, along with its `<title>`, `aek:tags` and `aek:description`. Headings make a long page easier to search as well as to read.
 - **The title, headings and tags weigh the most.** Put the words a reader would search for in `aek:tags`, especially those the page doesn't spell out (`rapier` on the physics page).
 - **Code blocks add their identifiers, not their keywords.** Identifiers are split at camelCase too, so `mesh` finds `createMeshEntity`.
+- **The API is searched by name.** Every engine and toolkit module, export and class or interface member is a result of its own, weighted like a title and split at camelCase, with its kind and its summary's first sentence. Only the name is searched: the summary is shown, not indexed, which keeps the index under 1 MB.
 - **`yarn hub:build` prints the index's size.** Over 1 MB it warns. The index is loaded whole on first use, so keep it lean.
 
 No Hub file needs to change for a new page to be found: it's indexed on the next build.
@@ -368,11 +385,14 @@ The same checks run in dev and in `yarn hub:build`. In dev, an error shows the e
 | `No "#region x" in it (it has: …)`                     | The region was renamed or removed. Use one listed.    |
 | `"#region x" … has no "#endregion x"`                  | Close the region in the source.                       |
 | `#L…: … has lines 1-N`                                 | The file got shorter. Fix the range, or use a region. |
+| `Unknown api:x (did you mean …)`                       | A misspelt or renamed export. Use a suggested name.   |
+| `Ambiguous api:x: api:A.x, api:B.x`                    | Two modules export it. Use one of the listed names.   |
 | Warning: `Slot "…" has no ….md: it stays empty`        | Add the `.md`, or remove the slot.                    |
 | Warning: `Unknown <meta name="aek:…">`                 | A misspelt metadata name.                             |
 | Warning: `Unknown code language "…"`                   | Use a listed language, or `text`.                     |
 | Warning: `Unknown "…" in the code block's meta`        | A misspelt fence option.                              |
 | Warning: `The search index is …, over 1 MB`            | Index less: fewer or shorter pages, fewer fields.     |
+| Warning: `{@link X} links nowhere (…)`                 | In the JSDoc: fix the name, export it, or use code.   |
 
 ## Publishing
 

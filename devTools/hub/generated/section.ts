@@ -1,5 +1,6 @@
 import type MarkdownIt from 'markdown-it';
 import type { HubMarkdownEnv } from '../markdown';
+import type { HubSearchExtraDoc } from '../search';
 
 /**
  * A generated section (p550 §3.3, p551 §2.5): a hand-written page under `hub/pages/` whose
@@ -40,4 +41,6 @@ export type HubGeneratedSection = {
   files: string[];
   /** Folders whose added and removed files change it (`docs/issues/`), for the watcher */
   dirs: string[];
+  /** Search documents of its own, besides its pages' sections (the API's symbols) */
+  searchDocs?: HubSearchExtraDoc[];
 };

@@ -154,6 +154,7 @@
 .hubApiKind_let,
 .hubApiKind_namespace,
 .hubApiKind_module,
+.hubApiKind_property,
 .hubApiKind_reexport {
   --hub-api-kind: var(--hub-text-muted);
 }
@@ -335,4 +336,19 @@
 .hubApiAzModule {
   color: var(--hub-text-muted);
   font-size: 0.75rem;
+}
+
+// A type in a signature or a table that links its symbol (p553 §2.3): the token keeps its colour,
+// with a faint dotted underline that turns solid on hover
+.hubApiTypeLink {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: color-mix(in srgb, currentcolor 45%, transparent);
+  text-underline-offset: 0.2em;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration-style: solid;
+    text-decoration-color: currentcolor;
+  }
 }
