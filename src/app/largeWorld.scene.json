@@ -7,6 +7,7 @@
   "cameras": ["largeWorldOverview"],
   "lights": ["largeWorldAmbient", "largeWorldSun"],
   "skyboxes": ["basicSkybox", "dayNight"],
+  "impostors": ["largeWorldRockImpostor"],
   "postFx": ["ambientOcclusion"],
   "postFxEnabled": true,
   "spatialDomains": [{ "id": "DEFAULT", "cellSize": 24 }]

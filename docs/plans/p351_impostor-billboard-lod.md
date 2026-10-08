@@ -771,7 +771,43 @@ albedo, normalDepth, { id, alphaTest, surfaceDepth, shading, vOrigin })` registe
    its self-shadowing (no extra acne from the compressed depth; if there is, raise `normalDepth`'s
    UASTC `level` to the highest, then `rdo: 0` on albedo too, and record which settled it), the
    GPU memory tab's bytes per atlas, the scene load's time without the bake. Change
-   the rock's seed: the debug env warns that the export is stale and the scene still runs.
+   the rock's seed: the debug env warns that the export is stale and the scene still runs. — done:
+   `largeWorld.scene.json` lists `largeWorldRockImpostor`; the record is `EXPORTED` (no bake) and
+   the scene's generated data carries the def and both slots. Measured on WebGPU (Apple GPU,
+   1200×800) with Phase 3 section 5's harness, the same rock (nearest (5, 5), scale 0.87), the
+   impostor level drawn with the exported material and then with a runtime bake of the same rock
+   under another id (`hemi`, swapped onto the impostor mesh), against level 0:
+   - At the switch distance (15°, 30°, 60° at three azimuths, overhead): exported against level 0
+     mean luma difference 6.0-8.6, mask IoU 0.80-0.88, area 0.90-1.00; the bake 5.6-8.0 /
+     0.80-0.88 / 0.90-0.99 (Phase 3 section 5's figures, again). Per view the export is 0.0-1.2
+     above the bake. Exported against baked: 2.1-3.0, IoU 0.92-0.96, area 0.97-1.03. At half the
+     distance 4.0-5.9 / 0.86-0.92 against the bake's 3.6-5.5 / 0.88-0.92, exported against baked
+     1.5-2.1. Level 1 against level 0 at its own switch was 15.0-19.7 (Phase 3). az 0°, 15° is left
+     out again, as in Phase 3: a moving object that isn't a child of the root scene (so the harness
+     doesn't hide it) stands in front of the rock in a different place in each render.
+   - Self-shadowing (no extra acne): largeWorld's rock alone in a private scene (scale 1.3, turned
+     about y only), the shadowing sun of Phase 3 section 4 (VSM, MEDIUM preset, suns at 30°, 50°
+     and 75°, each from its side, across it and from behind), mesh beside impostor. Share of the
+     object's pixels in shadow against the mesh's: exported -0.9 to +3.3 points, the bake -1.3 to
+     +1.9; exported against the bake -0.7 to +1.4 points, luma difference 1.3-2.1, IoU 0.92-0.98.
+     Side by side the shadow bands are the same, no dots or slashes on lit faces, the export a touch
+     softer. Decision 3's codecs stay as they are (neither fallback was needed).
+   - GPU memory tab: 995,712 B per atlas (UASTC, 10 levels down to 1 × 1), against 3,980,317 B per
+     atlas of the bake (RGBA8 with mips): 1.9 against 7.6 MB for the rock.
+   - Scene load (`oneMoreScene` → largeWorld, four alternating rounds, the generated scene data
+     patched in the page to drop the listing and its slots): listed 1,398-1,444 ms, baking
+     1,440-1,477 ms (the record's bake 32-34 ms), so about 45 ms faster. Loading the two KTX2 slots
+     adds no measurable time.
+   - Draw cost from the overview camera (150 frames, GPU queue timed, 217 impostors): 5.26 ms
+     without them, 5.49 ms exported, 5.50-5.51 ms baked. The compressed atlases sample at the
+     same cost (the scene's base has grown since Phase 3's 4.36 ms; the impostors' share went from
+     +0.34 to +0.23 ms).
+   - Stale: with the rock's seed 11 → 12 the debug env warns once ("the export of
+     'largeWorldRockImpostor' is stale … fingerprint 6afa4fc04bd2e912, now 87537a04fe84d025"), the
+     scene draws from the export, no errors. Seed put back.
+   - WebGL2 (SwiftShader): the switch distance's figures within 0.5 of WebGPU (exported 5.9-8.4,
+     the bake 5.7-8.0, exported against baked 1.6-2.6). Its az 0°, 15° renders caught the app
+     loop's own frame (software rendering is slow), left out too.
 6. **Cross-quads:** the `CROSS_QUADS` kind (planes, frame size and gutter, each plane's placement:
    the radius around the vertical axis, the height and base), the plane geometry rebuilt from it
    with v-up UVs for a loaded atlas, the `normal` slot optional (`normals: false`), export and

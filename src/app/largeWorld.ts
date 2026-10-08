@@ -199,6 +199,8 @@ export const scene = async () => {
     type: 'PHONG',
     params: { color: '#8f8a80', flatShading: true },
   });
+  // Built from its export (src/app/impostors/, listed in largeWorld.scene.json's `impostors`), so
+  // nothing is baked at load; re-export it from the LOD tab's Impostors after changing the rock
   const rockImpostor = generateOctahedralImpostor(rockGeo, rockPoolMat, {
     id: 'largeWorldRockImpostor',
     hemi: true,
