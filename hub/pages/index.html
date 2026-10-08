@@ -3,6 +3,7 @@
   <head>
     <title>Ækasha Hub</title>
     <meta name="aek:menu" content="Hub" />
+    <meta name="aek:icon" content="house" />
     <meta name="aek:tags" content="home, introduction, overview" />
     <meta
       name="aek:description"
@@ -10,13 +11,63 @@
     />
   </head>
   <body>
-    <section class="hubHero">
-      <p class="hubEyebrow">Welcome to the</p>
-      <h1>Ækasha <span class="hubAccent">Hub</span></h1>
-      <div id="intro"></div>
-      <nav class="hubHeroLinks" aria-label="Sections">
-        <a class="hubButton" href="hub:examples">Examples</a>
-      </nav>
+    <section class="hubHero hubThemeDark">
+      <div class="hubHeroInner">
+        <div class="hubHeroText">
+          <p class="hubEyebrow hubEyebrow_plain">Welcome to the</p>
+          <h1 class="hubHeroTitle">Ækasha <span class="hubGradientText">Hub</span></h1>
+          <div id="intro" class="hubHeroIntro"></div>
+          <nav class="hubHeroLinks" aria-label="Sections">
+            <a class="hubButton" href="hub:examples">{{icon:box}}Examples{{icon:arrow-right}}</a>
+            <a class="hubButton" href="hub:features">{{icon:star}}Features{{icon:arrow-right}}</a>
+            <a class="hubButton" href="hub:documentation"
+              >{{icon:book-open}}Documentation{{icon:arrow-right}}</a
+            >
+            <a class="hubButton" href="hub:issues">{{icon:bug}}Issues{{icon:arrow-right}}</a>
+            <a class="hubButton" href="hub:version">{{icon:tag}}Version{{icon:arrow-right}}</a>
+          </nav>
+        </div>
+        <!-- p554 replaces the placeholder with the exampleHubHero scene's render -->
+        <img
+          class="hubHeroImage"
+          src="{{asset:images/hero-placeholder.webp}}"
+          alt=""
+          width="585"
+          height="360"
+        />
+        <div class="hubHeroSide">
+          <p class="hubEyebrow">Build / Explore / Create</p>
+          <div id="hero-side"></div>
+        </div>
+      </div>
     </section>
+
+    <div class="hubHomeGrid">
+      <div class="hubHomeMain">
+        <section class="hubHomeSection">
+          <p class="hubEyebrow">Featured features</p>
+          <div id="featured-features"></div>
+        </section>
+        <section class="hubHomeSection">
+          <p class="hubEyebrow">Featured examples</p>
+          <div id="featured-examples"></div>
+        </section>
+      </div>
+      <aside class="hubHomeSide" aria-label="News and links">
+        <section class="hubPanel">
+          <p class="hubEyebrow">Latest</p>
+          <div id="whats-new"></div>
+        </section>
+        <section class="hubPanel">
+          <p class="hubEyebrow">Quick links</p>
+          <div id="quick-links"></div>
+        </section>
+        <section class="hubPanel hubBrandCard">
+          <p class="hubBrandCardTitle">Ækasha</p>
+          <p class="hubBrandCardText">Build. Explore. Create.</p>
+          {{icon:aekasha}}
+        </section>
+      </aside>
+    </div>
   </body>
 </html>

@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Dev tooling, Hub
 Epic: p550_aekasha-hub-epic.md
 Blocks: p552_hub-code-blocks-and-search.md, p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
@@ -260,7 +260,7 @@ As built:
   the error page and fixing it brings the page back; a `hub.config.ts` save restarts the server and
   the Hub tab reloads with the new token.
 
-### Phase 3 — Design shell
+### Phase 3 — Design shell — done
 
 §2.6 and the design (p550 §3.7): tokens, the nav with dropdowns and the mobile menu, breadcrumbs,
 the TOC, the footer, the theme toggle, icons, fonts, the homepage skeleton with the placeholder hero.
@@ -272,6 +272,55 @@ the TOC, the footer, the theme toggle, icons, fonts, the homepage skeleton with 
 - The light and dark themes both pass a contrast check for body text and the accent.
 - The active nav item follows the page, nested pages included.
 - Keyboard: the nav, dropdowns and theme toggle work without a mouse.
+
+As built:
+
+- **The design** is the "Ækasha Hub: Futuristic 3D Engine Dashboard" mockup (top nav, ⌘K search,
+  side column), not the earlier sidebar mockup. Only its crop is in the repo:
+  `hub/_assets/images/hero-placeholder.webp` (585×360 from x 600, y 65, with a fade baked into
+  the alpha on every edge, so it melts into the hero's background).
+- **Icons are inlined at build time** (`devTools/hub/icons.ts`): they take `currentColor` and cost
+  no request. Lucide 1.53.0 (`lucide-static`, ISC, `icons/LICENSE-lucide.txt`; 13 icons) plus the
+  Æ mark (`icons/aekasha.svg`, the engine icon's path). Lucide has no brand icons any more, so the
+  footer's GitHub link is text. `aek:icon` is shown on top-level items only.
+- **Markup helpers:** `{{icon:name}}` and `{{asset:path}}` (a static asset's URL with its `?v=`) in
+  the shell and a page's `index.html` body, and `{{link:path}}` (a checked page URL) in the shell.
+  An unknown icon, asset or page fails the build with the file and line. Markdown has none.
+- **Static assets get `?v=` too.** `_headers` caches `_assets/*` as immutable, so fonts and images
+  without a hash would stay stale after a change. `buildStyles` appends each `url(fonts/…)`'s hash
+  in the CSS, and `{{asset:…}}` does the same in markup (`createStaticAssetHasher`, `assets.ts`).
+- **Inter 4** from `@fontsource-variable/inter` 5.3.0: the variable Latin subset, normal and italic
+  (`fonts/`, OFL, `LICENSE-inter.txt`), the normal one preloaded. Neither package is a dependency:
+  the files were copied once.
+- **Theme:** `dark-tokens` / `light-tokens` mixins (`_tokens.scss`); light from
+  `[data-theme='light']` or, with nothing saved, `prefers-color-scheme`. An inline `<head>` script
+  applies the saved `aekHubTheme` before the first paint; `hub.ts`'s toggle writes it. The hero is
+  a `.hubThemeDark` island in both themes (its image is a night sky). The light accent is
+  `#0a7590` (cyan fails on white). WCAG contrast, lowest pairs: dark muted text on panels 7.0,
+  light accent on code blocks 4.68; all of text, muted text and accent on the background, panels
+  and code blocks pass AA in both themes.
+- **Nav:** a section with children has its link plus a chevron button (`aria-expanded`). Hover opens
+  its dropdown (hover-capable pointers, desktop width); click, Enter or Space on the chevron toggles
+  it; Escape closes it and focuses the chevron; tabbing out or clicking elsewhere closes it.
+  Without JS, keyboard focus inside opens it. The active top-level item has the cyan underline, the
+  page itself `aria-current`.
+- **Widths:** below 960 px (`$nav-collapse`, also in `hub.ts`) the nav and tools fold into a panel
+  the menu button opens, every section's pages listed under it (Escape closes it). 960-1359 px: the
+  search box is its icon; 960-1099 px: the nav drops its icons.
+- **Prose rules use `:where()`** (`.hubContent :where(h1)`), so a component in the content (the
+  hero, p555's cards) styles its elements with one class.
+- **Homepage:** the hero (`intro` and `hero-side` slots, the five section buttons, the image) and a
+  two-column grid: `featured-features` and `featured-examples`, and the side column's
+  `whats-new`, `quick-links` and a brand card (markup). The slots have short real content instead
+  of staying empty, so builds don't warn; p555 replaces it. No TOC on the homepage.
+- **Placeholder pages:** Features, Documentation, Issues and Version (an `intro` each), the last two
+  so the nav is complete and the version pill links somewhere before Phase 4.
+- Verified with Playwright Chromium against `hub:preview` and the dev server: the 1536 px homepage
+  against the mockup; 375 px with the menu open and closed and no horizontal scroll (also none at
+  960, 1024, 1100, 1280 and 1536 px, header included); the active item on `examples/physics/`; Tab
+  through the nav, Enter on the chevron, Tab into the dropdown, Escape, tabbing out; hover; the
+  theme toggle by keyboard, kept across a reload; light and dark screenshots. In `yarn dev`, an
+  SCSS save restyles without a reload, and an unknown icon gives the error page with its line.
 
 ### Phase 4 — Issues and Version
 

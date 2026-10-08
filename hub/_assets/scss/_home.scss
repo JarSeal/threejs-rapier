@@ -1,0 +1,224 @@
+// The homepage (p551 Phase 3's skeleton; p555 fills it): the hero, then the featured sections
+// beside a side column of panels
+@use 'tokens' as *;
+
+.hubHero {
+  border-bottom: 1px solid var(--hub-border);
+}
+
+.hubHeroInner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr) minmax(13rem, 0.5fr);
+  align-items: center;
+  max-width: var(--hub-page-width);
+  margin: 0 auto;
+  padding: 0 var(--hub-gutter);
+}
+
+.hubHeroText {
+  position: relative;
+  z-index: 1;
+  padding: clamp(2.5rem, 6vw, 4.5rem) 0;
+}
+
+.hubHeroTitle {
+  margin: 0.5rem 0 1.5rem;
+  font-size: clamp(2.75rem, 5.5vw, 4.5rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+
+.hubHeroIntro {
+  max-width: 34rem;
+  font-size: 1.125rem;
+  line-height: 1.6;
+
+  p {
+    margin: 0 0 1rem;
+  }
+}
+
+.hubHeroLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.hubHeroImage {
+  display: block;
+  width: 118%;
+  border-radius: 0;
+  max-width: none;
+  height: auto;
+  // Starts under the text column's end: the image's own left edge is transparent
+  margin-left: -18%;
+}
+
+.hubHeroSide {
+  align-self: stretch;
+  padding: clamp(2.5rem, 6vw, 4.5rem) 0 2rem 2.5rem;
+  border-left: 1px solid color-mix(in srgb, var(--hub-accent) 45%, transparent);
+  color: var(--hub-text);
+  line-height: 1.7;
+
+  p {
+    margin: 0;
+  }
+
+  .hubEyebrow {
+    margin-bottom: 1.25rem;
+
+    &::before {
+      content: none;
+    }
+  }
+}
+
+@media (max-width: ($toc-column - 1px)) {
+  .hubHeroInner {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);
+  }
+
+  .hubHeroSide {
+    grid-column: 1 / -1;
+    padding: 1.5rem 0 2.5rem;
+    border-top: 1px solid var(--hub-border);
+    border-left: 0;
+  }
+}
+
+@media (max-width: ($nav-collapse - 1px)) {
+  .hubHeroInner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hubHeroText {
+    padding-bottom: 0;
+  }
+
+  .hubHeroImage {
+    width: 100%;
+    margin: 0;
+  }
+}
+
+.hubHomeGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
+  gap: 3rem;
+  max-width: var(--hub-page-width);
+  margin: 0 auto;
+  padding: 3rem var(--hub-gutter) 4rem;
+
+  @media (max-width: ($toc-column - 1px)) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.hubHomeSection {
+  padding: 2.5rem 0;
+
+  &:first-child {
+    padding-top: 0.5rem;
+  }
+
+  & + & {
+    border-top: 1px solid var(--hub-border);
+  }
+
+  h2 {
+    margin: 0 0 1rem;
+    font-size: clamp(1.75rem, 3vw, 2.25rem);
+    letter-spacing: -0.025em;
+  }
+
+  p {
+    max-width: 34rem;
+    color: var(--hub-text-muted);
+  }
+}
+
+.hubHomeSide {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+
+  .hubPanel h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.5rem;
+    letter-spacing: -0.02em;
+  }
+
+  .hubPanel p {
+    margin: 0 0 1rem;
+    color: var(--hub-text-muted);
+    font-size: 0.9375rem;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--hub-text-muted);
+    font-size: 0.875rem;
+  }
+
+  li {
+    padding: 0.65rem 0;
+
+    & + li {
+      border-top: 1px solid var(--hub-border);
+    }
+
+    a {
+      color: var(--hub-text);
+      font-size: 0.9375rem;
+      font-weight: 500;
+      text-decoration: none;
+
+      &:hover {
+        color: var(--hub-accent);
+      }
+    }
+  }
+}
+
+.hubBrandCard {
+  position: relative;
+  padding-left: 2rem;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 1.25rem;
+    bottom: 1.25rem;
+    left: 1.25rem;
+    width: 2px;
+    background: var(--hub-accent);
+  }
+
+  > .hubIcon {
+    position: absolute;
+    top: 50%;
+    right: 1.5rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    transform: translateY(-50%);
+  }
+}
+
+.hubBrandCardTitle {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.hubHomeSide .hubBrandCard .hubBrandCardText {
+  margin: 0;
+}

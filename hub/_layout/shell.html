@@ -2,13 +2,30 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    {{head}}
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{title}}</title>
     <meta name="description" content="{{description}}" />
+    <meta name="color-scheme" content="dark light" />
+    <script>
+      // The theme the toggle saved (hub.ts), set before the first paint so the page doesn't flash
+      try {
+        var hubTheme = localStorage.getItem('aekHubTheme');
+        if (hubTheme === 'light' || hubTheme === 'dark') {
+          document.documentElement.dataset.theme = hubTheme;
+        }
+      } catch (e) {}
+    </script>
+    {{head}}
     <link rel="icon" href="{{root}}favicon.ico" sizes="any" />
     <link rel="icon" href="{{root}}favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="{{root}}apple-touch-icon.png" />
+    <link
+      rel="preload"
+      href="{{asset:fonts/inter-latin-wght-normal.woff2}}"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <link rel="stylesheet" href="{{css}}" />
     <script defer src="{{dataJs}}"></script>
     <script type="module" src="{{js}}"></script>
@@ -16,11 +33,37 @@
   <body class="{{bodyClass}}" data-hub-page="{{pagePath}}">
     <a class="hubSkipLink" href="#hubMain">Skip to content</a>
     <header class="hubHeader">
-      <a class="hubBrand" href="{{root}}" aria-label="{{siteTitle}}: home">
-        <span class="hubBrandMark" aria-hidden="true">Æ</span>
-        <span class="hubBrandWordmark">ÆKASHA</span>
-      </a>
-      <nav class="hubNav" aria-label="Main">{{nav}}</nav>
+      <div class="hubHeaderInner">
+        <a class="hubBrand" href="{{root}}" aria-label="{{siteTitle}}: home">
+          {{icon:aekasha}}<span class="hubBrandWordmark">ÆKASHA</span>
+        </a>
+        <button
+          type="button"
+          class="hubMenuButton"
+          aria-expanded="false"
+          aria-controls="hubNavPanel"
+          aria-label="Menu"
+        >
+          {{icon:menu}}{{icon:x}}
+        </button>
+        <div class="hubNavPanel" id="hubNavPanel">
+          <nav class="hubNav" aria-label="Main">{{nav}}</nav>
+          <div class="hubTools">
+            <button type="button" class="hubSearchButton" aria-label="Search" data-hub-search>
+              {{icon:search}}<span class="hubSearchLabel">Search…</span>
+              <kbd class="hubSearchKey" data-hub-search-key>⌘ K</kbd>
+            </button>
+            <a class="hubVersionPill" href="{{link:version}}" title="Versions and changelog"
+              >v{{engineVersion}}</a
+            >
+            <button type="button" class="hubThemeToggle" data-hub-theme-toggle>
+              {{icon:sun}}{{icon:moon}}<span class="hubVisuallyHidden" data-hub-theme-label
+                >Switch theme</span
+              >
+            </button>
+          </div>
+        </div>
+      </div>
     </header>
     <div class="hubLayout">
       <main id="hubMain" class="hubMain">
@@ -30,9 +73,14 @@
       <aside class="hubAside">{{toc}}</aside>
     </div>
     <footer class="hubFooter">
-      <span>{{siteTitle}} / {{engineVersion}}</span>
-      <a href="{{githubUrl}}">GitHub</a>
-      <span>Powered by Three.js + Rapier</span>
+      <div class="hubFooterInner">
+        <p>
+          <a href="{{root}}">{{siteTitle}}</a
+          ><span class="hubFooterSep">/</span>v{{engineVersion}}<span class="hubFooterSep">/</span
+          ><a href="{{githubUrl}}">GitHub</a>
+        </p>
+        <p>Powered by Three.js + Rapier</p>
+      </div>
     </footer>
   </body>
 </html>

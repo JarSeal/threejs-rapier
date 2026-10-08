@@ -1,17 +1,96 @@
-// The Hub's colour and type tokens (p550 §3.7). Phase 3 of p551 adds the light theme.
-:root {
+// The Hub's tokens (p550 §3.7): dark by default, light from the toggle (`data-theme` on <html>,
+// saved by hub.ts) or, with nothing saved, from `prefers-color-scheme`. Colours are custom
+// properties; breakpoints are SCSS variables (a media query can't read a custom property).
+
+// Below it, the nav folds into the menu button (hub.ts reads the same value)
+$nav-collapse: 960px;
+// From it, the TOC gets its own column
+$toc-column: 1200px;
+
+@mixin dark-tokens {
   --hub-bg: #070b14;
-  --hub-panel: #0d1424;
-  --hub-border: #1e2a3d;
+  --hub-panel: #0c1321;
+  --hub-panel-hover: #111b2d;
+  --hub-border: #1b2638;
+  --hub-border-strong: #2b3a52;
   --hub-text: #e6ebf2;
   --hub-text-muted: #9aa6b8;
   --hub-accent: #3fd8f2;
+  --hub-accent-hover: #8be9f8;
+  --hub-accent-soft: rgb(63 216 242 / 12%);
+  --hub-gradient: linear-gradient(100deg, #2fc4ec 10%, #8cf0ff 90%);
+  --hub-header-bg: rgb(7 11 20 / 85%);
   --hub-code-bg: #0a101d;
+  --hub-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+  --hub-warning: #f2c13f;
+  --hub-danger: #ff7a6b;
   --hub-error: #ff7a85;
 
-  --hub-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --hub-font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
-  --hub-content-width: 46rem;
-
   color-scheme: dark;
+}
+
+@mixin light-tokens {
+  --hub-bg: #f5f7fa;
+  --hub-panel: #ffffff;
+  --hub-panel-hover: #edf1f6;
+  --hub-border: #dce3ec;
+  --hub-border-strong: #b9c4d3;
+  --hub-text: #0f1726;
+  --hub-text-muted: #4b5668;
+  --hub-accent: #0a7590;
+  --hub-accent-hover: #075a6f;
+  --hub-accent-soft: rgb(10 117 144 / 10%);
+  --hub-gradient: linear-gradient(100deg, #0a7590 10%, #0b9bbb 90%);
+  --hub-header-bg: rgb(245 247 250 / 88%);
+  --hub-code-bg: #edf1f6;
+  --hub-shadow: 0 12px 32px rgb(15 23 38 / 12%);
+  --hub-warning: #9a6a00;
+  --hub-danger: #c2361f;
+  --hub-error: #c0283a;
+
+  color-scheme: light;
+}
+
+:root {
+  @include dark-tokens;
+
+  --hub-font: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --hub-font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Code', Menlo, Consolas, monospace;
+  --hub-page-width: 96rem;
+  --hub-docs-width: 76rem;
+  --hub-content-width: 46rem;
+  --hub-gutter: clamp(1rem, 4vw, 4rem);
+  --hub-header-height: 4rem;
+  --hub-radius: 8px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    @include light-tokens;
+  }
+}
+
+:root[data-theme='light'] {
+  @include light-tokens;
+}
+
+// Stays dark in the light theme too: the hero's image is a night sky
+.hubThemeDark {
+  @include dark-tokens;
+
+  background: var(--hub-bg);
+  color: var(--hub-text);
+}
+
+// Styles for the light theme, by either route to it
+@mixin when-light {
+  :root[data-theme='light'] & {
+    @content;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme='dark']) & {
+      @content;
+    }
+  }
 }

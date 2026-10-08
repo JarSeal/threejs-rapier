@@ -1,0 +1,4 @@
+- [Documentation](hub:documentation): the API reference
+- [Examples](hub:examples): scenes to run and read
+- [Issues](hub:issues): known issues and their workarounds
+- [GitHub](https://github.com/JarSeal/threerapier): the source

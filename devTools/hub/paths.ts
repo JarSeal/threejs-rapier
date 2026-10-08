@@ -20,6 +20,8 @@ export const HUB_TS_DIR = path.join(HUB_ASSETS_DIR, 'ts');
 export const HUB_DEV_CLIENT_FILE = path.join(HUB_TS_DIR, '_devClient.ts');
 /** Copied as they are into `_assets/<name>/` */
 export const HUB_STATIC_ASSET_DIRS = ['icons', 'fonts', 'images'];
+/** The icons, also inlined into the pages (`devTools/hub/icons.ts`) */
+export const HUB_ICONS_DIR = path.join(HUB_ASSETS_DIR, 'icons');
 
 /** The outputs (p550 §3.5) */
 export const HUB_DEV_OUT_DIR = path.join(ROOT, '.cache', 'hub', 'dev');

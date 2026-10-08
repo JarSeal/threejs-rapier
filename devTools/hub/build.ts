@@ -6,7 +6,9 @@ import { getProjectMetadata } from '../projectMetadata';
 import {
   buildScripts,
   buildStyles,
+  ASSETS_URL_DIR,
   copyStaticAssets,
+  createStaticAssetHasher,
   HUB_DEV_CLIENT_OUT_PATH,
   type HubAssetFile,
 } from './assets';
@@ -14,6 +16,7 @@ import { buildHubData, getPageSection } from './data';
 import { HUB_DEV_META, HUB_DEV_SOCKET_PLACEHOLDER } from './devProtocol';
 import { HubDiagnostics, lineAt, type HubDiagnostic } from './diagnostics';
 import { escapeHtml } from './html';
+import { loadHubIcons } from './icons';
 import {
   createHubMarkdown,
   createMarkdownEnv,
@@ -33,9 +36,12 @@ import {
 } from './paths';
 import {
   fillShell,
+  pageHref,
+  PLACEHOLDER_REGEX,
   renderBreadcrumbs,
   renderNav,
   renderToc,
+  type HubMarkupHelpers,
   type ShellPageValues,
   type ShellSiteValues,
 } from './shell';
@@ -105,33 +111,58 @@ type RenderedPage = { page: HubPage; body: string; env: HubMarkdownEnv };
 /** `href="hub:…"` and `src="hub:…"` in a page's own markup */
 const HTML_HUB_LINK_REGEX = /\b(href|src)=(["'])(hub:[^"']*)\2/g;
 
-/** The page's markup with its `hub:` links resolved and `{{root}}` filled */
-const resolvePageMarkup = (markup: string, offset: number, env: HubMarkdownEnv) =>
-  markup
+/** The markup helpers a page's own markup can use (`{{link:…}}` is the shell's: pages use `hub:`) */
+const PAGE_HELPERS = ['icon', 'asset'] as const;
+
+/** The page's markup with its `hub:` links resolved, `{{root}}` and its markup helpers filled */
+const resolvePageMarkup = (
+  markup: string,
+  offset: number,
+  env: HubMarkdownEnv,
+  helpers: HubMarkupHelpers
+) => {
+  const lineOf = (at: number) => env.page.bodyLine + lineAt(env.page.body, offset + at) - 1;
+  return markup
     .replace(
       HTML_HUB_LINK_REGEX,
-      (_match, attr: string, quote: string, href: string, at: number) => {
-        const line = env.page.bodyLine + lineAt(env.page.body, offset + at) - 1;
-        return `${attr}=${quote}${resolveHubLink(href, env, env.page.file, line)}${quote}`;
-      }
+      (_match, attr: string, quote: string, href: string, at: number) =>
+        `${attr}=${quote}${resolveHubLink(href, env, env.page.file, lineOf(at))}${quote}`
     )
-    .replace(/\{\{\s*root\s*\}\}/g, env.root);
+    .replace(PLACEHOLDER_REGEX, (match, key: string, arg: string | undefined, at: number) => {
+      if (arg === undefined) return key === 'root' ? env.root : match;
+      if ((PAGE_HELPERS as readonly string[]).includes(key)) {
+        return helpers[key as (typeof PAGE_HELPERS)[number]](
+          arg,
+          env.root,
+          env.page.file,
+          lineOf(at)
+        );
+      }
+      env.diag.error(
+        env.page.file,
+        lineOf(at),
+        `Unknown placeholder ${match} (a page has {{root}}, ${PAGE_HELPERS.map((name) => `{{${name}:…}}`).join(', ')})`
+      );
+      return '';
+    });
+};
 
 /** The page's body with its slots filled by their Markdown */
 const renderPageBody = (
   page: HubPage,
   env: HubMarkdownEnv,
-  md: ReturnType<typeof createHubMarkdown>
+  md: ReturnType<typeof createHubMarkdown>,
+  helpers: HubMarkupHelpers
 ) => {
   let body = '';
   let cursor = 0;
   for (const slot of page.slots) {
-    body += resolvePageMarkup(page.body.slice(cursor, slot.offset), cursor, env);
+    body += resolvePageMarkup(page.body.slice(cursor, slot.offset), cursor, env, helpers);
     const content = slot.mdFile ? renderMarkdown(md, slot.mdFile, env) : '';
     body += `${slot.openTag}\n${content}${slot.closeTag}`;
     cursor = slot.offset + slot.length;
   }
-  return body + resolvePageMarkup(page.body.slice(cursor), cursor, env);
+  return body + resolvePageMarkup(page.body.slice(cursor), cursor, env, helpers);
 };
 
 /** A `hub:` link must reach a page, and its `#hash` an id on that page */
@@ -234,7 +265,24 @@ export const buildHub = async ({
   const tree = discoverPages(diag);
   const shell = fs.readFileSync(HUB_SHELL_FILE, 'utf-8');
   const notFoundBody = fs.readFileSync(HUB_NOT_FOUND_FILE, 'utf-8');
-  assets.styles = buildStyles(mode, diag) ?? fallback?.styles ?? null;
+  const icons = loadHubIcons(diag);
+  const hashStaticAsset = createStaticAssetHasher();
+  const helpers: HubMarkupHelpers = {
+    icon: (name, _root, file, line) => icons.render(name, file, line),
+    asset: (assetPath, root, file, line) => {
+      const hash = hashStaticAsset(assetPath);
+      if (hash) return `${root}${ASSETS_URL_DIR}${assetPath}?v=${hash}`;
+      diag.error(file, line, `{{asset:${assetPath}}}: no such file in hub/_assets/`);
+      return '';
+    },
+    link: (sitePath, root, file, line) => {
+      const target = tree?.byPath.get(`${sitePath.replace(/^\/+|\/+$/g, '')}/`);
+      if (target) return pageHref(root, target);
+      diag.error(file, line, `Dead link {{link:${sitePath}}}: no page at hub/pages/${sitePath}/`);
+      return '';
+    },
+  };
+  assets.styles = buildStyles(mode, diag, hashStaticAsset) ?? fallback?.styles ?? null;
   assets.scripts = (await buildScripts(mode, diag)) ?? fallback?.scripts ?? null;
   // `dev` still writes the 404 page, as the error page every URL gets
   if (!tree && mode === 'public') return result([]);
@@ -242,7 +290,7 @@ export const buildHub = async ({
   const md = createHubMarkdown();
   for (const page of tree?.pages ?? []) {
     const env = createMarkdownEnv(page, relativeRoot(page.path), diag);
-    rendered.push({ page, env, body: renderPageBody(page, env, md) });
+    rendered.push({ page, env, body: renderPageBody(page, env, md, helpers) });
   }
   if (tree) checkLinks(rendered, tree, diag);
 
@@ -263,7 +311,7 @@ export const buildHub = async ({
       ? `<meta name="${HUB_DEV_META}" content="${HUB_DEV_SOCKET_PLACEHOLDER}" />
     <script type="module" src="${assetUrl(root, devClient)}"></script>`
       : '',
-    nav: tree ? renderNav(tree.root, page, root) : '',
+    nav: tree ? renderNav(tree.root, page, root, icons) : '',
     css: assetUrl(root, assets.styles),
     js: assetUrl(root, findScript('_assets/hub.js')),
     dataJs: assetUrl(root, data),
@@ -282,7 +330,8 @@ export const buildHub = async ({
       section,
       bodyClass: `hubPage_${section.replace(/\/$/, '') || 'home'}`,
       breadcrumbs: renderBreadcrumbs(page, env.root),
-      toc: renderToc(env.headings),
+      // The homepage's sections are its layout, not a document to jump around in
+      toc: isHome ? '' : renderToc(env.headings),
       body,
     };
   };
@@ -303,6 +352,7 @@ export const buildHub = async ({
       shell,
       HUB_SHELL_FILE,
       { ...site, head: [head, site.head].filter(Boolean).join('\n    '), ...values },
+      helpers,
       diag
     );
   };

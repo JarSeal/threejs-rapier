@@ -29,12 +29,49 @@ export type HubAssetFile = {
   hash: string;
 };
 
-const ASSETS_URL_DIR = '_assets/';
+export const ASSETS_URL_DIR = '_assets/';
 
-export const buildStyles = (mode: HubBuildMode, diag: HubDiagnostics): HubAssetFile | null => {
+/**
+ * A static asset's `?v=` hash, from its path in `_assets/` (`fonts/inter-latin-wght-normal.woff2`),
+ * or null when it isn't a file in one of the static folders. `_headers` caches `_assets/*` as
+ * immutable, so every reference to one carries its hash, like the built assets'.
+ */
+export type HubStaticAssetHasher = (assetPath: string) => string | null;
+
+export const createStaticAssetHasher = (): HubStaticAssetHasher => {
+  const hashes = new Map<string, string | null>();
+  return (assetPath) => {
+    if (hashes.has(assetPath)) return hashes.get(assetPath) ?? null;
+    const [dir] = assetPath.split('/');
+    const file = path.join(HUB_ASSETS_DIR, assetPath);
+    const isInside =
+      HUB_STATIC_ASSET_DIRS.includes(dir) &&
+      !assetPath.split('/').includes('..') &&
+      fs.statSync(file, { throwIfNoEntry: false })?.isFile();
+    const hash = isInside ? hashContent(fs.readFileSync(file)) : null;
+    hashes.set(assetPath, hash);
+    return hash;
+  };
+};
+
+/** `url(fonts/…)` in the CSS: relative to `_assets/hub.css`, so a static asset's path as is */
+const CSS_URL_REGEX = /url\(\s*(['"]?)([^'")?#]+)\1\s*\)/g;
+
+export const buildStyles = (
+  mode: HubBuildMode,
+  diag: HubDiagnostics,
+  hashStaticAsset: HubStaticAssetHasher
+): HubAssetFile | null => {
   try {
-    const { css } = sass.compile(HUB_SCSS_ENTRY, {
+    const compiled = sass.compile(HUB_SCSS_ENTRY, {
       style: mode === 'public' ? 'compressed' : 'expanded',
+    });
+    const css = compiled.css.replace(CSS_URL_REGEX, (match, quote: string, url: string) => {
+      if (/^(data:|[a-z]+:|\/)/i.test(url)) return match;
+      const hash = hashStaticAsset(url);
+      if (hash) return `url(${quote}${url}?v=${hash}${quote})`;
+      diag.error(HUB_SCSS_ENTRY, undefined, `${match}: no such file in hub/_assets/`);
+      return match;
     });
     return { outPath: `${ASSETS_URL_DIR}hub.css`, content: css, hash: hashContent(css) };
   } catch (err) {
