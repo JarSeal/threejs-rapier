@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import fs from 'node:fs';
 import path from 'node:path';
-import { buildHub, rebaseNotFoundPage } from './hub/build';
+import { buildHub, formatBytes, rebaseNotFoundPage } from './hub/build';
 import { formatDiagnostic } from './hub/diagnostics';
 import { APP_DIST_DIR, HUB_DIST_DIR, ROOT, toRepoPath } from './hub/paths';
 
@@ -76,6 +76,11 @@ const main = async () => {
   console.log(
     `${GREEN}✓ [Hub] ${result.pageCount} pages → ${toRepoPath(outDir)}/ (${Math.round(result.durationMs)} ms)${RESET}`
   );
+  if (result.search) {
+    console.log(
+      `  Search index: ${formatBytes(result.search.bytes)}, ${result.search.docCount} sections`
+    );
+  }
 
   if (process.env.AEK_HUB_IN_DIST === 'true') copyIntoAppDist(outDir);
 };

@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Dev tooling, Hub
 Epic: p550_aekasha-hub-epic.md
 Blocks: p553_hub-api-documentation.md (its search entries), p554_hub-examples-start-scene-and-example-scenes.md (its snippets)
@@ -153,13 +153,51 @@ As built:
 - The first region: `dynamic-box` in `src/app/physicsTest.ts` (comment only), included in the
   "Snippet includes" section of `hub/pages/documentation/code-blocks/`.
 
-### Phase 3 — Search
+### Phase 3 — Search — done
 
 §2.4.
 
 **Exit:** ⌘K, Ctrl+K and `/` open search. Typing a heading's words finds its section, and a typo
 still finds it. Results open the right anchor. The search files load only on first use (network
 tab) and come from the cache on the next page.
+
+As built:
+
+- minisearch 7.2.0. The index (`devTools/hub/search.ts`) is built from each page's rendered body,
+  so a page's own markup, its Markdown and the generated sections are all in it: one document per
+  heading with an id, plus the page's own section (the text before its first heading, with the
+  `aek:description` in front). The page title and tags are on that section only, so a page's title
+  finds the page before its sections. The homepage isn't indexed (its sections are its layout).
+  Code blocks give their identifiers, without keywords.
+- `devTools/hub/searchProtocol.ts` (no Node imports) holds what the build and the browser share:
+  the document type, the fields, the boosts and the tokenizer. Indexed text also gets each word's
+  camelCase parts (`mesh` finds `createMeshEntity`); a query isn't split. Prefix matching starts at
+  two characters, fuzzy (0.2) at four.
+- `hub-search.js` is `export default JSON.parse('…')`. Its URL (relative to `_assets/`, with its
+  `?v=`) is `hub-data.js`'s `searchIndex`, not in the pages: a text edit changes only that file's
+  `?v=`, which the dev plugin already ignores, so it reloads only the edited page.
+- The search code isn't a `search.js` entry but a chunk `hub.ts` imports on first use
+  (`hub/_assets/ts/_search.ts` → `_assets/chunks/_search-<hash>.js`, 25 kB minified, minisearch
+  included): its file name is its version. The first focus or hover of the search button preloads
+  it and the index; a click, ⌘K / Ctrl+K or `/` (outside a field) opens the dialog.
+- The dialog is a native modal `<dialog>` built by `_search.ts`: a combobox input over a listbox,
+  results grouped by top-level section in the order of each group's best result, at most 50. A
+  result shows its breadcrumb (pages below the section, then the headings above it, from
+  `hub-data.js`), its heading and a snippet around the first match, the matched terms in `<mark>`.
+  No results: up to three page titles from a looser title search (fuzzy 0.4). The query is kept in
+  `sessionStorage` (`aekHubSearch`).
+- Chrome traps: a `type="search"` input spends the first Escape clearing itself, so the input
+  closes the dialog on Escape itself; and with nothing focused before the dialog opened, Chrome
+  leaves the focus on the hidden input after a close, so the close blurs first, and `hub.ts`'s `/`
+  ignores a field inside a closed dialog.
+- `hub:build` prints the index's size and sections (341 kB, 91 kB gzipped, 105 sections; the
+  changelog is most of it). Over 1 MB it warns.
+- `yarn hub:preview` sends `_headers`' immutable caching for `_assets/`, so the next page's cache
+  hit can be checked locally. The dev plugin removes renamed script chunks with removed pages.
+- Ranking note: a prefix query sums every term it expands to, so "physic" ranks a changelog entry
+  full of `physicsXxx` identifiers above the Physics example page ("physics" ranks the page first).
+  Lowering the prefix weight hurt other queries. Revisit when p553–p555 add more pages than
+  changelog.
 
 ### Phase 4 — Docs and versioning
 

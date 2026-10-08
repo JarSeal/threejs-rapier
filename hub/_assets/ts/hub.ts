@@ -1,7 +1,7 @@
 /**
  * The Hub's page script, loaded on every page (p551). The menu is in the page already (rendered
  * at build time), so this only adds behaviour on top of it: the theme toggle, the mobile menu,
- * the nav's dropdowns, the code blocks' copy, collapse and tabs, and the search key hint.
+ * the nav's dropdowns, the code blocks' copy, collapse and tabs, and opening the search.
  */
 
 document.documentElement.classList.add('hubJs');
@@ -89,7 +89,8 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
+  // The search dialog closes itself
+  if (e.key !== 'Escape' || (e.target as Element).closest?.('dialog')) return;
   const openItem = dropdownItems.find((item) => item.classList.contains('hubNavItem_open'));
   if (openItem) {
     setDropdownOpen(openItem, false);
@@ -202,8 +203,57 @@ document.addEventListener('keydown', (e) => {
   next.focus();
 });
 
-// --- Search ---
+// --- Search (p552) ---
 
-// p552 opens the search dialog; the hint shows the platform's shortcut
+/**
+ * The dialog and the index load on first use (`_search.ts`, a chunk of its own): the first focus
+ * or hover of the search button preloads them, a click, ⌘K / Ctrl+K or `/` opens the dialog
+ */
+const searchButton = document.querySelector<HTMLButtonElement>('[data-hub-search]');
 const searchKey = document.querySelector<HTMLElement>('[data-hub-search-key]');
 if (searchKey && !/Mac|iPhone|iPad/.test(navigator.userAgent)) searchKey.textContent = 'Ctrl K';
+
+/** `_assets/hub.js`: the index's URL in `hub-data.js` and the site root resolve against it */
+const hubJsUrl = import.meta.url;
+let searchModule: Promise<typeof import('./_search')> | null = null;
+
+const loadSearch = () =>
+  (searchModule ??= import('./_search').catch((err: unknown) => {
+    searchModule = null; // Tried again on the next use
+    throw err;
+  }));
+
+const openSearch = () => {
+  setMenuOpen(false);
+  loadSearch()
+    .then((search) => search.openSearch(hubJsUrl))
+    // eslint-disable-next-line no-console
+    .catch((err: unknown) => console.error('[Hub] The search failed to load:', err));
+};
+
+const preloadSearch = () => {
+  loadSearch()
+    .then((search) => search.preloadSearch(hubJsUrl))
+    .catch(() => {
+      // Reported when the search opens
+    });
+};
+
+searchButton?.addEventListener('click', openSearch);
+searchButton?.addEventListener('focus', preloadSearch, { once: true });
+searchButton?.addEventListener('pointerenter', preloadSearch, { once: true });
+
+/** A field the reader types in; the search's own input once its dialog is closed isn't one */
+const isEditable = (target: EventTarget | null) =>
+  target instanceof Element &&
+  !!target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') &&
+  !target.closest('dialog:not([open])');
+
+document.addEventListener('keydown', (e) => {
+  const isModK =
+    (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k';
+  const isSlash = e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditable(e.target);
+  if (!isModK && !isSlash) return;
+  e.preventDefault();
+  openSearch();
+});

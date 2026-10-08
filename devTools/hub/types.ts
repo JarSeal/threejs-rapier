@@ -79,3 +79,14 @@ export type HubNavItem = {
   icon: string;
   children: HubNavItem[];
 };
+
+/** A page in `hub-data.js` (here, not in `data.ts`: the search dialog reads it too) */
+export type HubDataPage = {
+  path: string;
+  title: string;
+  tags: string[];
+  description: string;
+  /** The top-level section's path ('' the homepage) */
+  section: string;
+  headings: HubHeading[];
+};

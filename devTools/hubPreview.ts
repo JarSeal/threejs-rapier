@@ -9,7 +9,8 @@ import { getHubContentType, resolveHubRoute } from './hub/serve';
 /**
  * `yarn hub:preview [--base /hub/] [--port 8090] [--dir dist-hub]`: serves the built Hub as a
  * static host would: a directory URL serves its `index.html`, anything missing gets `404.html`
- * with a 404. `--base` serves it under a path, as `AEK_HUB_IN_DIST` does (`/hub/`).
+ * with a 404, and `_assets/` is cached as `_headers` has it. `--base` serves it under a path, as
+ * `AEK_HUB_IN_DIST` does (`/hub/`).
  */
 
 const parseArgs = (args: string[]) => {
@@ -31,8 +32,16 @@ if (!fs.existsSync(path.join(dir, 'index.html'))) {
   process.exit(1);
 }
 
+/** Cached as `_headers` caches them on Netlify: every reference to one carries its `?v=` */
+const ASSETS_DIR = path.join(dir, '_assets') + path.sep;
+
 const send = (res: http.ServerResponse, status: number, file: string) => {
-  res.writeHead(status, { 'Content-Type': getHubContentType(file) });
+  res.writeHead(status, {
+    'Content-Type': getHubContentType(file),
+    ...(file.startsWith(ASSETS_DIR) && {
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    }),
+  });
   fs.createReadStream(file).pipe(res);
 };
 

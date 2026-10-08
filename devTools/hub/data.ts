@@ -1,23 +1,13 @@
 import type { ProjectMetadata } from '../projectMetadata';
 import type { HubLatestChange } from './generated/version';
 import { hashContent } from './hash';
-import type { HubHeading, HubNavItem, HubPage } from './types';
+import type { HubDataPage, HubHeading, HubNavItem, HubPage } from './types';
 
 /**
  * `hub-data.js`, loaded on every page (p550 §3.5): `window.AEK_HUB = { versions, build,
- * latestChange, nav, pages }`. Small on purpose: the full text for search goes into the lazily loaded
- * `hub-search.js` (p552).
+ * latestChange, nav, pages, searchIndex }`. Small on purpose: the full text for search goes into
+ * the lazily loaded `hub-search.js` (p552).
  */
-
-export type HubDataPage = {
-  path: string;
-  title: string;
-  tags: string[];
-  description: string;
-  /** The top-level section's path ('' the homepage) */
-  section: string;
-  headings: HubHeading[];
-};
 
 export type HubData = {
   versions: Record<'engine' | 'toolkit' | 'app', { version: string; codename: string }> & {
@@ -29,6 +19,11 @@ export type HubData = {
   /** The menu: pages that leave themselves out of it (issues) are only in `pages` */
   nav: HubNavItem[];
   pages: HubDataPage[];
+  /**
+   * The search index's URL relative to `_assets/`, with its `?v=` (p552): here, not in the pages,
+   * so a text edit changes only this file's `?v=`, never every page's HTML
+   */
+  searchIndex: string;
 };
 
 export const HUB_DATA_GLOBAL = 'AEK_HUB';
@@ -51,7 +46,8 @@ export const buildHubData = (
   homepage: HubPage,
   pages: HubPage[],
   headings: Map<HubPage, HubHeading[]>,
-  latestChange: HubLatestChange | null
+  latestChange: HubLatestChange | null,
+  searchIndex: string
 ) => {
   const data: HubData = {
     versions: {
@@ -71,6 +67,7 @@ export const buildHubData = (
       section: getPageSection(page),
       headings: headings.get(page) ?? [],
     })),
+    searchIndex,
   };
   const content = `window.${HUB_DATA_GLOBAL} = ${JSON.stringify(data)};\n`;
   return { outPath: '_assets/hub-data.js', content, hash: hashContent(content) };

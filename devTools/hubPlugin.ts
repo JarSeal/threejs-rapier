@@ -150,11 +150,15 @@ export const hubPlugin = (): Plugin => ({
       }
     };
 
-    const removeStalePages = (result: HubBuildResult, prev: HubBuildResult) => {
-      const outPaths = new Set(result.pages.map((page) => page.outPath));
-      for (const page of prev.pages) {
-        if (!outPaths.has(page.outPath))
-          fs.rmSync(path.join(HUB_DEV_OUT_DIR, page.outPath), { force: true });
+    /** Removed pages, and script chunks a TS change renamed (every page reloads for it) */
+    const removeStaleFiles = (result: HubBuildResult, prev: HubBuildResult) => {
+      const outPaths = (build: HubBuildResult) => [
+        ...build.pages.map((page) => page.outPath),
+        ...(build.assets.scripts ?? []).map((file) => file.outPath),
+      ];
+      const current = new Set(outPaths(result));
+      for (const outPath of outPaths(prev)) {
+        if (!current.has(outPath)) fs.rmSync(path.join(HUB_DEV_OUT_DIR, outPath), { force: true });
       }
     };
 
@@ -186,7 +190,7 @@ export const hubPlugin = (): Plugin => ({
         );
         return;
       }
-      removeStalePages(result, prev);
+      removeStaleFiles(result, prev);
       const events = diffBuilds(prev, result, changedFiles);
       for (const data of events) server.hot.send({ type: 'custom', event: HUB_DEV_EVENT, data });
       if (events.length) {

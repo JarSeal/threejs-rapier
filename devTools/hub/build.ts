@@ -14,6 +14,7 @@ import {
 } from './assets';
 import { buildHubData, getPageSection } from './data';
 import { hubCodePlugin, loadHubHighlighter } from './code';
+import { buildSearchIndex } from './search';
 import { createIssuesSection } from './generated/issues';
 import type { HubGeneratedSection, HubSlotGenerator } from './generated/section';
 import { createVersionSection } from './generated/version';
@@ -100,7 +101,17 @@ export type HubBuildResult = {
   /** The pages and the 404 page as written; empty when nothing was */
   pages: HubBuiltPage[];
   assets: HubBuildAssets;
+  /** The search index's size (`hub:build` reports it) and its sections, null when not built */
+  search: { bytes: number; docCount: number } | null;
 };
+
+/** p552 §2.4: over it, the build warns (the API docs are the risk) */
+const SEARCH_INDEX_WARN_BYTES = 1024 * 1024;
+
+export const formatBytes = (bytes: number) =>
+  bytes < 1024 * 1024
+    ? `${Math.round(bytes / 1024)} kB`
+    : `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 
 /**
  * The 404 page is served at any depth, so its links resolve against a `<base>`: the site root's
@@ -287,6 +298,7 @@ export const buildHub = async ({
   const version = createVersionSection(meta, diag);
   const sections: HubGeneratedSection[] = [createIssuesSection(diag), version.section];
   const sectionDirs = sections.flatMap((section) => section.dirs);
+  let searchStats: HubBuildResult['search'] = null;
   const result = (files: string[]): HubBuildResult => ({
     isOk: diag.errors.length === 0,
     diag,
@@ -296,6 +308,7 @@ export const buildHub = async ({
     dirs: sectionDirs,
     pages: builtPages,
     assets,
+    search: searchStats,
   });
 
   const tree = discoverPages(diag, sections);
@@ -348,12 +361,30 @@ export const buildHub = async ({
   const headings = new Map<HubPage, HubHeading[]>(
     rendered.map(({ page, env }) => [page, env.headings])
   );
-  // After the render: the changelog's render fills `latestChange.hash`
-  const data = tree
-    ? buildHubData(meta, tree.root, tree.pages, headings, version.latestChange)
-    : null;
   const assetUrl = (root: string, file: HubAssetFile | null | undefined) =>
     file ? `${root}${file.outPath}?v=${file.hash}` : '';
+  const search = tree ? buildSearchIndex(rendered) : null;
+  if (search) searchStats = { bytes: search.content.length, docCount: search.docCount };
+  if (search && search.content.length > SEARCH_INDEX_WARN_BYTES) {
+    diag.warn(
+      HUB_PAGES_DIR,
+      undefined,
+      `The search index is ${formatBytes(search.content.length)}, over ${formatBytes(SEARCH_INDEX_WARN_BYTES)}: index fewer fields (p552 §2.4)`
+    );
+  }
+  // After the render: the changelog's render fills `latestChange.hash`
+  const data =
+    tree && search
+      ? buildHubData(
+          meta,
+          tree.root,
+          tree.pages,
+          headings,
+          version.latestChange,
+          // Relative to `_assets/`, where hub.js resolves it from
+          assetUrl('', search).slice(ASSETS_URL_DIR.length)
+        )
+      : null;
   const findScript = (outPath: string) => assets.scripts?.find((file) => file.outPath === outPath);
   const devClient = mode === 'dev' ? findScript(HUB_DEV_CLIENT_OUT_PATH) : undefined;
 
@@ -490,7 +521,7 @@ export const buildHub = async ({
 
   if (mode === 'public') fs.rmSync(outDir, { recursive: true, force: true });
   for (const { outPath, html } of builtPages) writeFile(path.join(outDir, outPath), html);
-  for (const file of [assets.styles, data, ...(assets.scripts ?? [])]) {
+  for (const file of [assets.styles, data, search, ...(assets.scripts ?? [])]) {
     if (file) writeFile(path.join(outDir, file.outPath), file.content);
   }
   copyStaticAssets(outDir);
