@@ -24,7 +24,7 @@ import {
   bakeOctahedralImpostorAtlases,
   resolveOctahedralImpostorOptions,
 } from '../../Lod/Impostors/OctahedralImpostor';
-import { resolveCrossQuadsOptions } from '../../Lod/Impostors/CrossQuads';
+import { bakeCrossQuadsAtlases, resolveCrossQuadsOptions } from '../../Lod/Impostors/CrossQuads';
 import { getGeneratedAppData } from '../../Scene';
 import { readRenderTargetImageAsync } from '../_dbg__TexturePreview';
 
@@ -34,9 +34,8 @@ import { readRenderTargetImageAsync } from '../_dbg__TexturePreview';
 // a `*.textureAtlas.json` (p299, `image` slots, `mipChain: "FULL"`) and the `*.impostor.json`.
 // The gather that follows encodes the atlases as KTX2 (p300). Without the dev files (a LAN device
 // without AEK_DEV_FILES_LAN, AEK_DEV_FILES=false, a build) the files are downloaded instead, with
-// the repo paths to put them at.
-//
-// Octahedral impostors only, so far; cross-quads are section 6's.
+// the repo paths to put them at. Both kinds export (octahedral: albedo and normalDepth slots;
+// cross-quads, section 6: albedo, and normal when baked with normals).
 
 /** Where an impostor stands against the export the generated data has of it */
 export type ImpostorExportState =
@@ -50,7 +49,7 @@ export type ImpostorExportState =
   /** Exported in another format version: re-export it */
   | 'OTHER_FORMAT';
 
-const KINDS_EXPORTED: readonly ImpostorKind[] = ['OCTAHEDRAL'];
+const KINDS_EXPORTED: readonly ImpostorKind[] = ['OCTAHEDRAL', 'CROSS_QUADS'];
 
 /** Block compression works on 4 × 4 texels: an atlas cell's side must be a multiple of 4 */
 const BLOCK_SIZE = 4;
@@ -128,18 +127,14 @@ const getExportPaths = (id: string) => {
     slotTexture?.__atlas && slotTexture.__sourcePath
       ? toRepoPath(slotTexture.__sourcePath)
       : `${getDir(impostor)}/${atlasId}.textureAtlas.json`;
-  const imageFile = (slot: string) => `${atlasId}.${slot}.png`;
   return {
     atlasId,
     impostor,
     atlas,
-    /** Per slot: the PNG's repo path and the atlas JSON's `image` (relative to it) */
-    images: {
-      albedo: { path: `${getDir(atlas)}/${imageFile('albedo')}`, ref: `./${imageFile('albedo')}` },
-      normalDepth: {
-        path: `${getDir(atlas)}/${imageFile('normalDepth')}`,
-        ref: `./${imageFile('normalDepth')}`,
-      },
+    /** A slot's PNG: its repo path and the atlas JSON's `image` (relative to it) */
+    getImage: (slot: string) => {
+      const fileName = `${atlasId}.${slot}.png`;
+      return { path: `${getDir(atlas)}/${fileName}`, ref: `./${fileName}` };
     },
   };
 };
@@ -151,6 +146,8 @@ const DEBUG_DESCRIPTION =
 type ImpostorExportFiles = {
   id: string;
   paths: ReturnType<typeof getExportPaths>;
+  /** The atlas slots written, one PNG each */
+  slots: string[];
   images: { path: string; blob: Blob }[];
   atlasJson: Record<string, unknown>;
   impostorJson: Record<string, unknown>;
@@ -169,6 +166,24 @@ const toJsonShading = (shading: { type: string; params: Record<string, unknown> 
   ),
 });
 
+/** Reads each slot's atlas target back into a PNG at its export path, then disposes the targets
+ * (all of them, also on a failure) */
+const readAtlasImages = async (
+  targets: Record<string, THREE.RenderTarget>,
+  paths: ReturnType<typeof getExportPaths>
+): Promise<ImpostorExportFiles['images']> => {
+  try {
+    return await Promise.all(
+      Object.entries(targets).map(async ([slot, target]) => ({
+        path: paths.getImage(slot).path,
+        blob: await encodePNG(await readRenderTargetImageAsync(target)),
+      }))
+    );
+  } finally {
+    for (const target of Object.values(targets)) target.dispose();
+  }
+};
+
 /** Bakes `record` again from its source and builds its files. */
 const buildOctahedralExport = async (record: ImpostorRecord): Promise<ImpostorExportFiles> => {
   if (record.kind !== 'OCTAHEDRAL' || !record.source) {
@@ -186,20 +201,10 @@ const buildOctahedralExport = async (record: ImpostorRecord): Promise<ImpostorEx
   const paths = getExportPaths(record.id);
   const atlases = bakeOctahedralImpostorAtlases(geometry, material, settings, record.id);
   const { layout } = atlases;
-  let images: ImpostorExportFiles['images'];
-  try {
-    const [albedo, normalDepth] = await Promise.all([
-      readRenderTargetImageAsync(atlases.albedo),
-      readRenderTargetImageAsync(atlases.normalDepth),
-    ]);
-    images = [
-      { path: paths.images.albedo.path, blob: await encodePNG(albedo) },
-      { path: paths.images.normalDepth.path, blob: await encodePNG(normalDepth) },
-    ];
-  } finally {
-    atlases.albedo.dispose();
-    atlases.normalDepth.dispose();
-  }
+  const images = await readAtlasImages(
+    { albedo: atlases.albedo, normalDepth: atlases.normalDepth },
+    paths
+  );
 
   const cells: { id: string; rect: [number, number, number, number] }[] = [];
   for (let j = 0; j < frames; j++) {
@@ -218,12 +223,12 @@ const buildOctahedralExport = async (record: ImpostorRecord): Promise<ImpostorEx
     slots: {
       albedo: {
         texOpts: { colorSpace: 'srgb' },
-        image: paths.images.albedo.ref,
+        image: paths.getImage('albedo').ref,
         optimize: { slot: 'baseColor' },
       },
       // The object-space normal and the depth: data, compressed without RDO (decision 3)
       normalDepth: {
-        image: paths.images.normalDepth.ref,
+        image: paths.getImage('normalDepth').ref,
         optimize: { slot: 'data', textures: { data: { codec: 'uastc', rdo: 0 } } },
       },
     },
@@ -243,7 +248,69 @@ const buildOctahedralExport = async (record: ImpostorRecord): Promise<ImpostorEx
     surfaceDepth: settings.surfaceDepth,
     debugData: { name: `${record.id} (impostor)`, description: DEBUG_DESCRIPTION },
   };
-  return { id: record.id, paths, images, atlasJson, impostorJson };
+  const slots = ['albedo', 'normalDepth'];
+  return { id: record.id, paths, slots, images, atlasJson, impostorJson };
+};
+
+/** Bakes `record` again from its source and builds its files: one cell per plane, side by side.
+ * The bake sizes cells to whole compression blocks itself. */
+const buildCrossQuadsExport = async (record: ImpostorRecord): Promise<ImpostorExportFiles> => {
+  if (record.kind !== 'CROSS_QUADS' || !record.source) {
+    throw new Error(`'${record.id}' isn't a cross-quad impostor with a source.`);
+  }
+  const { geometry, material, options } = record.source;
+  const settings = resolveCrossQuadsOptions(geometry, material, options);
+  const paths = getExportPaths(record.id);
+  const atlases = bakeCrossQuadsAtlases(geometry, material, settings, record.id);
+  const { layout } = atlases;
+  const images = await readAtlasImages(
+    atlases.normal
+      ? { albedo: atlases.albedo, normal: atlases.normal }
+      : { albedo: atlases.albedo },
+    paths
+  );
+
+  const cellWidth = layout.frameWidth + 2 * layout.gutter;
+  const cells = Array.from({ length: layout.planes }, (_, i) => ({
+    id: `p${i}`,
+    rect: [i * cellWidth, 0, cellWidth, layout.atlasSize[1]] as [number, number, number, number],
+  }));
+  const atlasJson = {
+    $schema: getSchemaRef(getDir(paths.atlas), 'textureAtlas'),
+    id: paths.atlasId,
+    size: layout.atlasSize,
+    padding: layout.gutter,
+    // As the runtime bake's mipmaps: every level, the planes' cells mixing past the gutter
+    mipChain: 'FULL',
+    slots: {
+      albedo: {
+        texOpts: { colorSpace: 'srgb' },
+        image: paths.getImage('albedo').ref,
+        optimize: { slot: 'baseColor' },
+      },
+      // The normal in each plane's own frame: a normal map, resized as unit vectors (decision 3)
+      ...(atlases.normal && {
+        normal: { image: paths.getImage('normal').ref, optimize: { slot: 'normal' } },
+      }),
+    },
+    cells,
+    debugData: { name: `${record.id} (impostor atlas)`, description: DEBUG_DESCRIPTION },
+  };
+  const impostorJson = {
+    $schema: getSchemaRef(getDir(paths.impostor), 'impostor'),
+    id: record.id,
+    kind: 'CROSS_QUADS',
+    atlas: paths.atlasId,
+    formatVersion: IMPOSTOR_EXPORT_FORMAT_VERSION,
+    sourceHash: getSourceHash(record),
+    alphaTest: settings.alphaTest,
+    shading: toJsonShading(settings.shading),
+    layout,
+    normals: settings.normals,
+    debugData: { name: `${record.id} (impostor)`, description: DEBUG_DESCRIPTION },
+  };
+  const slots = settings.normals ? ['albedo', 'normal'] : ['albedo'];
+  return { id: record.id, paths, slots, images, atlasJson, impostorJson };
 };
 
 const buildExport = async (id: string) => {
@@ -255,7 +322,9 @@ const buildExport = async (id: string) => {
   if (!isImpostorKindExported(record.kind)) {
     throw new Error(`'${id}': ${record.kind} impostors can't be exported yet.`);
   }
-  return buildOctahedralExport(record);
+  return record.kind === 'OCTAHEDRAL'
+    ? buildOctahedralExport(record)
+    : buildCrossQuadsExport(record);
 };
 
 /** Shows `note` as a toast, and again after the page reloads (a gather reloads it) */
@@ -311,7 +380,7 @@ const getGatherNote = (event: DevDataGatheredEvent, exports: ImpostorExportFiles
     };
   }
   const slotIds = new Set(
-    exports.flatMap((e) => ['albedo', 'normalDepth'].map((slot) => `${e.paths.atlasId}.${slot}`))
+    exports.flatMap((e) => e.slots.map((slot) => `${e.paths.atlasId}.${slot}`))
   );
   const errors = event.assetErrors.filter((error) => slotIds.has(error.id));
   if (errors.length) {

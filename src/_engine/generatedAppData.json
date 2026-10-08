@@ -318,6 +318,43 @@
             "extent": 1.4681599959326141
           },
           "surfaceDepth": true
+        },
+        {
+          "id": "largeWorldTreeCross",
+          "atlas": "largeWorldTreeCross",
+          "formatVersion": 1,
+          "sourceHash": "d926cf62b35cba4b",
+          "alphaTest": 0.5,
+          "shading": {
+            "type": "PHONGNODEMATERIAL",
+            "params": {
+              "shininess": 30,
+              "specular": "#111111"
+            }
+          },
+          "debugData": {
+            "name": "largeWorldTreeCross (impostor)",
+            "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+          },
+          "kind": "CROSS_QUADS",
+          "layout": {
+            "planes": 3,
+            "frameWidth": 76,
+            "frameHeight": 128,
+            "gutter": 4,
+            "atlasSize": [
+              252,
+              136
+            ],
+            "center": [
+              0,
+              1.6749999523162842,
+              0.0859423279762268
+            ],
+            "halfWidth": 1.0266128740003033,
+            "halfHeight": 1.729032208842616
+          },
+          "normals": true
         }
       ],
       "id": "largeWorld",
@@ -3841,6 +3878,143 @@
           "__vramBytes": {
             "in": 3981200,
             "out": 995712
+          },
+          "__codec": "uastc"
+        },
+        {
+          "id": "largeWorldTreeCross.albedo",
+          "texOpts": {
+            "colorSpace": "srgb"
+          },
+          "debugData": {
+            "name": "largeWorldTreeCross (impostor atlas)",
+            "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+          },
+          "__atlas": {
+            "id": "largeWorldTreeCross",
+            "slot": "albedo",
+            "size": [
+              252,
+              136
+            ],
+            "padding": 4,
+            "levels": 1,
+            "mipChain": "FULL",
+            "fromImage": true,
+            "cells": {
+              "p0": {
+                "uv": [
+                  0.015873015873015872,
+                  0.02941176470588236,
+                  0.31746031746031744,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              },
+              "p1": {
+                "uv": [
+                  0.3492063492063492,
+                  0.02941176470588236,
+                  0.6507936507936508,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              },
+              "p2": {
+                "uv": [
+                  0.6825396825396826,
+                  0.02941176470588236,
+                  0.9841269841269841,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              }
+            }
+          },
+          "__url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.albedo.ad0e5c1c.ktx2",
+          "__bytes": {
+            "in": 1464,
+            "out": 5563
+          },
+          "__vramBytes": {
+            "in": 182656,
+            "out": 46112
+          },
+          "__codec": "uastc"
+        },
+        {
+          "id": "largeWorldTreeCross.normal",
+          "debugData": {
+            "name": "largeWorldTreeCross (impostor atlas)",
+            "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+          },
+          "__atlas": {
+            "id": "largeWorldTreeCross",
+            "slot": "normal",
+            "size": [
+              252,
+              136
+            ],
+            "padding": 4,
+            "levels": 1,
+            "mipChain": "FULL",
+            "fromImage": true,
+            "cells": {
+              "p0": {
+                "uv": [
+                  0.015873015873015872,
+                  0.02941176470588236,
+                  0.31746031746031744,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              },
+              "p1": {
+                "uv": [
+                  0.3492063492063492,
+                  0.02941176470588236,
+                  0.6507936507936508,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              },
+              "p2": {
+                "uv": [
+                  0.6825396825396826,
+                  0.02941176470588236,
+                  0.9841269841269841,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              }
+            }
+          },
+          "__url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.normal.6cb59704.ktx2",
+          "__bytes": {
+            "in": 5971,
+            "out": 13027
+          },
+          "__vramBytes": {
+            "in": 182656,
+            "out": 46112
           },
           "__codec": "uastc"
         }
@@ -10085,6 +10259,145 @@
       },
       "__codec": "uastc"
     },
+    "largeWorldTreeCross.albedo": {
+      "id": "largeWorldTreeCross.albedo",
+      "texOpts": {
+        "colorSpace": "srgb"
+      },
+      "debugData": {
+        "name": "largeWorldTreeCross (impostor atlas)",
+        "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+      },
+      "__sourcePath": "src/app/impostors/largeWorldTreeCross.textureAtlas.json",
+      "__atlas": {
+        "id": "largeWorldTreeCross",
+        "slot": "albedo",
+        "size": [
+          252,
+          136
+        ],
+        "padding": 4,
+        "levels": 1,
+        "mipChain": "FULL",
+        "fromImage": true,
+        "cells": {
+          "p0": {
+            "uv": [
+              0.015873015873015872,
+              0.02941176470588236,
+              0.31746031746031744,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          },
+          "p1": {
+            "uv": [
+              0.3492063492063492,
+              0.02941176470588236,
+              0.6507936507936508,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          },
+          "p2": {
+            "uv": [
+              0.6825396825396826,
+              0.02941176470588236,
+              0.9841269841269841,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          }
+        }
+      },
+      "__url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.albedo.ad0e5c1c.ktx2",
+      "__bytes": {
+        "in": 1464,
+        "out": 5563
+      },
+      "__vramBytes": {
+        "in": 182656,
+        "out": 46112
+      },
+      "__codec": "uastc"
+    },
+    "largeWorldTreeCross.normal": {
+      "id": "largeWorldTreeCross.normal",
+      "debugData": {
+        "name": "largeWorldTreeCross (impostor atlas)",
+        "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+      },
+      "__sourcePath": "src/app/impostors/largeWorldTreeCross.textureAtlas.json",
+      "__atlas": {
+        "id": "largeWorldTreeCross",
+        "slot": "normal",
+        "size": [
+          252,
+          136
+        ],
+        "padding": 4,
+        "levels": 1,
+        "mipChain": "FULL",
+        "fromImage": true,
+        "cells": {
+          "p0": {
+            "uv": [
+              0.015873015873015872,
+              0.02941176470588236,
+              0.31746031746031744,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          },
+          "p1": {
+            "uv": [
+              0.3492063492063492,
+              0.02941176470588236,
+              0.6507936507936508,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          },
+          "p2": {
+            "uv": [
+              0.6825396825396826,
+              0.02941176470588236,
+              0.9841269841269841,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          }
+        }
+      },
+      "__url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.normal.6cb59704.ktx2",
+      "__bytes": {
+        "in": 5971,
+        "out": 13027
+      },
+      "__vramBytes": {
+        "in": 182656,
+        "out": 46112
+      },
+      "__codec": "uastc"
+    },
     "p299TestAtlas.albedo": {
       "id": "p299TestAtlas.albedo",
       "texOpts": {
@@ -11103,6 +11416,44 @@
       },
       "surfaceDepth": true,
       "__sourcePath": "src/app/impostors/largeWorldRockImpostor.impostor.json"
+    },
+    "largeWorldTreeCross": {
+      "id": "largeWorldTreeCross",
+      "atlas": "largeWorldTreeCross",
+      "formatVersion": 1,
+      "sourceHash": "d926cf62b35cba4b",
+      "alphaTest": 0.5,
+      "shading": {
+        "type": "PHONGNODEMATERIAL",
+        "params": {
+          "shininess": 30,
+          "specular": "#111111"
+        }
+      },
+      "debugData": {
+        "name": "largeWorldTreeCross (impostor)",
+        "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+      },
+      "kind": "CROSS_QUADS",
+      "layout": {
+        "planes": 3,
+        "frameWidth": 76,
+        "frameHeight": 128,
+        "gutter": 4,
+        "atlasSize": [
+          252,
+          136
+        ],
+        "center": [
+          0,
+          1.6749999523162842,
+          0.0859423279762268
+        ],
+        "halfWidth": 1.0266128740003033,
+        "halfHeight": 1.729032208842616
+      },
+      "normals": true,
+      "__sourcePath": "src/app/impostors/largeWorldTreeCross.impostor.json"
     }
   }
 }

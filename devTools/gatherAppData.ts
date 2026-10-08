@@ -75,7 +75,7 @@ import {
   type ImpostorDef,
 } from '../src/_engine/schemas/impostorSchema';
 import {
-  IMPOSTOR_ATLAS_SLOTS,
+  getImpostorDefSlots,
   IMPOSTOR_EXPORT_FORMAT_VERSION,
 } from '../src/_engine/core/Lod/Impostors/ImpostorFormat';
 
@@ -895,18 +895,20 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
           errors.push(`its atlas "${impostorJSON.atlas}" isn't a *.textureAtlas.json id`);
         } else {
           const slots = new Set(slotIds.map((id) => atlasSlotRegistry[id].__atlas.slot));
-          const { required, optional } = IMPOSTOR_ATLAS_SLOTS[impostorJSON.kind];
-          const missing = required.filter((slot) => !slots.has(slot));
+          const reads = getImpostorDefSlots(impostorJSON);
+          const missing = reads.filter((slot) => !slots.has(slot));
           if (missing.length) {
             errors.push(
-              `its atlas "${impostorJSON.atlas}" has no slot ${missing.map((slot) => `"${slot}"`).join(', ')} (the ${impostorJSON.kind} kind reads ${[...required, ...optional].join(', ')})`
+              `its atlas "${impostorJSON.atlas}" has no slot ${missing.map((slot) => `"${slot}"`).join(', ')} (this ${impostorJSON.kind} impostor reads ${reads.join(', ')})`
             );
           }
           const { atlasSize } = impostorJSON.layout;
+          const [layoutWidth, layoutHeight] =
+            typeof atlasSize === 'number' ? [atlasSize, atlasSize] : atlasSize;
           const [width, height] = atlasSlotRegistry[slotIds[0]].__atlas.size;
-          if (width !== atlasSize || height !== atlasSize) {
+          if (width !== layoutWidth || height !== layoutHeight) {
             errors.push(
-              `its atlas "${impostorJSON.atlas}" is ${width}×${height}, its layout's atlasSize is ${atlasSize}`
+              `its atlas "${impostorJSON.atlas}" is ${width}×${height}, its layout's atlasSize is ${layoutWidth}×${layoutHeight}`
             );
           }
         }
@@ -1396,11 +1398,9 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
           const { $schema, __sourcePath, ...def } = impostor;
           if (isProduction) delete def.debugData;
           impostorDefs.push({ ...def, id: impostorId });
-          // The slots its kind reads (the atlas id would load every slot)
-          const { required, optional } = IMPOSTOR_ATLAS_SLOTS[impostor.kind];
-          for (const slot of [...required, ...optional]) {
-            const slotId = getAtlasSlotTextureId(impostor.atlas, slot);
-            if (atlasSlotRegistry[slotId]) impostorSlotIds.push(slotId);
+          // The slots it reads (the atlas id would load every slot), all checked above
+          for (const slot of getImpostorDefSlots(impostor)) {
+            impostorSlotIds.push(getAtlasSlotTextureId(impostor.atlas, slot));
           }
         }
         // The generated data's shape: the definitions in place of the ids

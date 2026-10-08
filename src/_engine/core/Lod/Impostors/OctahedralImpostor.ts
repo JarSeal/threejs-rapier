@@ -34,12 +34,12 @@ import {
   type ImpostorShading,
 } from './ImpostorBake';
 import { getImpostorExport, warnIfImpostorExportStale } from './ImpostorExports';
+import type { ImpostorAtlasVOrigin } from './ImpostorFormat';
 import { recordImpostor } from './ImpostorRegistry';
 import { getOctahedralFrameBasis, getOctahedralFrameDirection } from './Octahedral';
 import {
   createOctahedralImpostorNodes,
   createOctahedralImpostorQuad,
-  type ImpostorAtlasVOrigin,
 } from './OctahedralImpostorMaterial';
 
 export type OctahedralImpostorOptions = {

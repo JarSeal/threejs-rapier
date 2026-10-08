@@ -11,11 +11,11 @@ import { getCurrentSceneId, getGeneratedSceneData } from '../../Scene';
 import { getNextSceneId, isCurrentlyLoading } from '../../SceneLoader';
 import { doesTextureExist, getTexture } from '../../Texture';
 import { getTextureAtlasInfo } from '../../TextureAtlas';
-import { IMPOSTOR_ATLAS_SLOTS, IMPOSTOR_EXPORT_FORMAT_VERSION } from './ImpostorFormat';
+import { getImpostorDefSlots, IMPOSTOR_EXPORT_FORMAT_VERSION } from './ImpostorFormat';
 import { getImpostorSourceHash } from './ImpostorSourceHash';
 
-/** A listed export, ready to build from: its definition and its kind's loaded atlas slots (an
- * optional slot only when it loaded) */
+/** A listed export, ready to build from: its definition and the atlas slots it reads, loaded
+ * (`getImpostorDefSlots`) */
 export type ImpostorExport<Kind extends ImpostorDef['kind']> = {
   def: Extract<ImpostorDef, { kind: Kind }>;
   slots: Partial<Record<string, THREE.Texture>>;
@@ -55,15 +55,11 @@ export const getImpostorExport = <Kind extends ImpostorDef['kind']>(
       `its export format is ${def.formatVersion}, the engine's ${IMPOSTOR_EXPORT_FORMAT_VERSION} (re-export it: the LOD tab's Impostors)`
     );
   }
-  const { required, optional } = IMPOSTOR_ATLAS_SLOTS[kind];
   const slots: ImpostorExport<Kind>['slots'] = {};
-  for (const slot of [...required, ...optional]) {
+  for (const slot of getImpostorDefSlots(def)) {
     const textureId = getSlotTextureId(def.atlas, slot);
     if (!doesTextureExist(textureId)) {
-      if (required.includes(slot)) {
-        return refuse(`its atlas slot '${textureId}' isn't loaded (see the texture error above)`);
-      }
-      continue;
+      return refuse(`its atlas slot '${textureId}' isn't loaded (see the texture error above)`);
     }
     const texture = getTexture(textureId) as THREE.Texture;
     if (getTextureAtlasInfo(texture)?.id !== def.atlas) {

@@ -22,6 +22,17 @@ export const IMPOSTOR_ATLAS_SLOTS: Record<
   CROSS_QUADS: { required: ['albedo'], optional: ['normal'] },
 };
 
+/** The atlas slots an exported impostor reads, all of which its atlas must have: its kind's
+ * required ones, plus cross-quads' `normal` when it was baked with normals */
+export const getImpostorDefSlots = (def: { kind: ImpostorKind; normals?: boolean }) =>
+  def.kind === 'CROSS_QUADS' && def.normals
+    ? [...IMPOSTOR_ATLAS_SLOTS.CROSS_QUADS.required, 'normal']
+    : [...IMPOSTOR_ATLAS_SLOTS[def.kind].required];
+
+/** Where an impostor atlas's v = 0 is: `TOP` for a bake's render targets (three r186, both
+ * backends), `BOTTOM` for an export's loaded KTX2 slots (p299 stores them v-up, three's UVs) */
+export type ImpostorAtlasVOrigin = 'TOP' | 'BOTTOM';
+
 /** The impostor material types an export can name (`getShadingProps`' resolved `type`). */
 export const IMPOSTOR_MATERIAL_TYPES = [
   'PHONGNODEMATERIAL',

@@ -64,6 +64,28 @@ const createHasher = () => {
   };
 };
 
+/**
+ * An attribute's or index's array as three r186's WebGPU backend uploads it: an 8 or 16-bit
+ * integer array that isn't normalized is widened to 32 bits (and an index's 0xffff to 0xffffffff),
+ * and the attribute's `array` is replaced with it in place on the first upload
+ * (`WebGPUAttributeUtils.createAttribute`). So a source's bytes change once it's drawn: hashed this
+ * way, the same geometry fingerprints alike before and after. A 32-bit or float array is itself.
+ */
+const asUploaded = (
+  array: ArrayLike<number> & ArrayBufferView,
+  normalized: boolean,
+  isIndex: boolean
+): ArrayLike<number> & ArrayBufferView => {
+  if (normalized) return array;
+  if (array instanceof Int16Array || array instanceof Int8Array) return new Int32Array(array);
+  if (!(array instanceof Uint16Array || array instanceof Uint8Array)) return array;
+  const widened = new Uint32Array(array);
+  if (isIndex) {
+    for (let i = 0; i < widened.length; i++) if (widened[i] === 0xffff) widened[i] = 0xffffffff;
+  }
+  return widened;
+};
+
 /** JSON with sorted keys and colours as hex, so equal settings always stringify alike. */
 const stableStringify = (value: unknown): string => {
   if (value === undefined) return 'null';
@@ -134,7 +156,11 @@ export const getImpostorSourceHash = (
         for (let c = 0; c < attribute.itemSize; c++) hasher.float(attribute.getComponent(i, c));
       }
     } else {
-      const array = (attribute as THREE.BufferAttribute).array;
+      const array = asUploaded(
+        (attribute as THREE.BufferAttribute).array,
+        attribute.normalized,
+        false
+      );
       hasher.string(array.constructor.name);
       hasher.bytes(array);
     }
@@ -142,7 +168,7 @@ export const getImpostorSourceHash = (
   const index = geometry.getIndex();
   if (index) {
     hasher.string('index');
-    hasher.bytes(index.array);
+    hasher.bytes(asUploaded(index.array, false, true));
   }
   const materials = Array.isArray(material) ? material : [material];
   hasher.string(

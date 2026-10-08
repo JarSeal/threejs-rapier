@@ -112,7 +112,9 @@ export const scene = async () => {
     sceneId: 'largeWorld',
   });
   // The farthest level: three alpha-cut planes with the tree baked on them
-  // (docs/plans/p351_impostor-billboard-lod.md §2.1), lit at runtime like the mesh
+  // (docs/plans/p351_impostor-billboard-lod.md §2.1), lit at runtime like the mesh. Built from its
+  // export (src/app/impostors/, listed in largeWorld.scene.json's `impostors`), so nothing is
+  // baked at load; re-export it from the LOD tab's Impostors after changing the tree
   const treeCross = generateCrossQuads(treeGeometry, [treeTrunkMat, treeFoliageMat], {
     id: 'largeWorldTreeCross',
   });

@@ -138,6 +138,30 @@
       ],
       "ktxVersion": "4.4.2"
     },
+    "97ce0fadfe917d774e14d973b606a2c00f4485b0dafee1b03fa8eca5c8691cb7": {
+      "source": "src/app/impostors/largeWorldTreeCross.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.normal.6cb59704.ktx2",
+      "bytes": 13027,
+      "textures": [
+        {
+          "slot": "normal",
+          "bytes": 13027,
+          "source": {
+            "width": 252,
+            "height": 136,
+            "bytes": 5971
+          },
+          "codec": "uastc",
+          "width": 252,
+          "height": 136,
+          "hasAlpha": false,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
     "bb41509e55e41c15158e076d861356eed3de426d22937c669ec6c46688d5362c": {
       "source": "src/public/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
       "url": "/aek-assets/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.316c3c57.ktx2",
@@ -157,6 +181,30 @@
           "hasAlpha": false,
           "mipmaps": true,
           "normalMode": false
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "bf2701db6ca10b29d7a6db2c6e7965ec79a04a15c1d72f50d9a38039202f38fa": {
+      "source": "src/app/impostors/largeWorldTreeCross.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.albedo.ad0e5c1c.ktx2",
+      "bytes": 5563,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 5563,
+          "source": {
+            "width": 252,
+            "height": 136,
+            "bytes": 1464
+          },
+          "codec": "uastc",
+          "width": 252,
+          "height": 136,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
         }
       ],
       "ktxVersion": "4.4.2"

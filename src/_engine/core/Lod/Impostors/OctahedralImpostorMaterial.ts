@@ -60,6 +60,7 @@ import {
   encodeOctahedralNode,
   getOctahedralFrameBasisNode,
 } from './Octahedral';
+import type { ImpostorAtlasVOrigin } from './ImpostorFormat';
 import type { OctahedralImpostorLayout } from './OctahedralImpostor';
 
 // --- THE INSTANCE MATRIX, BOUND A SECOND TIME ---
@@ -166,18 +167,11 @@ export type OctahedralImpostorNodes = {
 };
 
 /**
- * Where an atlas's v = 0 is. `TOP`: a render target's texture (a bake: v = 0 is the top of the
- * rendered image on both backends). `BOTTOM`: a loaded KTX2 atlas slot, stored flipped like every
- * standalone texture (p299, v up as three's UVs). The layout's cells are from the image's top left
- * either way.
- */
-export type ImpostorAtlasVOrigin = 'TOP' | 'BOTTOM';
-
-/**
  * The nodes that draw an octahedral impostor's atlases on its quad geometry (see
  * `generateOctahedralImpostor`): set them on a material as `positionNode`, `colorNode`,
  * `normalNode`, `depthNode` and `receivedShadowPositionNode`, with an `alphaTest`. `vOrigin` is the
- * atlases' (both the same), fixed in the shader.
+ * atlases' (both the same), fixed in the shader; the layout's cells are from the image's top left
+ * either way.
  */
 export const createOctahedralImpostorNodes = (
   layout: OctahedralImpostorLayout,

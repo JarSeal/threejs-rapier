@@ -34,6 +34,30 @@ export const OctahedralImpostorLayoutSchema = z
     message: 'atlasSize must be frames × (frameSize + 2 × gutter)',
   });
 
+/** `CrossQuadsLayout` (core/Lod/Impostors/CrossQuads.ts) */
+export const CrossQuadsLayoutSchema = z
+  .strictObject({
+    planes: z.union([z.literal(2), z.literal(3)]).describe('Vertical planes, 180° / planes apart.'),
+    frameWidth: PxSchema.min(1).describe("A frame's width, in texels."),
+    frameHeight: PxSchema.min(1).describe("A frame's height, in texels."),
+    gutter: PxSchema.min(0).describe("Texels between a frame and its cell's edge."),
+    atlasSize: z
+      .tuple([PxSchema.min(1), PxSchema.min(1)])
+      .describe(
+        "The atlas's width and height: [planes × (frameWidth + 2 × gutter), frameHeight + 2 × gutter], the frames side by side."
+      ),
+    center: Vec3Schema.describe(
+      "Where the planes cross (local space): the object's vertical axis, at its bounds' middle height."
+    ),
+    halfWidth: z.number().positive().describe("Half a plane's width, in local units."),
+    halfHeight: z.number().positive().describe("Half a plane's height, in local units."),
+  })
+  .refine(
+    ({ planes, frameWidth, frameHeight, gutter, atlasSize: [width, height] }) =>
+      width === planes * (frameWidth + 2 * gutter) && height === frameHeight + 2 * gutter,
+    { message: 'atlasSize must be [planes × (frameWidth + 2 × gutter), frameHeight + 2 × gutter]' }
+  );
+
 /** The impostor material's resolved shading (`getShadingProps`: never `AUTO`, the source material
  * isn't needed at runtime) */
 export const ImpostorShadingSchema = z.strictObject({
@@ -74,7 +98,18 @@ export const OctahedralImpostorAssetSchema = ImpostorBaseSchema.extend({
   surfaceDepth: z.boolean(),
 });
 
-export const ImpostorAssetSchema = z.discriminatedUnion('kind', [OctahedralImpostorAssetSchema]);
+export const CrossQuadsImpostorAssetSchema = ImpostorBaseSchema.extend({
+  kind: z.literal('CROSS_QUADS'),
+  layout: CrossQuadsLayoutSchema,
+  normals: z
+    .boolean()
+    .describe('Baked with a normal atlas: its atlas must have the "normal" slot too.'),
+});
+
+export const ImpostorAssetSchema = z.discriminatedUnion('kind', [
+  OctahedralImpostorAssetSchema,
+  CrossQuadsImpostorAssetSchema,
+]);
 
 export type ImpostorAsset = z.infer<typeof ImpostorAssetSchema>;
 export type ImpostorShading = z.infer<typeof ImpostorShadingSchema>;

@@ -1,6 +1,7 @@
 Status: in progress | Phases 1-3 implemented
 Category: Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 2.2)
+Blocked by: p341_alpha-coverage-mips.md (Phase 5 only: its cross-quad lane, see Phase 4 section 6)
 Related: \_DONE_p342_dev-file-server.md (Phase 4's export writes through it), p299_texture-arrays-and-atlases.md (Phase 4's exported atlases; Phase 4 section 1 extends its format), \_DONE_p300_asset-optimization-pipeline-plan.md (Phase 4's KTX2 encode), p354_gpu-driven-culling.md / p375_batched-mesh-batches.md (later lanes of Phase 5's showcase), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
 
 # Impostor & Billboard LOD
@@ -812,7 +813,63 @@ albedo, normalDepth, { id, alphaTest, surfaceDepth, shading, vOrigin })` registe
    the radius around the vertical axis, the height and base), the plane geometry rebuilt from it
    with v-up UVs for a loaded atlas, the `normal` slot optional (`normals: false`), export and
    load as for octahedral. largeWorld lists `largeWorldTreeCross`; checked like section 5 against
-   the runtime bake.
+   the runtime bake. — done: `CrossQuadsImpostorAssetSchema` (`kind: "CROSS_QUADS"`, `normals`,
+   `layout`). Changed from the text above: the layout is what the bake used, not radius / height /
+   base (the planes' margins and rounding would have to be recomputed): `CrossQuadsLayout`'s
+   `planes`, `frameWidth`, `frameHeight`, `gutter`, `atlasSize` ([w, h], checked against them),
+   `center` (where the planes cross) and `halfWidth` / `halfHeight`. `generateCrossQuads` is split
+   like the octahedral one: `bakeCrossQuadsAtlases` (unregistered targets and the layout, what an
+   export reads back) and `buildCrossQuads(layout, albedo, normal, { id, alphaTest, shading,
+vOrigin })`, which rebuilds the planes with uvs for the v origin and flips the plane normal
+   node's up (along -v on a bake's atlas, +v on a loaded one). `ImpostorAtlasVOrigin` moved to
+   `ImpostorFormat.ts`. Found in the code: p299 refuses a cell rect that isn't a multiple of 4, and
+   a cross-quad frame is sized from the object, so the bake now grows each frame by up to 3 texels
+   until its cell is (split around the object). largeWorld's tree was already 76 × 128 in 84 × 136
+   cells (252 × 136, unchanged). `normal` is no longer simply optional: `getImpostorDefSlots(def)`
+   (`ImpostorFormat.ts`) is the slots an export reads, `normal` when its `normals` is true; the
+   gatherer fails an atlas without one, a scene loads exactly those slots, and the runtime refuses
+   (and bakes) when one didn't load. The export writes one cell per plane (`p<i>`), `mipChain:
+"FULL"`, albedo with the `baseColor` profile and the normal atlas as a `normal` slot (resized
+   as unit vectors). Bug found, in section 2's fingerprint: three r186's WebGPU backend replaces a
+   16 or 8-bit integer index or attribute with a 32-bit copy on its first upload
+   (`WebGPUAttributeUtils.createAttribute`), and the hash read the bytes, so the tree (a
+   `Uint16Array` index) hashed differently before and after its first draw: the export (after)
+   read stale at the next load (before). `getImpostorSourceHash` now hashes integer arrays as
+   that 32-bit upload; 32-bit and float arrays hash as before, so the rock's fingerprint stands.
+   Measured on WebGPU (Apple GPU, 1200×800) with section 5's harness on the tree nearest (5, 5)
+   (scale 1.14), the cross-quad level drawn exported and then as a runtime bake under another id
+   (its geometry and material swapped onto the level mesh), against level 1 (which it replaces)
+   and level 0, from 5°, 15°, 30° and 60° at four azimuths:
+   - At the switch distance (below screen size 0.032 × 0.9): exported against level 1 mean luma
+     difference 11.6-21.8, IoU 0.59-0.81, area 0.74-1.01; the bake 11.3-22.3, 0.70-0.89,
+     0.86-1.20. Exported against baked: 6.2-11.7, IoU 0.80-0.90, area 0.82-0.92. At half the
+     distance exported against baked 1.5-4.5, IoU 0.93-0.98, area 0.95-1.00. Level 1 against
+     level 0 for scale: 7.0-11.4. Both cross-quads read much darker than level 1 from these
+     views (the bake as much as the export: Phase 1's look, not this section's).
+   - The export is thinner far away, mostly its trunks breaking up. Not the codec: decoded, the
+     KTX2's alpha equals the PNG's at level 0, and its levels match the exact box chain within 1-3 %
+     coverage; `rdo: 0` on the albedo (tried) changes no figure. It's the mips: the bake's GPU mips
+     (read back) equal the export's at levels 1-3 (IoU 0.96-0.99), but at levels 4-5 (15 × 8,
+     7 × 4: the switch distance samples levels 3-4) they hold mean alpha 72-77 against the true 65.
+     three r186 generates odd-sized levels with a bilinear sample, which isn't area-preserving and
+     keeps thin features above the cut; p299's `FULL` chain is the exact area filter, so its alpha
+     test thins them as Phase 1's "no alpha coverage correction per mip" note expected. Decided
+     (after review): accepted for this phase, as the switch from level 1 is no worse than with the
+     bake; the fix is p341_alpha-coverage-mips.md (alpha scaled per level to level 0's coverage
+     at the cut, in the pipeline), done before Phase 5, whose showcase puts cross-quads on screen.
+   - GPU memory tab: 46,112 B per atlas (UASTC, 8 levels), against 182,738 B per bake atlas.
+   - Scene load (four alternating rounds, as in section 5, the rock exported in both): listed
+     1,376-1,414 ms, baking 1,388-1,408 ms (the bake 13-15 ms), about 15 ms faster. With both
+     impostors exported largeWorld loads in about 1,385 ms, against about 1,450 ms with both baked
+     (section 5).
+   - Draw cost from the overview camera (455 cross-quad instances): exported 5.47-5.48 ms, baked
+     5.48-5.49 ms, none drawn 5.11-5.13 ms.
+   - Stale: the foliage colour one step off warns once ("fingerprint d926cf62b35cba4b, now
+     df48ea43e5e2a6b8") and the scene draws from the export. A second export writes nothing (all
+     four files `unchanged`): the bake is deterministic.
+   - WebGL2 (SwiftShader; 5° and 30° at two azimuths, the forest is slow there): every figure
+     within 0.4 of WebGPU's (exported against baked at the switch distance 7.1-12.0, area
+     0.83-0.91; at half 1.6-3.9).
 7. **Close the phase:** As built, the exit measured, CLAUDE.md (the data pipeline's suffix list,
    the Impostors section: export, the scene's `impostors`, the v origin), `readme.md` (the new asset
    JSON type; the Roadmap's exported atlases into Features), `docs/techniques/asset-optimization.md`
