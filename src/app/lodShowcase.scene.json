@@ -3,9 +3,10 @@
   "id": "lodShowcase",
   "sceneFile": "./lodShowcase.ts",
   "name": "LOD showcase",
-  "description": "The LOD system lane by lane (docs/plans/p351_impostor-billboard-lod.md Phase 5): each lane runs away from the start camera along -z, with an object in every level band. Lane 1: hand-made levels in JSON; lane 2: a generated chain (AUTO). Debug env: the scene's own \"LOD demo\" tab.",
+  "description": "The LOD system lane by lane (docs/plans/p351_impostor-billboard-lod.md Phase 5): each lane runs away from the start camera along -z, with an object in every level band. Left to right: an instanced tree pool ending in exported cross-quads and a cull fade; hand-made levels in JSON; a generated chain (AUTO); a static instance cell. Debug env: the scene's own \"LOD demo\" tab.",
   "cameras": ["lodShowcaseCamera"],
   "skyboxes": ["dayNight"],
+  "impostors": ["lodShowcaseTreeCross"],
   "geometries": ["lodShowcaseSphereLod0", "lodShowcaseSphereLod1", "lodShowcaseSphereLod2"],
   "materials": ["lodShowcaseSphere"],
   "meshes": ["lodShowcaseHandMade"]

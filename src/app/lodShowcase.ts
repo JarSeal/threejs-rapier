@@ -14,6 +14,8 @@ import {
 } from './lodShowcase/layout';
 import { handMadeLevelsLane } from './lodShowcase/lanes/handMadeLevels';
 import { generatedChainLane } from './lodShowcase/lanes/generatedChain';
+import { treeGroveLane } from './lodShowcase/lanes/treeGrove';
+import { instanceCellLane } from './lodShowcase/lanes/instanceCell';
 
 export const LOD_SHOWCASE_SCENE_ID = 'lodShowcase';
 /** lodShowcaseCamera.camera.json: the lanes are laid out from its pose. */
@@ -30,8 +32,10 @@ const LANE_SLOT_COUNT = 6;
  * lane only comes into view farther down (lodShowcase/layout.ts).
  */
 const LANES: { lane: ShowcaseLane; slot: number }[] = [
+  { lane: treeGroveLane, slot: 0 },
   { lane: handMadeLevelsLane, slot: 1 },
   { lane: generatedChainLane, slot: 2 },
+  { lane: instanceCellLane, slot: 5 },
 ];
 
 export type ShowcaseLaneEntry = { lane: ShowcaseLane; x: number; state: ShowcaseLaneState };

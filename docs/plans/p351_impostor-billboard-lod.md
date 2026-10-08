@@ -1028,7 +1028,38 @@ Sections, each reviewed before the next:
 2. **Lanes 3 and 6:** the tree grove pool (largeWorld's generators, its own thresholds) ending in
    cross-quads and a cull fade, exported through the LOD tab's Impostors folder; the static
    instance cell (an `InstancedMesh` entity with hand-made levels). Checked like section 1, plus
-   the load without a cross-quad bake.
+   the load without a cross-quad bake. — done: `lanes/treeGrove.ts` (slot 0, x -20) and
+   `lanes/instanceCell.ts` (slot 5, x 20).
+
+   - Lane 3: largeWorld's tree generator, larger (trunk 1.4 m, foliage 1.2 × 3 m) at 8 and 4
+     radial segments, the trunk and foliage Phong materials, and the cross-quads
+     `lodShowcaseTreeCross` last; screen sizes 0.15 / 0.075 / 0, cull 0.04 (LOD radius 4.26:
+     switches at 61 and 122 m, hidden from 228 m). Three trees per band (`getSlots`' `perBand`),
+     each up to 1.5 m off the lane's line and turned at random (seeded), scale 1 so a tree's band
+     is exact. Exported with the LOD tab's export (`exportImpostorsAsync`, through the dev files):
+     the four files in `src/app/impostors/`, 252 × 136 like largeWorld's tree (UASTC, 8 levels,
+     5,498 and 15,194 B), and the scene lists it in `impostors`.
+   - Lane 6: one cell per band, each a 4 × 4 block of capsule bollards (0.7 m apart, jittered)
+     drawn by one `InstancedMesh` entity, its instances around the mesh's origin; levels by
+     segment count (caps × sides 6 × 16, 2 × 8, 1 × 4, the last casting no shadow), screen sizes
+     0.08 / 0.035 / 0, cull 0.022 (LOD radius 2.04 over every instance: switches at 55 and 125 m,
+     hidden from 199 m). The first cell measures the radius (`setMeshLod`, then `LodData.radius`)
+     that places all of them. Found in the code: such an entity gets a `Transform` (the mesh tag's
+     hooks), synced onto the mesh every frame, so a cell is placed through its `Transform`, not
+     `mesh.position` (which the sync put back at the origin: every cell at one spot).
+
+   Checked (WebGPU and WebGL2, the same harness, now measuring through `measureLodEntity`, the
+   selection's own code, since a cell has no position of its own): all 22 objects of the four lanes
+   show their band's level (the trees at 44-57, 75-111 and 148-209 m, the farthest at 271 m LOD
+   culled; the cells at 47, 87, 167 and 247 m), also after a visit to skyShowcase and back. The
+   cross-quads load from the export (record `EXPORTED`, `bakeMs` null; the bake took 19-21 ms
+   before), with no stale warning. Forced to the cross-quads (`forceLevel` 2) from 10 m, the
+   exported planes stand upright and are lit like the mesh trees, on both backends. After a bias
+   change the trees and cells fade over the global 0.25 s. Seen, not changed: lane 1's level 2
+   sphere (8 × 6 segments) forced up close shows dark self-shadowing streaks on WebGPU (VSM draws
+   a receiving object into the shadow map whatever its `castShadow`, Phase 3 section 4), not at
+   its own distance (143 m).
+
 3. **Lanes 4 and 5:** the torus knot as a pool (its chain's levels, then an exported octahedral
    impostor); the rock baked and exported side by side, held at the impostor level. Checked: no
    bake at load but lane 5's baked half, lane 4's GPU time with the impostor against its chain's

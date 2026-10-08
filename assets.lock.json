@@ -34,6 +34,54 @@
       ],
       "ktxVersion": "4.4.2"
     },
+    "2ea1dcb6c483714b1f411c85c88f5f901163854219c7f57c02afbe919ed1c3ae": {
+      "source": "src/app/impostors/lodShowcaseTreeCross.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/lodShowcaseTreeCross.atlas.albedo.1f8ec40c.ktx2",
+      "bytes": 5498,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 5498,
+          "source": {
+            "width": 252,
+            "height": 136,
+            "bytes": 1420
+          },
+          "codec": "uastc",
+          "width": 252,
+          "height": 136,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "439ffcd2ea308edcd7d4d79c5340e94a774f0f0164c7da3f47755475d479ed53": {
+      "source": "src/app/impostors/lodShowcaseTreeCross.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/lodShowcaseTreeCross.atlas.normal.f8c4ac09.ktx2",
+      "bytes": 15194,
+      "textures": [
+        {
+          "slot": "normal",
+          "bytes": 15194,
+          "source": {
+            "width": 252,
+            "height": 136,
+            "bytes": 6744
+          },
+          "codec": "uastc",
+          "width": 252,
+          "height": 136,
+          "hasAlpha": false,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
     "59e067e2e191a60488fbac2eabd51178cab2301eff92361239b7160386aeb821": {
       "source": "src/app/impostors/largeWorldTreeCross.textureAtlas.json",
       "url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.albedo.5916d4c9.ktx2",

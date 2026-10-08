@@ -4022,7 +4022,7 @@
     },
     "lodShowcase": {
       "name": "LOD showcase",
-      "description": "The LOD system lane by lane (docs/plans/p351_impostor-billboard-lod.md Phase 5): each lane runs away from the start camera along -z, with an object in every level band. Lane 1: hand-made levels in JSON; lane 2: a generated chain (AUTO). Debug env: the scene's own \"LOD demo\" tab.",
+      "description": "The LOD system lane by lane (docs/plans/p351_impostor-billboard-lod.md Phase 5): each lane runs away from the start camera along -z, with an object in every level band. Left to right: an instanced tree pool ending in exported cross-quads and a cull fade; hand-made levels in JSON; a generated chain (AUTO); a static instance cell. Debug env: the scene's own \"LOD demo\" tab.",
       "cameras": [
         {
           "camProps": {
@@ -4188,8 +4188,186 @@
           }
         }
       ],
+      "impostors": [
+        {
+          "id": "lodShowcaseTreeCross",
+          "atlas": "lodShowcaseTreeCross",
+          "formatVersion": 1,
+          "sourceHash": "f5766ba79d8f7223",
+          "alphaTest": 0.5,
+          "shading": {
+            "type": "PHONGNODEMATERIAL",
+            "params": {
+              "shininess": 30,
+              "specular": "#111111"
+            }
+          },
+          "debugData": {
+            "name": "lodShowcaseTreeCross (impostor)",
+            "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+          },
+          "kind": "CROSS_QUADS",
+          "layout": {
+            "planes": 3,
+            "frameWidth": 76,
+            "frameHeight": 128,
+            "gutter": 4,
+            "atlasSize": [
+              252,
+              136
+            ],
+            "center": [
+              0,
+              2.1250000059604646,
+              0
+            ],
+            "halfWidth": 1.3024193511855218,
+            "halfHeight": 2.1935483809440366
+          },
+          "normals": true
+        }
+      ],
       "id": "lodShowcase",
-      "sceneFile": "./lodShowcase.ts"
+      "sceneFile": "./lodShowcase.ts",
+      "textures": [
+        {
+          "id": "lodShowcaseTreeCross.albedo",
+          "texOpts": {
+            "colorSpace": "srgb"
+          },
+          "debugData": {
+            "name": "lodShowcaseTreeCross (impostor atlas)",
+            "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+          },
+          "__atlas": {
+            "id": "lodShowcaseTreeCross",
+            "slot": "albedo",
+            "size": [
+              252,
+              136
+            ],
+            "padding": 4,
+            "levels": 1,
+            "mipChain": "FULL",
+            "fromImage": true,
+            "cells": {
+              "p0": {
+                "uv": [
+                  0.015873015873015872,
+                  0.02941176470588236,
+                  0.31746031746031744,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              },
+              "p1": {
+                "uv": [
+                  0.3492063492063492,
+                  0.02941176470588236,
+                  0.6507936507936508,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              },
+              "p2": {
+                "uv": [
+                  0.6825396825396826,
+                  0.02941176470588236,
+                  0.9841269841269841,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              }
+            }
+          },
+          "__url": "/aek-assets/app/impostors/lodShowcaseTreeCross.atlas.albedo.1f8ec40c.ktx2",
+          "__bytes": {
+            "in": 1420,
+            "out": 5498
+          },
+          "__vramBytes": {
+            "in": 182656,
+            "out": 46112
+          },
+          "__codec": "uastc"
+        },
+        {
+          "id": "lodShowcaseTreeCross.normal",
+          "debugData": {
+            "name": "lodShowcaseTreeCross (impostor atlas)",
+            "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+          },
+          "__atlas": {
+            "id": "lodShowcaseTreeCross",
+            "slot": "normal",
+            "size": [
+              252,
+              136
+            ],
+            "padding": 4,
+            "levels": 1,
+            "mipChain": "FULL",
+            "fromImage": true,
+            "cells": {
+              "p0": {
+                "uv": [
+                  0.015873015873015872,
+                  0.02941176470588236,
+                  0.31746031746031744,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              },
+              "p1": {
+                "uv": [
+                  0.3492063492063492,
+                  0.02941176470588236,
+                  0.6507936507936508,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              },
+              "p2": {
+                "uv": [
+                  0.6825396825396826,
+                  0.02941176470588236,
+                  0.9841269841269841,
+                  0.9705882352941176
+                ],
+                "size": [
+                  76,
+                  128
+                ]
+              }
+            }
+          },
+          "__url": "/aek-assets/app/impostors/lodShowcaseTreeCross.atlas.normal.f8c4ac09.ktx2",
+          "__bytes": {
+            "in": 6744,
+            "out": 15194
+          },
+          "__vramBytes": {
+            "in": 182656,
+            "out": 46112
+          },
+          "__codec": "uastc"
+        }
+      ]
     },
     "oneMoreScene": {
       "name": "One More Scene",
@@ -10673,6 +10851,145 @@
       },
       "__codec": "uastc"
     },
+    "lodShowcaseTreeCross.albedo": {
+      "id": "lodShowcaseTreeCross.albedo",
+      "texOpts": {
+        "colorSpace": "srgb"
+      },
+      "debugData": {
+        "name": "lodShowcaseTreeCross (impostor atlas)",
+        "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+      },
+      "__sourcePath": "src/app/impostors/lodShowcaseTreeCross.textureAtlas.json",
+      "__atlas": {
+        "id": "lodShowcaseTreeCross",
+        "slot": "albedo",
+        "size": [
+          252,
+          136
+        ],
+        "padding": 4,
+        "levels": 1,
+        "mipChain": "FULL",
+        "fromImage": true,
+        "cells": {
+          "p0": {
+            "uv": [
+              0.015873015873015872,
+              0.02941176470588236,
+              0.31746031746031744,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          },
+          "p1": {
+            "uv": [
+              0.3492063492063492,
+              0.02941176470588236,
+              0.6507936507936508,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          },
+          "p2": {
+            "uv": [
+              0.6825396825396826,
+              0.02941176470588236,
+              0.9841269841269841,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          }
+        }
+      },
+      "__url": "/aek-assets/app/impostors/lodShowcaseTreeCross.atlas.albedo.1f8ec40c.ktx2",
+      "__bytes": {
+        "in": 1420,
+        "out": 5498
+      },
+      "__vramBytes": {
+        "in": 182656,
+        "out": 46112
+      },
+      "__codec": "uastc"
+    },
+    "lodShowcaseTreeCross.normal": {
+      "id": "lodShowcaseTreeCross.normal",
+      "debugData": {
+        "name": "lodShowcaseTreeCross (impostor atlas)",
+        "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+      },
+      "__sourcePath": "src/app/impostors/lodShowcaseTreeCross.textureAtlas.json",
+      "__atlas": {
+        "id": "lodShowcaseTreeCross",
+        "slot": "normal",
+        "size": [
+          252,
+          136
+        ],
+        "padding": 4,
+        "levels": 1,
+        "mipChain": "FULL",
+        "fromImage": true,
+        "cells": {
+          "p0": {
+            "uv": [
+              0.015873015873015872,
+              0.02941176470588236,
+              0.31746031746031744,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          },
+          "p1": {
+            "uv": [
+              0.3492063492063492,
+              0.02941176470588236,
+              0.6507936507936508,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          },
+          "p2": {
+            "uv": [
+              0.6825396825396826,
+              0.02941176470588236,
+              0.9841269841269841,
+              0.9705882352941176
+            ],
+            "size": [
+              76,
+              128
+            ]
+          }
+        }
+      },
+      "__url": "/aek-assets/app/impostors/lodShowcaseTreeCross.atlas.normal.f8c4ac09.ktx2",
+      "__bytes": {
+        "in": 6744,
+        "out": 15194
+      },
+      "__vramBytes": {
+        "in": 182656,
+        "out": 46112
+      },
+      "__codec": "uastc"
+    },
     "p299TestAtlas.albedo": {
       "id": "p299TestAtlas.albedo",
       "texOpts": {
@@ -11778,6 +12095,44 @@
       },
       "normals": true,
       "__sourcePath": "src/app/impostors/largeWorldTreeCross.impostor.json"
+    },
+    "lodShowcaseTreeCross": {
+      "id": "lodShowcaseTreeCross",
+      "atlas": "lodShowcaseTreeCross",
+      "formatVersion": 1,
+      "sourceHash": "f5766ba79d8f7223",
+      "alphaTest": 0.5,
+      "shading": {
+        "type": "PHONGNODEMATERIAL",
+        "params": {
+          "shininess": 30,
+          "specular": "#111111"
+        }
+      },
+      "debugData": {
+        "name": "lodShowcaseTreeCross (impostor)",
+        "description": "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+      },
+      "kind": "CROSS_QUADS",
+      "layout": {
+        "planes": 3,
+        "frameWidth": 76,
+        "frameHeight": 128,
+        "gutter": 4,
+        "atlasSize": [
+          252,
+          136
+        ],
+        "center": [
+          0,
+          2.1250000059604646,
+          0
+        ],
+        "halfWidth": 1.3024193511855218,
+        "halfHeight": 2.1935483809440366
+      },
+      "normals": true,
+      "__sourcePath": "src/app/impostors/lodShowcaseTreeCross.impostor.json"
     }
   }
 }
