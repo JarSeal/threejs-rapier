@@ -16,14 +16,21 @@ export const HUB_ASSETS_DIR = path.join(HUB_DIR, '_assets');
 export const HUB_SCSS_ENTRY = path.join(HUB_ASSETS_DIR, 'scss', 'hub.scss');
 /** Every `.ts` file directly in it (not `_*.ts`) is an entry, built to `_assets/<name>.js` */
 export const HUB_TS_DIR = path.join(HUB_ASSETS_DIR, 'ts');
+/** Dev builds only: the dev plugin's client (p551 Phase 2), built to `_assets/hub-dev.js` */
+export const HUB_DEV_CLIENT_FILE = path.join(HUB_TS_DIR, '_devClient.ts');
 /** Copied as they are into `_assets/<name>/` */
 export const HUB_STATIC_ASSET_DIRS = ['icons', 'fonts', 'images'];
 
 /** The outputs (p550 §3.5) */
 export const HUB_DEV_OUT_DIR = path.join(ROOT, '.cache', 'hub', 'dev');
+/** Where the dev plugin serves `HUB_DEV_OUT_DIR` */
+export const HUB_DEV_URL_BASE = '/hub/';
 export const HUB_DIST_DIR = path.join(ROOT, 'dist-hub');
 /** The app's build: `AEK_HUB_IN_DIST=true` copies the Hub into its `hub/` */
 export const APP_DIST_DIR = path.join(ROOT, 'dist');
+
+/** The versions and packages (`getProjectMetadata`) */
+export const PACKAGE_JSON_FILE = path.join(ROOT, 'package.json');
 
 /** Copied from the app's public folder to the Hub's root */
 export const FAVICON_FILES = ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'].map((name) =>

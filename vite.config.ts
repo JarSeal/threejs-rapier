@@ -9,6 +9,8 @@ import { sceneGathererPlugin } from './devTools/sceneGathererPlugin.ts';
 import { assetOutputsBuildPlugin } from './devTools/assetOutputsBuildPlugin.ts';
 // Lets debug tooling write files into the repo (p342)
 import { devFilesPlugin } from './devTools/devFilesPlugin.ts';
+// Serves the Ækasha Hub at /hub/ and rebuilds it on save (p551)
+import { hubPlugin } from './devTools/hubPlugin.ts';
 import { getProjectMetadata } from './devTools/projectMetadata.ts';
 
 const REPO_ROOT = fileURLToPath(new URL('.', import.meta.url));
@@ -80,6 +82,7 @@ export default defineConfig({
     ...(process.env.AEK_DEV_HTTPS === 'true' ? [basicSsl()] : []),
     sceneGathererPlugin(),
     devFilesPlugin(),
+    hubPlugin(),
     assetOutputsBuildPlugin(),
     {
       name: 'html-transform',

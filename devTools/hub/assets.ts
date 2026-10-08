@@ -7,6 +7,7 @@ import type { HubDiagnostics } from './diagnostics';
 import { hashContent } from './hash';
 import {
   HUB_ASSETS_DIR,
+  HUB_DEV_CLIENT_FILE,
   HUB_DIR,
   HUB_SCSS_ENTRY,
   HUB_STATIC_ASSET_DIRS,
@@ -59,12 +60,18 @@ export const listScriptEntries = () =>
 
 type RollupErrorLike = Error & { loc?: { file?: string; line?: number }; id?: string };
 
+/** The dev client's output: `dev` builds load it on every page (p551 Phase 2) */
+export const HUB_DEV_CLIENT_OUT_PATH = `${ASSETS_URL_DIR}hub-dev.js`;
+
 export const buildScripts = async (
   mode: HubBuildMode,
   diag: HubDiagnostics
 ): Promise<HubAssetFile[] | null> => {
-  const entries = listScriptEntries();
-  if (!entries.length) return [];
+  const input = Object.fromEntries(
+    listScriptEntries().map((file) => [path.basename(file, '.ts'), file])
+  );
+  if (mode === 'dev') input[path.basename(HUB_DEV_CLIENT_OUT_PATH, '.js')] = HUB_DEV_CLIENT_FILE;
+  if (!Object.keys(input).length) return [];
   try {
     const result = await viteBuild({
       configFile: false,
@@ -80,7 +87,7 @@ export const buildScripts = async (
         reportCompressedSize: false,
         copyPublicDir: false,
         rollupOptions: {
-          input: Object.fromEntries(entries.map((file) => [path.basename(file, '.ts'), file])),
+          input,
           preserveEntrySignatures: 'strict',
           output: {
             format: 'es',

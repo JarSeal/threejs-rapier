@@ -3,9 +3,16 @@ import path from 'node:path';
 import sharp from 'sharp';
 import hubConfig from '../../hub/hub.config';
 import { getProjectMetadata } from '../projectMetadata';
-import { buildScripts, buildStyles, copyStaticAssets, type HubAssetFile } from './assets';
+import {
+  buildScripts,
+  buildStyles,
+  copyStaticAssets,
+  HUB_DEV_CLIENT_OUT_PATH,
+  type HubAssetFile,
+} from './assets';
 import { buildHubData, getPageSection } from './data';
-import { HubDiagnostics, lineAt } from './diagnostics';
+import { HUB_DEV_META, HUB_DEV_SOCKET_PLACEHOLDER } from './devProtocol';
+import { HubDiagnostics, lineAt, type HubDiagnostic } from './diagnostics';
 import { escapeHtml } from './html';
 import {
   createHubMarkdown,
@@ -16,21 +23,54 @@ import {
   type HubMarkdownEnv,
 } from './markdown';
 import { discoverPages, relativeRoot, type HubPageTree } from './pages';
-import { FAVICON_FILES, HUB_NOT_FOUND_FILE, HUB_SHELL_FILE } from './paths';
-import { fillShell, renderBreadcrumbs, renderNav, renderToc, type ShellSiteValues } from './shell';
+import {
+  FAVICON_FILES,
+  HUB_NOT_FOUND_FILE,
+  HUB_PAGES_DIR,
+  HUB_SHELL_FILE,
+  PACKAGE_JSON_FILE,
+  toRepoPath,
+} from './paths';
+import {
+  fillShell,
+  renderBreadcrumbs,
+  renderNav,
+  renderToc,
+  type ShellPageValues,
+  type ShellSiteValues,
+} from './shell';
 import type { HubBuildMode, HubHeading, HubPage } from './types';
 
 /**
  * Builds the Hub (p551 §2.2): `hub/` → static pages in `outDir`, in the layout p550 §3.5
- * describes. `public` (`yarn hub:build` → `dist-hub/`) writes nothing when there's an error;
- * `dev` (the dev plugin, Phase 2) writes what it could.
+ * describes. `public` (`yarn hub:build` → `dist-hub/`) writes nothing when there's an error.
+ * `dev` (the dev plugin, `devTools/hubPlugin.ts`) writes every page, and a page with an error
+ * becomes an error page listing it (§2.3): one in its own files, or one that isn't any page's
+ * (the shell, the SCSS, the TS), which every page lists. Dev pages also load the dev client.
  */
+
+export type HubBuildAssets = {
+  styles: HubAssetFile | null;
+  scripts: HubAssetFile[] | null;
+};
 
 export type HubBuildOptions = {
   mode: HubBuildMode;
   outDir: string;
   /** The site root's absolute URL path, for the 404 page's `<base>` (default `/`) */
   basePath?: string;
+  /** `dev`: the last build's assets, kept when this build's fail, so error pages keep styles */
+  fallback?: HubBuildAssets;
+};
+
+export type HubBuiltPage = {
+  /** The page's site path ('' the homepage), '404' for the 404 page */
+  path: string;
+  /** From `outDir`: `examples/index.html`, `404.html` */
+  outPath: string;
+  html: string;
+  /** `dev`: an error page stands in for it */
+  isErrorPage: boolean;
 };
 
 export type HubBuildResult = {
@@ -40,6 +80,9 @@ export type HubBuildResult = {
   durationMs: number;
   /** Every source file the build read, for the dev plugin's watcher */
   files: string[];
+  /** The pages and the 404 page as written; empty when nothing was */
+  pages: HubBuiltPage[];
+  assets: HubBuildAssets;
 };
 
 /**
@@ -119,10 +162,20 @@ const writeFile = (file: string, content: string | Buffer) => {
   fs.writeFileSync(file, content);
 };
 
-const writeImages = async (jobs: HubImageJob[], outDir: string, diag: HubDiagnostics) => {
+/** `dev` writes into the same folder every run: an image newer than its source is kept */
+const isUpToDate = (source: string, out: string) =>
+  (fs.statSync(out, { throwIfNoEntry: false })?.mtimeMs ?? -1) >= fs.statSync(source).mtimeMs;
+
+const writeImages = async (
+  jobs: HubImageJob[],
+  outDir: string,
+  mode: HubBuildMode,
+  diag: HubDiagnostics
+) => {
   await Promise.all(
     jobs.map(async ({ source, outPath, isConverted }) => {
       const out = path.join(outDir, outPath);
+      if (mode === 'dev' && isUpToDate(source, out)) return;
       fs.mkdirSync(path.dirname(out), { recursive: true });
       try {
         if (isConverted) await sharp(source).webp({ quality: 85 }).toFile(out);
@@ -134,116 +187,200 @@ const writeImages = async (jobs: HubImageJob[], outDir: string, diag: HubDiagnos
   );
 };
 
+/** The page whose folder holds the file (an `.md`, an image), or null for one outside the pages */
+const findOwnerPage = (file: string, pagesByDir: Map<string, HubPage>) => {
+  for (
+    let dir = path.dirname(file);
+    dir === HUB_PAGES_DIR || dir.startsWith(HUB_PAGES_DIR + path.sep);
+    dir = path.dirname(dir)
+  ) {
+    const page = pagesByDir.get(dir);
+    if (page) return page;
+  }
+  return null;
+};
+
+const renderErrorBody = (errors: HubDiagnostic[]) => {
+  const items = errors.map(
+    ({ file, line, message }) =>
+      `<li><code>${escapeHtml(toRepoPath(file))}${line ? `:${line}` : ''}</code> ${escapeHtml(message)}</li>`
+  );
+  return `<h1>Build error</h1>
+<p>This page didn't build. Fix ${errors.length === 1 ? 'the error' : 'the errors'} and save: the page reloads by itself.</p>
+<ul class="hubBuildErrors">${items.join('')}</ul>`;
+};
+
 export const buildHub = async ({
   mode,
   outDir,
   basePath = '/',
+  fallback,
 }: HubBuildOptions): Promise<HubBuildResult> => {
   const startTime = performance.now();
   const diag = new HubDiagnostics();
   const rendered: RenderedPage[] = [];
+  const builtPages: HubBuiltPage[] = [];
+  const assets: HubBuildAssets = { styles: null, scripts: null };
   const result = (files: string[]): HubBuildResult => ({
     isOk: diag.errors.length === 0,
     diag,
     pageCount: rendered.length,
     durationMs: performance.now() - startTime,
     files,
+    pages: builtPages,
+    assets,
   });
 
   const tree = discoverPages(diag);
   const shell = fs.readFileSync(HUB_SHELL_FILE, 'utf-8');
   const notFoundBody = fs.readFileSync(HUB_NOT_FOUND_FILE, 'utf-8');
-  const [styles, scripts] = [buildStyles(mode, diag), await buildScripts(mode, diag)];
-  if (!tree) return result([]);
+  assets.styles = buildStyles(mode, diag) ?? fallback?.styles ?? null;
+  assets.scripts = (await buildScripts(mode, diag)) ?? fallback?.scripts ?? null;
+  // `dev` still writes the 404 page, as the error page every URL gets
+  if (!tree && mode === 'public') return result([]);
 
   const md = createHubMarkdown();
-  for (const page of tree.pages) {
+  for (const page of tree?.pages ?? []) {
     const env = createMarkdownEnv(page, relativeRoot(page.path), diag);
     rendered.push({ page, env, body: renderPageBody(page, env, md) });
   }
-  checkLinks(rendered, tree, diag);
+  if (tree) checkLinks(rendered, tree, diag);
 
   const meta = getProjectMetadata();
   const headings = new Map<HubPage, HubHeading[]>(
     rendered.map(({ page, env }) => [page, env.headings])
   );
-  const data = buildHubData(meta, tree.root, tree.pages, headings);
+  const data = tree ? buildHubData(meta, tree.root, tree.pages, headings) : null;
   const assetUrl = (root: string, file: HubAssetFile | null | undefined) =>
     file ? `${root}${file.outPath}?v=${file.hash}` : '';
-  const hubJs = scripts?.find((file) => file.outPath === '_assets/hub.js');
+  const findScript = (outPath: string) => assets.scripts?.find((file) => file.outPath === outPath);
+  const devClient = mode === 'dev' ? findScript(HUB_DEV_CLIENT_OUT_PATH) : undefined;
 
   const siteValues = (root: string, page: HubPage | null): ShellSiteValues => ({
     root,
     siteTitle: escapeHtml(hubConfig.title),
-    head: '',
-    nav: renderNav(tree.root, page, root),
-    css: assetUrl(root, styles),
-    js: assetUrl(root, hubJs),
+    head: devClient
+      ? `<meta name="${HUB_DEV_META}" content="${HUB_DEV_SOCKET_PLACEHOLDER}" />
+    <script type="module" src="${assetUrl(root, devClient)}"></script>`
+      : '',
+    nav: tree ? renderNav(tree.root, page, root) : '',
+    css: assetUrl(root, assets.styles),
+    js: assetUrl(root, findScript('_assets/hub.js')),
     dataJs: assetUrl(root, data),
     engineVersion: meta.engine.version,
     githubUrl: escapeHtml(hubConfig.githubUrl),
   });
 
-  const pageHtml = rendered.map(({ page, env, body }) => {
-    const isHome = page === tree.root;
+  const pageValues = ({ page, env, body }: RenderedPage): ShellPageValues => {
+    const isHome = page === tree?.root;
     const section = getPageSection(page);
-    const html = fillShell(
+    return {
+      title: escapeHtml(isHome ? hubConfig.title : `${page.title} · ${hubConfig.title}`),
+      pageTitle: escapeHtml(page.title),
+      description: escapeHtml(page.description || (isHome ? hubConfig.description : '')),
+      pagePath: page.path,
+      section,
+      bodyClass: `hubPage_${section.replace(/\/$/, '') || 'home'}`,
+      breadcrumbs: renderBreadcrumbs(page, env.root),
+      toc: renderToc(env.headings),
+      body,
+    };
+  };
+  const notFoundValues: ShellPageValues = {
+    title: escapeHtml(`Page not found · ${hubConfig.title}`),
+    pageTitle: 'Page not found',
+    description: '',
+    pagePath: '404',
+    section: '404',
+    bodyClass: 'hubPage_404',
+    breadcrumbs: '',
+    toc: '',
+    body: notFoundBody,
+  };
+  const fillPage = (root: string, page: HubPage | null, values: ShellPageValues, head = '') => {
+    const site = siteValues(root, page);
+    return fillShell(
       shell,
       HUB_SHELL_FILE,
-      {
-        ...siteValues(env.root, page),
-        title: escapeHtml(isHome ? hubConfig.title : `${page.title} · ${hubConfig.title}`),
-        pageTitle: escapeHtml(page.title),
-        description: escapeHtml(page.description || (isHome ? hubConfig.description : '')),
-        pagePath: page.path,
-        section,
-        bodyClass: `hubPage_${section.replace(/\/$/, '') || 'home'}`,
-        breadcrumbs: renderBreadcrumbs(page, env.root),
-        toc: renderToc(env.headings),
-        body,
-      },
+      { ...site, head: [head, site.head].filter(Boolean).join('\n    '), ...values },
       diag
     );
-    return { outPath: `${page.path}index.html`, html };
-  });
+  };
 
-  const notFoundHtml = fillShell(
-    shell,
-    HUB_SHELL_FILE,
-    {
-      ...siteValues('', null),
-      head: notFoundBaseTag(basePath),
-      title: escapeHtml(`Page not found · ${hubConfig.title}`),
-      pageTitle: 'Page not found',
-      description: '',
-      pagePath: '404',
-      section: '404',
-      bodyClass: 'hubPage_404',
-      breadcrumbs: '',
+  for (const item of rendered) {
+    const html = fillPage(item.env.root, item.page, pageValues(item));
+    builtPages.push({
+      path: item.page.path,
+      outPath: `${item.page.path}index.html`,
+      html,
+      isErrorPage: false,
+    });
+  }
+  const notFoundHtml = fillPage('', null, notFoundValues, notFoundBaseTag(basePath));
+  builtPages.push({ path: '404', outPath: '404.html', html: notFoundHtml, isErrorPage: false });
+
+  // Every fillShell has run, so the errors are complete
+  if (mode === 'dev' && diag.errors.length) {
+    const pagesByDir = new Map(rendered.map(({ page }) => [page.dir, page]));
+    const errorsByPage = new Map<HubPage | null, HubDiagnostic[]>();
+    for (const error of diag.errors) {
+      const owner = findOwnerPage(error.file, pagesByDir);
+      errorsByPage.set(owner, [...(errorsByPage.get(owner) ?? []), error]);
+    }
+    const siteErrors = errorsByPage.get(null) ?? [];
+    const errorValues = (errors: HubDiagnostic[], values: ShellPageValues): ShellPageValues => ({
+      ...values,
+      title: escapeHtml(`Build error · ${hubConfig.title}`),
+      bodyClass: 'hubPage_error',
       toc: '',
-      body: notFoundBody,
-    },
-    diag
-  );
+      body: renderErrorBody(errors),
+    });
+    rendered.forEach((item, i) => {
+      const errors = [...(errorsByPage.get(item.page) ?? []), ...siteErrors];
+      if (!errors.length) return;
+      const html = fillPage(item.env.root, item.page, errorValues(errors, pageValues(item)));
+      builtPages[i] = { ...builtPages[i], html, isErrorPage: true };
+    });
+    if (siteErrors.length || !tree) {
+      // Without a page tree, the errors are the discovery's, which no page could list
+      const errors = tree ? siteErrors : diag.errors;
+      const html = fillPage(
+        '',
+        null,
+        errorValues(errors, notFoundValues),
+        notFoundBaseTag(basePath)
+      );
+      builtPages[builtPages.length - 1] = {
+        ...builtPages[builtPages.length - 1],
+        html,
+        isErrorPage: true,
+      };
+    }
+  }
 
   const sourceFiles = [
-    ...tree.files,
+    ...(tree?.files ?? []),
     HUB_SHELL_FILE,
     HUB_NOT_FOUND_FILE,
+    PACKAGE_JSON_FILE,
+    ...FAVICON_FILES,
     ...rendered.flatMap(({ env }) => env.images.map((job) => job.source)),
   ];
-  if (mode === 'public' && diag.errors.length) return result(sourceFiles);
+  if (mode === 'public' && diag.errors.length) {
+    builtPages.length = 0;
+    return result(sourceFiles);
+  }
 
   if (mode === 'public') fs.rmSync(outDir, { recursive: true, force: true });
-  for (const { outPath, html } of pageHtml) writeFile(path.join(outDir, outPath), html);
-  writeFile(path.join(outDir, '404.html'), notFoundHtml);
-  for (const file of [styles, data, ...(scripts ?? [])]) {
+  for (const { outPath, html } of builtPages) writeFile(path.join(outDir, outPath), html);
+  for (const file of [assets.styles, data, ...(assets.scripts ?? [])]) {
     if (file) writeFile(path.join(outDir, file.outPath), file.content);
   }
   copyStaticAssets(outDir);
   await writeImages(
     rendered.flatMap(({ env }) => env.images),
     outDir,
+    mode,
     diag
   );
   for (const file of FAVICON_FILES) fs.copyFileSync(file, path.join(outDir, path.basename(file)));

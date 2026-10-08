@@ -92,3 +92,24 @@
     border-color: var(--hub-accent);
   }
 }
+
+// The dev plugin's error page (p551 Phase 2)
+.hubBuildErrors {
+  padding: 0;
+  list-style: none;
+
+  li {
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    background: var(--hub-panel);
+    border: 1px solid var(--hub-border);
+    border-left: 3px solid var(--hub-error);
+    border-radius: 6px;
+  }
+
+  code {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--hub-error);
+  }
+}

@@ -9,16 +9,27 @@ export type HubDiagnostic = {
   message: string;
 };
 
-/** The errors and warnings of one Hub build, each with its file and line */
+/**
+ * The errors and warnings of one Hub build, each with its file and line. The same one is kept
+ * once: the shell's own errors come up for every page it's filled with.
+ */
 export class HubDiagnostics {
   readonly items: HubDiagnostic[] = [];
+  private readonly keys = new Set<string>();
+
+  private add(item: HubDiagnostic) {
+    const key = diagnosticKey(item);
+    if (this.keys.has(key)) return;
+    this.keys.add(key);
+    this.items.push(item);
+  }
 
   error(file: string, line: number | undefined, message: string) {
-    this.items.push({ level: 'error', file, line, message });
+    this.add({ level: 'error', file, line, message });
   }
 
   warn(file: string, line: number | undefined, message: string) {
-    this.items.push({ level: 'warning', file, line, message });
+    this.add({ level: 'warning', file, line, message });
   }
 
   get errors() {
@@ -28,12 +39,11 @@ export class HubDiagnostics {
   get warnings() {
     return this.items.filter((item) => item.level === 'warning');
   }
-
-  /** The errors in one file (a page's, for its error page) */
-  errorsIn(files: string[]) {
-    return this.errors.filter((item) => files.includes(item.file));
-  }
 }
+
+/** Tells diagnostics apart: the same key is the same diagnostic (the dev plugin's "new" ones) */
+export const diagnosticKey = ({ level, file, line, message }: HubDiagnostic) =>
+  `${level}\0${file}\0${line ?? ''}\0${message}`;
 
 /** `hub/pages/examples/setup.md:12: message`, the form editors and terminals link */
 export const formatDiagnostic = ({ file, line, message }: HubDiagnostic) =>

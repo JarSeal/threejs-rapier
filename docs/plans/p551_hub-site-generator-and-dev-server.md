@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Dev tooling, Hub
 Epic: p550_aekasha-hub-epic.md
 Blocks: p552_hub-code-blocks-and-search.md, p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
@@ -201,7 +201,7 @@ As built:
 - The Phase 1 shell and SCSS are minimal (no icons, fonts or light theme); Phase 3 replaces them.
 - `markdown-it` 14.3.1 (the version TypeDoc already brought in) and `@types/markdown-it` 14.1.2.
 
-### Phase 2 — Dev plugin
+### Phase 2 — Dev plugin — done
 
 §2.3.
 
@@ -213,6 +213,52 @@ As built:
 - With an app tab open next to it, a Hub save doesn't reload the app tab. An app or engine `.ts`
   save doesn't rebuild the Hub (nothing in the terminal, no event).
 - A broken `.md` shows the error page, and fixing it brings the page back.
+
+As built:
+
+- **The dev client doesn't import `/@vite/client`.** Vite 6.4's client reloads on every
+  `full-reload` without an `.html` path, which the scene gatherer sends on every gather, and it
+  shows the app's error overlay. So a Hub tab would reload on every scene save. The client
+  (`hub/_assets/ts/_devClient.ts`, built to `_assets/hub-dev.js` in `dev` builds only) opens its
+  own socket to Vite's HMR WebSocket (`vite-hmr` protocol) and reads only `aek:hub`. After a
+  server restart it waits like Vite's client does (a `vite-ping` socket), then reloads.
+- **The HMR token.** The socket needs Vite's per-start `webSocketToken`. Dev pages carry
+  `<meta name="aek-hub-dev" content="%AEK_HUB_DEV_SOCKET%">`, and the plugin fills in the path and
+  token when it serves the page, so the token is never on disk. `/hub` routes run devFiles'
+  `checkHostAndOrigin`: they're served before Vite's own host check, and a DNS-rebinding page could
+  otherwise read the token.
+- **`hub/` is watched with `fs.watch(hub/, { recursive: true })`, not `server.watcher`.** For a
+  watched `.html` that's in no module graph, Vite logs "page reload" with `clear: true` (wiping
+  the terminal) and broadcasts a `full-reload`. The build's sources outside `hub/` (`files`:
+  `package.json`, the favicons; p552's snippets and Phase 4's CHANGELOG and issues later) go
+  through `server.watcher`. `hub.config.ts` and `devTools/hub/*` are Vite config dependencies: a
+  change restarts the server, and open Hub tabs reload when it's back.
+- **No per-page incremental build.** A full dev build takes 35-60 ms (sass ~40 ms cold, Vite's
+  TS build ~12 ms warm), and rebuilding one page would miss what crosses pages (the nav, a `hub:`
+  link a heading rename breaks). Every run builds everything, and `diffBuilds` (`hubPlugin.ts`)
+  compares it with the last run. The event is `HubDevEvent` (`devTools/hub/devProtocol.ts`, no
+  imports): `{ kind: 'css', version }` when the stylesheet's hash changed, `{ kind: 'pages', paths }`
+  for the pages whose HTML changed (compared without the `hub.css` / `hub-data.js` `?v=`, plus
+  removed pages; `'404'` for the 404 page, which reloads on any `pages` event), `{ kind: 'all' }`
+  when a script or a static asset changed. Open question 3 stays the answer if p553's pages make
+  this slow.
+- **Error pages** come from `buildHub` in `dev` mode. An error is attributed to the page whose
+  folder holds its file. Errors outside every page (shell, SCSS, TS, a missing homepage) go on
+  every page and on the 404 page. A failed SCSS or TS build keeps the last good assets
+  (`fallback`), so the error page keeps its styles. The terminal gets each run's errors and
+  warnings that are new since the last run, a "No errors" line when they clear, and one
+  `[Hub] Updated: …` line per run that changed something. A run that changes nothing prints
+  nothing.
+- **Lazy start:** the first `/hub` request empties `.cache/hub/dev/` and builds. Later runs remove
+  the files of pages that are gone. Images newer than their source aren't re-encoded.
+- `HubDiagnostics` keeps each diagnostic once (the shell's errors came up once per page).
+- `devTools/hub/serve.ts` resolves a URL to a file, redirect or 404 for both `hub:preview` and the
+  plugin.
+- Verified against a dev server and headless Chromium: `/hub` redirects; an `.md` save reloads
+  only that page's tab; an SCSS save restyles without a reload; a scene JSON gather reloads the
+  app tab and not the Hub tabs; an app `.ts` save gives no Hub output or event; a dead link shows
+  the error page and fixing it brings the page back; a `hub.config.ts` save restarts the server and
+  the Hub tab reloads with the new token.
 
 ### Phase 3 — Design shell
 

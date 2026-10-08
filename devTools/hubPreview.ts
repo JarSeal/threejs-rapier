@@ -4,28 +4,13 @@ import http from 'node:http';
 import path from 'node:path';
 import { rebaseNotFoundPage } from './hub/build';
 import { HUB_DIST_DIR, ROOT } from './hub/paths';
+import { getHubContentType, resolveHubRoute } from './hub/serve';
 
 /**
  * `yarn hub:preview [--base /hub/] [--port 8090] [--dir dist-hub]`: serves the built Hub as a
  * static host would: a directory URL serves its `index.html`, anything missing gets `404.html`
  * with a 404. `--base` serves it under a path, as `AEK_HUB_IN_DIST` does (`/hub/`).
  */
-
-const CONTENT_TYPES: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.gif': 'image/gif',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.txt': 'text/plain; charset=utf-8',
-};
 
 const parseArgs = (args: string[]) => {
   const opts = { base: '/', port: 8090, dir: HUB_DIST_DIR };
@@ -47,37 +32,23 @@ if (!fs.existsSync(path.join(dir, 'index.html'))) {
 }
 
 const send = (res: http.ServerResponse, status: number, file: string) => {
-  res.writeHead(status, {
-    'Content-Type': CONTENT_TYPES[path.extname(file)] ?? 'application/octet-stream',
-  });
+  res.writeHead(status, { 'Content-Type': getHubContentType(file) });
   fs.createReadStream(file).pipe(res);
 };
 
 http
   .createServer((req, res) => {
     const pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://localhost').pathname);
-    if (base !== '/' && pathname === base.slice(0, -1)) {
-      res.writeHead(301, { Location: base }).end();
-      return;
-    }
-    const notFound = () => {
+    const route = resolveHubRoute(dir, base, pathname);
+    if (route.kind === 'redirect') {
+      res.writeHead(301, { Location: route.location }).end();
+    } else if (route.kind === 'file') {
+      send(res, 200, route.file);
+    } else {
       const html = fs.readFileSync(path.join(dir, '404.html'), 'utf-8');
-      res.writeHead(404, { 'Content-Type': CONTENT_TYPES['.html'] });
+      res.writeHead(404, { 'Content-Type': getHubContentType('404.html') });
       res.end(rebaseNotFoundPage(html, base));
-    };
-    if (!pathname.startsWith(base)) return notFound();
-    const file = path.join(dir, pathname.slice(base.length));
-    if (file !== dir && !file.startsWith(dir + path.sep)) return notFound();
-    const stat = fs.statSync(file, { throwIfNoEntry: false });
-    if (stat?.isDirectory()) {
-      if (!pathname.endsWith('/')) {
-        res.writeHead(301, { Location: `${pathname}/` }).end();
-        return;
-      }
-      const index = path.join(file, 'index.html');
-      return fs.existsSync(index) ? send(res, 200, index) : notFound();
     }
-    return stat?.isFile() ? send(res, 200, file) : notFound();
   })
   .listen(port, () =>
     console.log(`[Hub] ${path.relative(ROOT, dir)}/ at http://localhost:${port}${base}`)
