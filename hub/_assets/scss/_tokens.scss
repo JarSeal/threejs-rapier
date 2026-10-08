@@ -26,6 +26,11 @@ $toc-column: 1200px;
   --hub-success: #5fd89a;
   --hub-danger: #ff7a6b;
   --hub-error: #ff7a85;
+  // Code block line tints (_code.scss), over --hub-code-bg
+  --hub-code-highlight: rgb(63 216 242 / 11%);
+  --hub-code-add: rgb(95 216 154 / 12%);
+  --hub-code-remove: rgb(255 122 107 / 12%);
+  --hub-code-warning-bg: rgb(242 193 63 / 12%);
 
   color-scheme: dark;
 }
@@ -49,6 +54,10 @@ $toc-column: 1200px;
   --hub-success: #1c7a46;
   --hub-danger: #c2361f;
   --hub-error: #c0283a;
+  --hub-code-highlight: rgb(10 117 144 / 11%);
+  --hub-code-add: rgb(28 122 70 / 12%);
+  --hub-code-remove: rgb(194 54 31 / 11%);
+  --hub-code-warning-bg: rgb(154 106 0 / 12%);
 
   color-scheme: light;
 }

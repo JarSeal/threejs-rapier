@@ -80,6 +80,9 @@ export type HubDirectiveContext = {
   /** The directive's 1-based line */
   line: number;
   md: MarkdownIt;
+  /** The rendered tokens and the directive's own (open or close), to look at its content */
+  tokens: Token[];
+  idx: number;
 };
 
 export type HubDirective = {
@@ -189,7 +192,8 @@ export const slugify = (text: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'section';
 
-const uniqueId = (env: HubMarkdownEnv, base: string) => {
+/** `base`, or `base-2`, … when the page has it: reserves the id on the page */
+export const uniqueId = (env: HubMarkdownEnv, base: string) => {
   let id = base;
   for (let n = 2; env.ids.has(id); n++) id = `${base}-${n}`;
   env.ids.add(id);
@@ -302,10 +306,16 @@ export const createHubMarkdown = () => {
   md.core.ruler.push('hub_headings', headingsRule);
   md.core.ruler.push('hub_links', linksRule);
 
-  const directiveContext = (tokens: Token[], idx: number, env: HubMarkdownEnv) => ({
+  const directiveContext = (
+    tokens: Token[],
+    idx: number,
+    env: HubMarkdownEnv
+  ): HubDirectiveContext => ({
     env,
     line: (tokens[idx].map?.[0] ?? 0) + 1,
     md,
+    tokens,
+    idx,
   });
   md.renderer.rules['hub_directive_open'] = (tokens, idx, _opts, env: HubMarkdownEnv) => {
     const token = tokens[idx];

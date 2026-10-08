@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Dev tooling, Hub
 Epic: p550_aekasha-hub-epic.md
 Blocks: p553_hub-api-documentation.md (its search entries), p554_hub-examples-start-scene-and-example-scenes.md (its snippets)
@@ -88,13 +88,40 @@ the region is dedented. The language comes from the extension, the title default
 
 ## 3. Phases
 
-### Phase 1 — Code blocks
+### Phase 1 — Code blocks — done
 
 §2.1, §2.2.
 
 **Exit:** a test page has one block with every feature (line numbers, highlights, diff, focus,
 error, title, wrap, collapse, a code group). Copy puts exactly the clean source on the clipboard.
 Both themes read well. A 375 px screen scrolls the code, not the page.
+
+As built:
+
+- shiki and `@shikijs/transformers` 4.5.0. `devTools/hub/code.ts` is a markdown-it plugin
+  (`hubCodePlugin`, wired in `buildHub` with the highlighter and the icons). The highlighter loads
+  once per process (`loadHubHighlighter`), so dev rebuilds share it.
+- Themes: two custom ones, `aekasha-dark` / `aekasha-light` (`devTools/hub/codeThemes.ts`). Every
+  colour passes AA on `--hub-code-bg` and on each line tint over it. Tints are tokens in
+  `_tokens.scss` (`--hub-code-highlight`, `-add`, `-remove`, `-warning-bg`).
+- `text`, `txt`, `plain` and a fence without a language render plain without a warning. Line
+  highlights (`{3,5-7}`) count from the block's first line, whatever `startLine` is. An unknown
+  meta word warns.
+- Collapse marks the hidden lines `hubCodeFold` at build time. The button toggles back
+  ("Show fewer lines"). Without JS every line shows, and the copy buttons and tabs are hidden.
+- Code groups: the tabs are rendered at build time (WAI-ARIA tabs, arrow keys, Home / End). For
+  that, `HubDirectiveContext` gained `tokens` and `idx`, and `markdown.ts` exports `uniqueId`.
+  Without JS every block of a group shows, with its title.
+- Copy reads the clean source from the DOM: the notation comments are already gone, line numbers
+  and diff markers are CSS, and `.remove` lines are skipped. Outside a secure context (a LAN
+  address over http) it falls back to `execCommand('copy')`.
+- The test page is a real page, `hub/pages/documentation/code-blocks/`: the reference for the
+  fence meta and notation comments, with an "All together" block (Phase 4's
+  `hub-authoring.md` links to it).
+- Icons `copy` and `check` (Lucide) added.
+- For Phase 2: the dev plugin has no per-page rebuild (p551 dropped it). A file outside `hub/` in
+  `HubBuildResult.files` is watched through `server.watcher`, and a change rebuilds the whole Hub
+  and reloads only the pages whose HTML changed. An included file only needs to go into `files`.
 
 ### Phase 2 — Snippet includes
 

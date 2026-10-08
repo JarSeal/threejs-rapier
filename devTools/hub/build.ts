@@ -13,6 +13,7 @@ import {
   type HubAssetFile,
 } from './assets';
 import { buildHubData, getPageSection } from './data';
+import { hubCodePlugin, loadHubHighlighter } from './code';
 import { createIssuesSection } from './generated/issues';
 import type { HubGeneratedSection, HubSlotGenerator } from './generated/section';
 import { createVersionSection } from './generated/version';
@@ -334,7 +335,10 @@ export const buildHub = async ({
   const sectionFiles = sections.flatMap((section) => section.files);
   if (!tree && mode === 'public') return result(sectionFiles);
 
-  const md = createHubMarkdown();
+  const md = createHubMarkdown().use(hubCodePlugin, {
+    highlighter: await loadHubHighlighter(),
+    icons,
+  });
   for (const page of tree?.pages ?? []) {
     const env = createMarkdownEnv(page, relativeRoot(page.path), diag);
     rendered.push({ page, env, body: renderPageBody(page, env, md, helpers, generators) });
