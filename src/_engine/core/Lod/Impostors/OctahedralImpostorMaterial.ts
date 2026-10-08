@@ -166,14 +166,24 @@ export type OctahedralImpostorNodes = {
 };
 
 /**
+ * Where an atlas's v = 0 is. `TOP`: a render target's texture (a bake: v = 0 is the top of the
+ * rendered image on both backends). `BOTTOM`: a loaded KTX2 atlas slot, stored flipped like every
+ * standalone texture (p299, v up as three's UVs). The layout's cells are from the image's top left
+ * either way.
+ */
+export type ImpostorAtlasVOrigin = 'TOP' | 'BOTTOM';
+
+/**
  * The nodes that draw an octahedral impostor's atlases on its quad geometry (see
  * `generateOctahedralImpostor`): set them on a material as `positionNode`, `colorNode`,
- * `normalNode`, `depthNode` and `receivedShadowPositionNode`, with an `alphaTest`.
+ * `normalNode`, `depthNode` and `receivedShadowPositionNode`, with an `alphaTest`. `vOrigin` is the
+ * atlases' (both the same), fixed in the shader.
  */
 export const createOctahedralImpostorNodes = (
   layout: OctahedralImpostorLayout,
   albedo: THREE.Texture,
-  normalDepth: THREE.Texture
+  normalDepth: THREE.Texture,
+  vOrigin: ImpostorAtlasVOrigin = 'TOP'
 ): OctahedralImpostorNodes => {
   const { frames, hemi, frameSize, gutter, atlasSize, center, radius, extent } = layout;
   const cellSize = frameSize + 2 * gutter;
@@ -246,15 +256,18 @@ export const createOctahedralImpostorNodes = (
   const weights = [max(f.x, f.y).oneMinus(), abs(f.x.sub(f.y)), min(f.x, f.y)];
 
   /** The atlas uv of a point (relative to the centre) in frame `cell`'s image: from the cell's top
-   * left (v = 0 is the top), clamped to the frame (its edge is clear, and a neighbouring frame
-   * never shows through). */
+   * left, clamped to the frame (its edge is clear, and a neighbouring frame never shows through),
+   * then v flipped for an atlas stored v up. */
   const toAtlasUV = (cell: Vec2Node, point: Vec3Node, right: Vec3Node, up: Vec3Node) => {
     const coord = clamp(vec2(point.dot(right), point.dot(up)).div(extent), -1, 1);
-    return cell
+    const fromTop = cell
       .mul(cellSize)
       .add(gutter)
       .add(vec2(coord.x, coord.y.negate()).mul(0.5).add(0.5).mul(frameSize))
-      .div(atlasSize) as unknown as TextureUV;
+      .div(atlasSize);
+    return (vOrigin === 'TOP'
+      ? fromTop
+      : vec2(fromTop.x, fromTop.y.oneMinus())) as unknown as TextureUV;
   };
 
   /** A depth atlas alpha as the distance from the frame's image plane toward its camera (±radius),

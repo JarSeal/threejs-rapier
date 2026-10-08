@@ -729,7 +729,42 @@ id)` (unregistered targets, the caller disposes them), so a first export and a r
    uses an export when its JSON is gathered and its slots are loaded (decision 5), checks the
    format version and (debug env) the fingerprint, and otherwise bakes. Checked against a bake of
    the same rock under another id, both forced to the impostor level side by side, on WebGPU and
-   WebGL2: the same frames, upright, the same side.
+   WebGL2: the same frames, upright, the same side. — done: `buildOctahedralImpostor(layout,
+albedo, normalDepth, { id, alphaTest, surfaceDepth, shading, vOrigin })` registers the quad and
+   the material and stores the layout on the albedo atlas (so a later call with the id returns
+   them, either origin). The v origin is `vOrigin: 'TOP' | 'BOTTOM'`
+   (`createOctahedralImpostorNodes`' fourth argument, a flip in `toAtlasUV`), not a layout field:
+   the layout is the exported JSON's (strict schema) and describes the image from its top left
+   either way; the bake passes `TOP`, an export `BOTTOM`. The lookup is shared with section 6
+   (`core/Lod/Impostors/ImpostorExports.ts`): `getImpostorExport(id, kind, caller)` finds `id` in
+   the loading scene's `impostors` (else the current scene's), and refuses with a warning (the
+   generator bakes) another kind, another format or a slot that isn't loaded, or that is
+   registered but isn't a slot of the def's atlas (`getTextureAtlasInfo`);
+   `warnIfImpostorExportStale` hashes the call's source and resolved options in the debug env
+   only and warns, using the export anyway. Built from an export, the call's options other than
+   `id` only feed that check: the export's layout, shading, `alphaTest` and `surfaceDepth` win.
+   The record is `EXPORTED` with `bakeMs: null` and keeps its source, so a re-export bakes as
+   before. Found in the code: `saveTexture` returns a texture already registered under the id, so
+   a bake with the export's slots loaded under `${id}.albedo` / `${id}.normalDepth` would have drawn
+   the loaded slot and leaked its render target. The bake path still clears them
+   (`deleteLeftovers`), and the export path keeps them (`deleteLeftovers(id, true)`: only a
+   leftover geometry and material go). The gatherer only warned about another format version and
+   still listed the impostor's slots, which loaded for nothing and took those ids, so a scene now
+   leaves such an impostor out (the runtime's format check stays as a guard). Left as it is: a
+   scene that lists an impostor, entered from one that baked it under the same id, keeps the bake
+   (the loader finds the baked textures under the slot ids and keeps them; the generator then
+   finds the whole bake registered). Checked with largeWorld listing `largeWorldRockImpostor`
+   (temporarily, section 5 adds it): the record is `EXPORTED`, the slots are the KTX2 atlases
+   (864², 10 levels). The export, a bake of the same rock under another id (41 ms on WebGPU) and
+   the mesh were each drawn alone into a 320² target from 7 views (15° at three azimuths, 40°,
+   60°, overhead, 0°). Exported against baked: mean luma difference 0.48-1.01, mask IoU
+   0.993-0.996, area 1.001-1.005. Each against the mesh: baked 1.49-3.05, exported 1.66-3.46,
+   IoU 0.98 for both. A control with the wrong v origin: 8.5-27.2, IoU 0.72-0.90, so the figures
+   see a flip. WebGL2 (SwiftShader) gives the same figures within 0.1. The export was made on
+   WebGL2 in section 3 and its fingerprint matches on WebGPU (no stale warning), so section 3's
+   readback holds on both backends. The quad deleted and the call repeated with `hemi: false`:
+   rebuilt from the loaded slots in 1.6-1.9 ms, no bake, the stale warning logged. largeWorld
+   with level 2 forced draws every rock through the exported impostor, with no errors.
 5. **largeWorld rocks and the codecs:** largeWorld lists `largeWorldRockImpostor` in `impostors`.
    Measured with Phase 3 section 5's harness: the exported impostor against the runtime bake and
    against level 0 at the switch distance (15° to overhead, mean luma difference, mask IoU, area),

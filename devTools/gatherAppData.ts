@@ -920,7 +920,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
         // The runtime refuses another format and bakes instead: valid, but worth a re-export
         if (impostorJSON.formatVersion !== IMPOSTOR_EXPORT_FORMAT_VERSION) {
           console.warn(
-            `\x1b[33m⚠ [Scene Gatherer] ${file}: export format ${impostorJSON.formatVersion}, the engine's is ${IMPOSTOR_EXPORT_FORMAT_VERSION}. The runtime bakes it instead: re-export it (the LOD tab's Impostors).\x1b[0m`
+            `\x1b[33m⚠ [Scene Gatherer] ${file}: export format ${impostorJSON.formatVersion}, the engine's is ${IMPOSTOR_EXPORT_FORMAT_VERSION}. Scenes listing it don't load it, and the runtime bakes it instead: re-export it (the LOD tab's Impostors).\x1b[0m`
           );
         }
         const impostorId = impostorJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.impostor);
@@ -1390,6 +1390,8 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
             );
             continue;
           }
+          // The runtime would refuse it and bake: its slots would load for nothing (warned above)
+          if (impostor.formatVersion !== IMPOSTOR_EXPORT_FORMAT_VERSION) continue;
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { $schema, __sourcePath, ...def } = impostor;
           if (isProduction) delete def.debugData;
