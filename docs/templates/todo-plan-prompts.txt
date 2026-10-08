@@ -180,38 +180,6 @@ If for some reason this plan or some of its features can't or shouldn't be creat
 
 ************************************
 
-Create "Instruction/example pages and example scenes" plan in docs/plans/p550_instruction-and-helper-pages-and-scenes.md
 
-Category: Instructions, Examples
-
-UNDER_CONSTRUCTION
-We should create a system for instructions and example code on the core functionalities, features, and systems of the Aekasha engine. We don't have a router in our project but we should build a minimal router to the core code (at least for the debug mode or as a dynamic import so it doesn't go into the production code unless the developer wants it to). This means that we could access the instructions/help/example pages from the url: localhost:8080/hub/[what-ever-path-we-want-but-not-in-production-unless-imported-by-the-developer]/index.html
-
-This part will be called "Ækasha Hub".
-
-The built pages that are served from there are static html pages with CSS (/hub/_assets/[name-of-the-file].css), possible javascript for the UI (/hub/_assets/[name-of-the-file.js]), and UI icons (/hub/_assets/icons/[different SVG files]). If possible we should be able develop the javascript with Typescript and the CSS with SCSS files and after each save they would be built and the page refreshed. They need to also build into the project's root level folder called "dist-hub" so we can also publish those static files to a public address (such as netlify or something like that). We also need to copy the favicons there. Preferably these files should only build when some of these files are edited/created/deleted or when doing a full build (yarn build), not when the engine, toolkit, or app code changes.
-
-What I would love to have is that I would have the page data (maybe as Markup language) + TS/SCSS in some source folder and when the site is built it would also "somehow magically" produce/build a data JS file of all of the contents (title, path, content, and maybe tags that would be defined either in the page file's head section or in the content header). We could then use that data (that is loaded for every page, but preferably cached by the browser so we load it only once) to implement a search. That data should also have the page structure with relative links so we can render the main menu on each page (with active menu item recognized). One thing that we definately need on the pages is to show codeblocks with copy to clipboard, line number, line highlighting, TS/JS/JSON syntax highlighting, (what else?) features so we can insert code blocks into the pages. We should also have all of the version informations in the data as well.
-
-We should also create each example scene as an actual demo scene into the engine with a prefix in the name "Example: ". We should also in this plan implement a feature for the engine to overwrite the debug and the prodTest start scene with an url parameter: ?startScene=[sceneId]. We can then have a link from the example pages to view the actual scene in the debug mode or the prodTest mode. These links should not be available in the dist-hub build (because we are going to serve those in the Internet and without the engine, at least at this point).
-
-We need to add a rule to CLAUDE.md that when creating/editing/deleting engine code/features we should always also update the Aekasha Hub content. This should also be taken into account when creating plans. If found beneficial, then the second last phase (if the last phase is versioning, changelog addition, and marking the plan done) should be to update the Hub content and build relevant example(s). It should also ask if an example scene should be built.
-
-The content of these pages should be as follows (this structure should be in the menu as well):
-- Homepage: /hub [Introduction to the engine and some key features of the engine]
-  -- Examples: /hub/examples [A quick start guide to get the dev environment up and running + a simple cube with a checkerboard material hovering in the air]
-    -- Physics: /hub/examples/physics [A simple static plane and some primitive shapes dropping on the ]
-    -- Toolkit: /hub/examples/toolkit [A simple hovering Aekasha symbol (we need to create a Draco encoded 3D model of the Ækasha symbol into the toolkit assets and use that, if you can do it, please do it, and if not, provide me instructions on how to do it from the SVG file) with the triplanar checkerboard material]
-    -- (All other kind of examples, maybe at this phase we will have 5-7 different example pages)
-  -- Features: /hub/features [An intro text + a list of all of the key features]
-    -- (All of the key features as their own pages with a link to a possible example page + links to relevant documentation + link to a possible issue)
-  -- Documentation: /hub/documentation [This section should be all of the exported engine functions' JsDocs, basically the engine's API documentation. I would love for this section to have the same style as the rest of the pages, if possible]
-  -- Issues: /hub/issues [This section could list the open issues from the docs/issues]
-    -- (All of the possible issues as their own page with docs/issues/*.md file as the content)
-  -- Version: /hub/version [This section would show the version information + CHANGELOG.md content]
-
-This will most likely need several plans to implement and that is okay.
-
-If for some reason this plan or some of its features can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
 ************************************

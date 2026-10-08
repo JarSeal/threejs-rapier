@@ -1,0 +1,239 @@
+Status: draft | not-implemented
+Category: Dev tooling, Hub
+Epic: p550_aekasha-hub-epic.md
+Blocks: p552_hub-code-blocks-and-search.md, p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
+Related: \_DONE_p342_dev-file-server.md (the dev-only plugin pattern this copies)
+
+# Hub Site Generator & Dev Server
+
+The Ækasha Hub's foundation: the generator that turns `hub/` into static pages, the dev plugin
+that serves them at `/hub/` and refreshes them on save, the `dist-hub/` build, the design shell
+(nav, footer, theme, homepage skeleton), and the two generated sections that need nothing else:
+Issues and Version. It ends with the CLAUDE.md rule that keeps the Hub current (p550 §5).
+
+The shared decisions (source layout, page format, URLs, output, build modes, design) are in
+p550 §3. This plan builds them.
+
+---
+
+## 1. Grounding
+
+- **Vite's root is `src/`** (`vite.config.ts`), so `hub/` isn't watched by default. The gatherer adds
+  a file outside the root the same way: `server.watcher.add(ASSETS_CONFIG_FILE)`
+  (`devTools/sceneGathererPlugin.ts`).
+- **The patterns to copy:**
+  - `sceneGathererPlugin.ts`: `handleFileEvent` filters events by path, `schedule` debounces 100 ms
+    (`DEBOUNCE_MS`), `flush` runs one job at a time and loops while work is pending, and results go
+    out as a custom HMR event (`server.hot.send({ type: 'custom', event, data })`).
+  - `devFilesPlugin.ts`: one `server.middlewares.use` that handles its URL prefix and calls `next()`
+    for everything else.
+- **The gatherer reloads every page on a gather** (`server.hot.send({ type: 'full-reload' })`).
+  The Hub's own reloads must not do that: an open app tab would reload on every `.md` save.
+- **COOP/COEP on every dev response** (`crossOriginIsolationPlugin`): the Hub's pages only load
+  same-origin resources.
+- **Versions and build info** are built in `vite.config.ts` (`meta`, `readGit`). The generator needs
+  the same, so they move into a shared module.
+- **`sass` 1.104** (pure JS) and **`sharp`** are devDeps. Vite (6.4.3) can bundle the Hub's TS
+  through its JS API (`build()`).
+- **Type-checking:** the root `tsconfig.json` includes `src/**`, `devTools/**/*.ts` and
+  `vite.config.ts`, not `hub/`. The Stop hook (`.claude/hooks/verify.sh`) runs lint and `tsc` only
+  when `git status` shows a change in `src/`. ESLint's flat config covers every `**/*.ts`.
+- **`docs/issues/*.md`** have no consistent format. Every file starts with a `**Title:** …` line,
+  two have a `Status: …` line, and their sections differ (one is a GitHub issue template).
+- **`CHANGELOG.md`**: `## YYYY-MM-DD — branch` entries, newest first, with `### Engine x.y.z
+  (Codename)` / `### Toolkit …` / `### App …` / `### Project` sections and bold
+  `**Added**` / `**Changed**` / `**Fixed**` labels.
+- **Gitignored:** `dist`, `dist-stats`, `docs-api/`, `.cache/`. `dist-hub` isn't yet.
+
+## 2. Design
+
+### 2.1 Project metadata
+
+`devTools/projectMetadata.ts` exports `getProjectMetadata()`, the `meta` object `vite.config.ts`
+builds today (versions, codenames, packages, build tools, commit, time, checksum). `vite.config.ts`
+imports it instead of building its own, unchanged in output. The generator puts its `versions` and
+`build` parts into `hub-data.js` and the Version page.
+
+### 2.2 The generator (`devTools/hub/`)
+
+One function, `buildHub({ mode: 'dev' | 'public', outDir, only? })`, run by the CLI and the dev
+plugin. Modules:
+
+- `pages.ts`: discovers `hub/pages/**/index.html`, parses the head metadata (p550 §3.3) and
+  builds the page tree (`path`, `parent`, `children` by `aek:order` then title).
+- `markdown.ts`: a markdown-it instance with the Hub's plugins:
+  - heading anchors (slugged ids, a `#` link on hover) and the page's heading list, which feeds
+    the per-page "On this page" table of contents (shown from 3 headings) and `hub-data.js`;
+  - callouts `::: tip|note|warning|danger [title]`;
+  - `hub:` links resolved to relative URLs and checked (a dead link fails the build, with the file
+    and line);
+  - relative images copied to `_assets/images/pages/…` (sharp to webp when they're PNG or JPEG);
+  - a directive registry (`::: name args`), so later plans add `code-group` (p552), `scene` (p554)
+    and `cards` (p555) without touching the core.
+- `shell.ts`: puts the page into `hub/_layout/shell.html`. The shell's `{{…}}` placeholders are the
+  page title, description, the nav (rendered here, with the active item and its ancestors marked),
+  breadcrumbs, the TOC, the body, the asset URLs with their `?v=` and `{{root}}` (the relative path
+  to the site root). Plain string templates, no templating library.
+- `assets.ts`: SCSS through `sass.compile` (compressed in `public`), the TS entries `hub.ts` and
+  `search.ts` through Vite's `build()` (`configFile: false`, ES module output, fixed file names,
+  minified in `public`), icons and fonts copied, and content hashes for `?v=`.
+- `data.ts`: `hub-data.js` (p550 §3.5). p552 adds `hub-search.js`.
+- `generated/issues.ts`, `generated/version.ts`: §2.5.
+- `hubBuild.ts` (CLI): `yarn hub:build [--out <dir>] [--no-api]` (`--no-api` is p553's). Builds
+  `public` into `dist-hub/` (emptied first), copies the favicons from `src/public/`, writes
+  `_headers` and `404.html`, and exits 1 on an error.
+
+Errors and warnings are collected per run with file and line. In `public` mode any error fails the
+build. In `dev` mode the page that failed renders an error page (§2.3).
+
+### 2.3 The dev plugin (`devTools/hubPlugin.ts`)
+
+`{ name: 'vite-plugin-aek-hub', apply: 'serve', configureServer }`, registered in
+`vite.config.ts` after `devFilesPlugin`. `AEK_HUB=false` turns it off.
+
+- **Routes:** `/hub` redirects to `/hub/`. `/hub/**` serves files from `.cache/hub/dev/`, a
+  directory URL serves its `index.html`, and anything missing gets the Hub's `404.html` with a 404.
+  Everything else goes to `next()`.
+- **Lazy:** the first build runs on the first `/hub` request (the request waits for it), so a
+  developer who never opens the Hub pays nothing at start-up.
+- **Watching:** after the first build, `server.watcher.add` for `hub/**`, `docs/issues/*.md`,
+  `CHANGELOG.md`, `package.json`, plus whatever files the last build recorded as dependencies (p552's
+  snippets, p554's images). Engine, toolkit and app changes don't trigger it (p553's API docs are
+  the one exception, and they're only marked stale).
+- **Incremental:** an `.md` or a page's `index.html` rebuilds that page and `hub-data.js`. A new or
+  deleted page, `hub.config.ts` or the shell rebuilds all pages. SCSS rebuilds only the CSS, TS
+  only the JS. Debounced 100 ms, one run at a time, like the gatherer.
+- **Reload:** in `dev` mode the shell includes a small dev client:
+  `import { createHotContext } from '/@vite/client'`, a hot context of its own, listening to the
+  custom event `aek:hub` (`{ kind: 'css' | 'pages' | 'all', paths }`). A CSS change swaps the
+  stylesheet's `href` (new `?v=`) without a reload. A page change reloads only when the open page is
+  in `paths` or the kind is `all`. The plugin never sends `full-reload`, so open app tabs aren't
+  touched.
+- **Errors:** a page that failed to build serves an error page (the message, the file and line,
+  styled with the shell), and the event reloads it once it's fixed. The terminal gets the same
+  message.
+
+### 2.4 Build integration
+
+- `package.json`:
+  - `hub:build`: `tsx ./devTools/hubBuild.ts`.
+  - `hub:preview`: serves `dist-hub/` (`vite preview --outDir ../dist-hub --port 8090`, or a small
+    static server if preview's root handling gets in the way).
+  - `build` and `build:test` add `tsc -p hub` after `tsc` and `yarn hub:build` at the end, both
+    skipped when `AEK_HUB=false`.
+- `AEK_HUB_IN_DIST=true` (read by `hubBuild.ts` during `yarn build`) copies `dist-hub/` into
+  `dist/hub/` after the app's build. Off by default, so the Hub is never in production unless the
+  developer asks for it (p550 §3.1).
+- `.gitignore`: `dist-hub`.
+- `hub/tsconfig.json`: DOM lib, `strict`, `noEmit`, its own `include` (`hub/**/*.ts`).
+- The Stop hook (`verify.sh`) also runs when `hub/` changed, and runs `tsc -p hub` there.
+- ESLint: no change, since `**/*.ts` already matches. `hub/` gets the same Prettier rules.
+
+### 2.5 Generated sections
+
+- **Issues** (`generated/issues.ts`): reads `docs/issues/*.md`. Title from the `**Title:**` line,
+  else the first heading, else the file name. Status from a `Status:` line (`open` when there is
+  none, shown as "not stated"). The landing page lists them grouped by status with the first
+  paragraph as a summary. Each issue gets a page at `/hub/issues/<file-name>/` with the file rendered
+  as is (its `**Title:**` and `Status:` lines become the page title and a status badge). The
+  convention for new issue files goes into CLAUDE.md (§4 Phase 5): `**Title:**` on line 1,
+  `Status:` on line 3.
+- **Version** (`generated/version.ts`): a table of the engine, toolkit, app and project versions
+  with codenames, the build commit (with a "local changes" mark) and time, then `CHANGELOG.md`
+  rendered with an anchor per entry (`#2026-10-07-dev-server-implementation`). The latest entry's
+  date, branch and parts go into `hub-data.js` as `latestChange`, for the homepage's "What's new".
+
+### 2.6 Shell and homepage skeleton
+
+- `shell.html`: the top nav, breadcrumbs (not on the homepage), the main column with the TOC on the
+  right from 1200 px, and the footer ("Ækasha Hub / <engine version>" left, "Powered by Three.js +
+  Rapier" right).
+- The top nav (p550 §3.7). Dropdowns list a section's children from the page tree, open on hover
+  and on click/Enter, close on Escape. The search box is a button that p552 wires up (until then it
+  opens nothing). The version pill links to `/hub/version/`.
+- The theme toggle and the mobile menu in `hub.ts`, with no framework.
+- The homepage skeleton: the hero (title, intro, section buttons), and empty slots for p555's
+  content. The hero image is a crop of the design image (`hub/_assets/images/hero-placeholder.webp`,
+  made once with sharp and committed) until p554's render replaces it.
+- Placeholder pages for Examples, Features and Documentation (an intro slot each), so the nav is
+  complete from the start.
+
+## 3. Phases
+
+### Phase 1 — Generator core and `dist-hub`
+
+§2.1, §2.2 (without the shell's final markup) and §2.4 without the dev plugin: the metadata module,
+pages, Markdown with its plugins, assets, `hub-data.js`, `yarn hub:build`, favicons, `_headers`,
+`404.html`, `.gitignore`, `hub/tsconfig.json`, the Stop hook.
+
+**Exit:** a sample site (home plus two nested pages, one with two slots) builds into `dist-hub/`.
+Served from a static server at `/` and copied under `/hub/`, every link works in both. A dead `hub:`
+link and an `.md` without a slot each fail the build with the file and line. `yarn build` still
+passes and produces `dist-hub/`. `AEK_HUB=false yarn build` doesn't.
+
+### Phase 2 — Dev plugin
+
+§2.3.
+
+**Exit:** with `yarn dev`:
+
+- `/hub` redirects, and `/hub/` builds on its first request.
+- Saving an `.md` refreshes that page in its tab within about a second. Saving the SCSS restyles
+  it without a reload.
+- With an app tab open next to it, a Hub save doesn't reload the app tab. An app or engine `.ts`
+  save doesn't rebuild the Hub (nothing in the terminal, no event).
+- A broken `.md` shows the error page, and fixing it brings the page back.
+
+### Phase 3 — Design shell
+
+§2.6 and the design (p550 §3.7): tokens, the nav with dropdowns and the mobile menu, breadcrumbs,
+the TOC, the footer, the theme toggle, icons, fonts, the homepage skeleton with the placeholder hero.
+
+**Exit:**
+
+- The homepage reads as the design's layout at 1536 px, and the nav collapses to the menu button at
+  375 px with no horizontal scroll.
+- The light and dark themes both pass a contrast check for body text and the accent.
+- The active nav item follows the page, nested pages included.
+- Keyboard: the nav, dropdowns and theme toggle work without a mouse.
+
+### Phase 4 — Issues and Version
+
+§2.5.
+
+**Exit:** the three current `docs/issues/*.md` files each get a page with the right title and status.
+The Version page shows the versions from `package.json` and the whole changelog, and a changelog
+entry's anchor links work. Saving `CHANGELOG.md` during `yarn dev` refreshes the Version page.
+
+### Phase 5 — Docs
+
+1. CLAUDE.md:
+   - Commands: `hub:build`, `hub:preview`, `AEK_HUB`, `AEK_HUB_IN_DIST`.
+   - A new "Ækasha Hub" section under Architecture: the source layout, the page format, the dev
+     plugin, the modes, the generated sections.
+   - The issue-file convention.
+   - The rule from p550 §5, under "Plans logic and structure" and "Workflow".
+   - Build config notes: the plugin.
+2. `docs/techniques/hub-authoring.md`: adding a page, slots and metadata, `hub:` links, callouts,
+   images, how dev refresh works. p552-p555 extend it.
+3. `readme.md`: Commands (`hub:build`, `hub:preview`), Documentation (the Hub next to
+   `yarn docs`), Project structure (`hub/`).
+
+### Phase 6 — Versioning and marking the plan done
+
+`CHANGELOG.md` Project entry (§4). No part changes, so `yarn checkVersions --against main` passes
+without a bump.
+
+## 4. Versioning
+
+Project only: `hub/`, `devTools/` and `vite.config.ts` are repo tooling. `vite.config.ts`'s
+`__PROJECT_METADATA__` output is unchanged by §2.1, so the engine isn't touched.
+
+## 5. Open questions
+
+1. **Hashed file names instead of `?v=`** if the host's CDN ignores query strings (p550 §3.6).
+2. **A standalone `yarn hub:dev`** (the Hub without the engine's dev server, for writing content
+   only): the plugin would run in a bare Vite server. Not needed while `yarn dev` starts quickly.
+3. **Incremental TOC/nav for very large trees:** p553 adds hundreds of API pages. If a full rebuild
+   gets slow, the nav can become a shared partial that pages include at build time instead of each
+   rendering its own copy.
