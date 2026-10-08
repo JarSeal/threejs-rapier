@@ -188,6 +188,19 @@ With optimization off, a pack is still built and written as a PNG, since it has 
 
 A mip level averages alpha, so a material with `alphaTest` loses thin features with distance: a leaf card's edge or a trunk falls below the cut and breaks up. `alphaCoverage` fixes that at build time. Set it to the material's `alphaTest`, and each mip level's alpha is scaled so the same share of it passes the cut as at level 0:
 
+```jsonc
+// src/app/textures/leafCard.texture.json
+{
+  "$schema": "../../../.schemas/texture.schema.json",
+  "id": "leafCard",
+  "fileName": "./source/leafCard.png",
+  "texOpts": { "colorSpace": "srgb" },
+  "optimize": { "slot": "baseColor", "alphaCoverage": 0.5 },
+}
+```
+
+An atlas slot takes it the same way:
+
 ```json
 "albedo": {
   "image": "./tree.albedo.png",
@@ -195,8 +208,9 @@ A mip level averages alpha, so a material with `alphaTest` loses thin features w
 }
 ```
 
-- **Where:** an atlas slot's `optimize`. Plain `*.texture.json` files don't take it yet.
-- **Only for coverage alpha:** an albedo cut by `alphaTest`. A `normal` or `data` slot, or `normalMode`, is refused: their alpha is data. Without an alpha channel or mipmaps it does nothing (with a warning).
+- **Where:** a `*.texture.json`'s `optimize` (a file or a `pack`) and an atlas slot's `optimize`. It belongs to the asset, so profiles and rules don't take it. Texture arrays don't either.
+- **Only for coverage alpha:** an albedo cut by `alphaTest`. A `normal` or `data` slot, or `normalMode`, is refused: their alpha is data. Without an alpha channel or mipmaps, or with `codec: "none"` (a PNG, whose mips the GPU makes), it does nothing (with a warning).
+- **The mips are the pipeline's:** a texture with `alphaCoverage` gets its levels from the pipeline's 2 × 2 box filter (area-filtered past an odd size) instead of `ktx`'s default (lanczos4), colour included. The target is the source's coverage before `maxSize`, so a resized level 0 is scaled too.
 - **Per cell:** an atlas keeps each cell's own coverage on the levels its padding keeps apart, and the whole image's on a full chain's levels past them.
 - **What it can't fix:** a level only a few texels across moves in coarse steps. Below that, UASTC's alpha error near the cut (up to about 18/255 on small levels) can still move the edge by a few percent.
 

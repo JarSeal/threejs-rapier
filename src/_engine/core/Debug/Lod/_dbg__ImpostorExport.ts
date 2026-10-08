@@ -36,8 +36,8 @@ import { readRenderTargetImageAsync } from '../_dbg__TexturePreview';
 // without AEK_DEV_FILES_LAN, AEK_DEV_FILES=false, a build) the files are downloaded instead, with
 // the repo paths to put them at. Both kinds export (octahedral: albedo and normalDepth slots;
 // cross-quads, section 6: albedo, and normal when baked with normals). The albedo slot carries
-// the impostor's `alphaTest` as `alphaCoverage` (docs/plans/p341_alpha-coverage-mips.md), so its
-// mips keep level 0's coverage and thin features don't break up with distance.
+// the impostor's `alphaTest` as `alphaCoverage` (docs/plans/_DONE_p341_alpha-coverage-mips.md), so
+// its mips keep level 0's coverage and thin features don't break up with distance.
 
 /** Where an impostor stands against the export the generated data has of it */
 export type ImpostorExportState =

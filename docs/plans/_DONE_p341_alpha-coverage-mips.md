@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: implemented (Phases 1-3)
 Category: Assets, Textures
 Blocks: p351_impostor-billboard-lod.md (Phase 5: its cross-quad lane and no-pop dolly)
 Related: p299_texture-arrays-and-atlases.md (the atlas mip chain this extends), \_DONE_p300_asset-optimization-pipeline-plan.md (the pipeline), p308_terrain-scatter.md (leaf cards)
@@ -137,11 +137,37 @@ As built:
   be loaded after the renderer has been created"), in the harness's page; a fresh load is clean. Not
   this plan's; not chased.
 
-### Phase 3 — Plain textures
+### Phase 3 — Plain textures — done
 
 `*.texture.json` with `alphaCoverage` builds its own levels like an atlas (no `--generate-mipmap`)
 and scales them. For p308's leaf cards and any alpha-cut texture outside an atlas. Checked on a
 test texture with thin features.
+
+As built:
+
+- `TextureOptimizeSchema` takes `alphaCoverage` (refined like an atlas slot's: not on a `normal` /
+  `data` slot). It travels on `PipelineAsset.alphaCoverage`, read from the JSON's own `optimize`
+  for every use (a scene entry has no `optimize`), and joins the cache key only when set, as
+  `{ cut, version: ALPHA_COVERAGE_VERSION }`. The run labels it like an atlas slot.
+- Shared with the atlases: `resolveCoverageCut` (moved to `alphaCoverage.ts`; it now also warns
+  and does nothing for `codec: "none"`, a PNG whose mips the GPU makes) and `getNextMipLevel`
+  (`images.ts`, the atlases' `nextLevel`).
+- `textures.ts`'s `encodeCoverageLevels` builds the full chain with `getNextMipLevel` and encodes
+  it with `encodeKtx2Levels`, so such a texture's colour mips are the box chain too, not `ktx`'s
+  `--generate-mipmap` (lanczos4). The target is the source's coverage before `maxSize`: a resized
+  level 0 is scaled to it as well. A pack is built at its own size when a cut is set and resized
+  after, like a file.
+- Test texture `p341AlphaCutTest` (`src/app/textures/`, 256², twigs, a fence and grass blades down
+  to 1 px; in no scene, so it doesn't ship): level 0 coverage 0.075 at 0.5. Decoded KTX2 against
+  it (the old `--generate-mipmap` encode, same settings, in brackets): levels 1-4 1.005 / 0.992 /
+  0.993 / 0.998 (0.774 / 0.276 / 0.006 / 0), 8² 0.962 (0), 4² 0.884, 2² 0.832, 1 × 1 0. The 8-bit
+  input is within 0.2 % down to 8², so 8²'s -4 % is UASTC (open question 1); 4² and down are
+  granularity (1.040 and 0.832 in floats). The other paths, through `encodeTextureAsset`: a
+  `maxSize: 64` encode and a pack (`maxSize: 128`) keep the source's coverage the same way (64²:
+  0.992, against 0.232 unscaled); `codec: "none"` and `mipmaps: false` warn and encode as before;
+  a `normal` slot and `normalMode` throw.
+- The exit's documentation: `docs/techniques/asset-optimization.md`'s "Alpha-cut textures" covers
+  both forms (a texture's and an atlas slot's), the box chain and what it can't fix.
 
 **Exit:** the tree's exported cross-quads keep level 0's coverage at every level (within 1 %),
 draw no thinner at their switch distance than level 0's coverage allows (the runtime bake draws a

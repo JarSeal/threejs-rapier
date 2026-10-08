@@ -1,8 +1,7 @@
 Status: in progress | Phases 1-4 implemented
 Category: Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 2.2)
-Blocked by: p341_alpha-coverage-mips.md (Phase 5 only: its cross-quad lane, see Phase 4 section 6)
-Related: \_DONE_p342_dev-file-server.md (Phase 4's export writes through it), p299_texture-arrays-and-atlases.md (Phase 4's exported atlases; Phase 4 section 1 extends its format), \_DONE_p300_asset-optimization-pipeline-plan.md (Phase 4's KTX2 encode), p354_gpu-driven-culling.md / p375_batched-mesh-batches.md (later lanes of Phase 5's showcase), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
+Related: \_DONE_p341_alpha-coverage-mips.md (Phase 4's exported albedo atlases keep level 0's alpha coverage, which Phase 5's cross-quad lane needed), \_DONE_p342_dev-file-server.md (Phase 4's export writes through it), p299_texture-arrays-and-atlases.md (Phase 4's exported atlases; Phase 4 section 1 extends its format), \_DONE_p300_asset-optimization-pipeline-plan.md (Phase 4's KTX2 encode), p354_gpu-driven-culling.md / p375_batched-mesh-batches.md (later lanes of Phase 5's showcase), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
 
 # Impostor & Billboard LOD
 
@@ -855,8 +854,8 @@ vOrigin })`, which rebuilds the planes with uvs for the v origin and flips the p
      keeps thin features above the cut; p299's `FULL` chain is the exact area filter, so its alpha
      test thins them as Phase 1's "no alpha coverage correction per mip" note expected. Decided
      (after review): accepted for this phase, as the switch from level 1 is no worse than with the
-     bake; the fix is p341_alpha-coverage-mips.md (alpha scaled per level to level 0's coverage
-     at the cut, in the pipeline), done before Phase 5, whose showcase puts cross-quads on screen.
+     bake; the fix is \_DONE_p341_alpha-coverage-mips.md (alpha scaled per level to level 0's
+     coverage at the cut, in the pipeline), done before Phase 5, whose showcase puts cross-quads on screen.
    - GPU memory tab: 46,112 B per atlas (UASTC, 8 levels), against 182,738 B per bake atlas.
    - Scene load (four alternating rounds, as in section 5, the rock exported in both): listed
      1,376-1,414 ms, baking 1,388-1,408 ms (the bake 13-15 ms), about 15 ms faster. With both
@@ -906,8 +905,8 @@ As built:
     exported against baked 2.1-3.0. No extra self-shadowing acne (decision 3's codecs kept). The
     trees: exported against level 1 IoU 0.59-0.81 against the bake's 0.70-0.89, outside the bake's
     figures. Its thin trunks break up at mip levels 3-4 under the exact box chain, where three's
-    bilinear GPU mips keep them. Accepted after review; p341_alpha-coverage-mips.md fixes it before
-    Phase 5.
+    bilinear GPU mips keep them. Accepted after review; \_DONE_p341_alpha-coverage-mips.md fixes it
+    before Phase 5.
   - WebGPU and WebGL2 agree: within 0.5 (rock) and 0.4 (tree) of each other.
   - GPU memory: 995,712 B per rock atlas (against 3,980,317 B baked), 46,112 B per tree atlas
     (against 182,738 B).
