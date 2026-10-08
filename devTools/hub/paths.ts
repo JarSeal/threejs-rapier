@@ -38,9 +38,9 @@ export const PACKAGE_JSON_FILE = path.join(ROOT, 'package.json');
 export const ISSUES_DIR = path.join(ROOT, 'docs', 'issues');
 export const CHANGELOG_FILE = path.join(ROOT, 'CHANGELOG.md');
 
-/** Copied from the app's public folder to the Hub's root */
+/** The Hub's own favicons (the app's glyph in the Hub's accent), copied to the Hub's root */
 export const FAVICON_FILES = ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'].map((name) =>
-  path.join(ROOT, 'src', 'public', name)
+  path.join(HUB_ASSETS_DIR, 'favicons', name)
 );
 
 /** The output folder for a page's Markdown images: `_assets/images/pages/<page path>` */

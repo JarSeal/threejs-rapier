@@ -376,7 +376,7 @@ The same checks run in dev and in `yarn hub:build`. In dev, an error shows the e
 
 ## Publishing
 
-`yarn hub:build` writes a self-contained site into `dist-hub/`: the pages, `404.html`, `_assets/` and the favicons from `src/public/`. It loads nothing from another origin.
+`yarn hub:build` writes a self-contained site into `dist-hub/`: the pages, `404.html`, `_assets/` and the Hub's favicons (`hub/_assets/favicons/`: the app's Æ in the Hub's accent, separate from the app's own in `src/public/`). It loads nothing from another origin.
 
 - **Netlify** reads the generated `_headers`, which caches `_assets/*` for a year as immutable. Every reference carries `?v=<content hash>`, so a deploy is picked up straight away. If a host's CDN ignores query strings in its cache key, that breaks: check the first real deploy.
 - **Any other static host** works too. Serve `404.html` for missing paths, and give it its own caching headers.
