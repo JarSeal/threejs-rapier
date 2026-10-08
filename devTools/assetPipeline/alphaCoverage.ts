@@ -1,4 +1,6 @@
+import { NON_COVERAGE_SLOTS, type TextureSlot } from '../../src/_engine/schemas/assetsConfigSchema';
 import type { Img } from './images';
+import type { ResolvedTextureSettings } from './settings';
 
 /**
  * Alpha-coverage-preserving mips (p341; Castaño, "Computing alpha mipmaps", 2010, as NVTT's
@@ -29,6 +31,49 @@ const MAX_SCALE = 256;
 const ALPHA_STEPS = 255;
 
 const getWholeRegion = (img: Img): CoverageRegion => [0, 0, img.width, img.height];
+
+/**
+ * The cut an encode keeps its levels' coverage at, or undefined. Checked against what the texture
+ * resolves to, which the schema only sees when the JSON names it: throws for a slot whose alpha
+ * isn't coverage (a normal map's, data, `normalMode`'s Y), and warns that it does nothing without
+ * mip levels (`codec: "none"`, `mipmaps: false`) or alpha.
+ * @param label Where the cut is set, eg. `optimize.alphaCoverage`
+ */
+export const resolveCoverageCut = (
+  cut: number | undefined,
+  opts: {
+    label: string;
+    slot: TextureSlot;
+    settings: ResolvedTextureSettings;
+    hasAlpha: boolean;
+    warn: (message: string) => void;
+  }
+) => {
+  if (cut === undefined) return undefined;
+  const { label, slot, settings, warn } = opts;
+  const normalMode = settings.codec !== 'none' && settings.normalMode;
+  if (NON_COVERAGE_SLOTS.includes(slot) || normalMode) {
+    const what = normalMode ? 'normalMode, whose alpha is Y' : `the slot "${slot}"`;
+    throw new Error(
+      `${label}: the texture resolves to ${what}: its alpha isn't coverage, and scaling it would change its data`
+    );
+  }
+  if (settings.codec === 'none') {
+    warn(
+      `${label}: codec "none" stores no mip levels (a PNG: the GPU makes them), so there are none to scale`
+    );
+    return undefined;
+  }
+  if (!settings.mipmaps) {
+    warn(`${label}: mipmaps are off, so there are no levels to scale`);
+    return undefined;
+  }
+  if (!opts.hasAlpha) {
+    warn(`${label}: the texture has no alpha channel, so there is no coverage to keep`);
+    return undefined;
+  }
+  return cut;
+};
 
 /** A region's alpha (the image's last channel), contiguous */
 const readAlpha = (img: Img, [rx, ry, rw, rh]: CoverageRegion) => {

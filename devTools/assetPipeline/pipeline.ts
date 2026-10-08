@@ -6,6 +6,7 @@ import {
   type ResolvedLodChainOptions,
 } from '../../src/_engine/core/Lod/LodChainOptions';
 import type { AssetOptimize } from '../../src/_engine/schemas/assetsConfigSchema';
+import { ALPHA_COVERAGE_VERSION } from './alphaCoverage';
 import { encodePng } from './images';
 import {
   createKtxProvider,
@@ -69,6 +70,11 @@ export type PipelineAsset = {
   source: AssetSource | PackSource | ArraySource | AtlasSlotSource;
   /** An atlas slot's is the slot's */
   optimize?: AssetOptimize;
+  /**
+   * A texture's `optimize.alphaCoverage` (p341): the cut each mip level's coverage is kept at.
+   * An atlas slot's is on its source ({@link AtlasSlotSource}).
+   */
+  alphaCoverage?: number;
   /** A texture (or an array, an atlas slot) whose `texOpts.colorSpace` is sRGB: its colour
    * channels are sRGB-encoded */
   isSrgb?: boolean;
@@ -379,6 +385,10 @@ const runAsset = async (
         slot: settings.slot,
         settings: slotSettings,
         isSrgb,
+        // Only when set, so the keys of the textures without it didn't change
+        ...(asset.alphaCoverage !== undefined
+          ? { alphaCoverage: { cut: asset.alphaCoverage, version: ALPHA_COVERAGE_VERSION } }
+          : {}),
         ...(source.kind === 'pack'
           ? { pack: source.pack, output: getPackLogicalPath(source) }
           : { output: getLogicalPath(source) }),
@@ -453,6 +463,7 @@ const runAsset = async (
     } else if (slotSettings) {
       const { output, texture } = await encodeTextureAsset(source, settings.slot, slotSettings, {
         isSrgb,
+        alphaCoverage: asset.alphaCoverage,
         getKtx,
         warn,
       });

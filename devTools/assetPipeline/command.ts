@@ -50,10 +50,8 @@ const getAssetLabel = (asset: PipelineAsset) => {
           : count(asset.source.cells.filter((cell) => cell.source).length, 'cell')
         : '';
   const fullChain = asset.source.kind === 'atlas' && asset.source.mipChain ? ', full chain' : '';
-  const alphaCoverage =
-    asset.source.kind === 'atlas' && asset.source.alphaCoverage !== undefined
-      ? `, alpha coverage ${asset.source.alphaCoverage}`
-      : '';
+  const cut = asset.source.kind === 'atlas' ? asset.source.alphaCoverage : asset.alphaCoverage;
+  const alphaCoverage = cut !== undefined ? `, alpha coverage ${cut}` : '';
   const colorSpace = asset.type !== 'importedAsset' && asset.isSrgb ? ', sRGB' : '';
   return `${asset.id} ${DIM}(${source}${parts}${fullChain}${alphaCoverage}${colorSpace})${RESET}`;
 };

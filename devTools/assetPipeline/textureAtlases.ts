@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { NON_COVERAGE_SLOTS, type TextureSlot } from '../../src/_engine/schemas/assetsConfigSchema';
+import type { TextureSlot } from '../../src/_engine/schemas/assetsConfigSchema';
 import {
   DEFAULT_ATLAS_PADDING,
   getFullMipLevelCount,
@@ -12,10 +12,11 @@ import {
 import {
   ALPHA_COVERAGE_VERSION,
   measureAlphaCoverage,
+  resolveCoverageCut,
   scaleAlphaForCoverage,
   type CoverageRegion,
 } from './alphaCoverage';
-import { createImage, flipY, halve, resizeImage, toChannels, type Img } from './images';
+import { createImage, flipY, getNextMipLevel, toChannels, type Img } from './images';
 import { encodeKtx2Levels, type KtxProvider, type KtxSettings } from './ktxEncode';
 import { getAtlasLogicalPath, writeOutput, type PipelineOutput } from './outputs';
 import { toRepoPath } from './sources';
@@ -496,39 +497,6 @@ const drawCell = (atlas: Img, img: Img, rect: AtlasRect, content: AtlasRect) => 
 };
 
 /**
- * The cut a slot's levels keep their coverage at (p341), or undefined. Checked against what the
- * slot resolves to, which the schema only sees when the JSON names it: throws for a slot whose
- * alpha isn't coverage (a normal map's, data, `normalMode`'s Y), and warns that it does nothing
- * without alpha or mipmaps.
- */
-const getCoverageCut = (
-  source: AtlasSlotSource,
-  slot: TextureSlot,
-  settings: KtxSettings,
-  hasAlpha: boolean,
-  warn: (message: string) => void
-) => {
-  const cut = source.alphaCoverage;
-  if (cut === undefined) return undefined;
-  const label = `slots.${source.slot}.optimize.alphaCoverage`;
-  if (NON_COVERAGE_SLOTS.includes(slot) || settings.normalMode) {
-    const what = settings.normalMode ? 'normalMode, whose alpha is Y' : `the slot "${slot}"`;
-    throw new Error(
-      `${label}: the slot resolves to ${what}: its alpha isn't coverage, and scaling it would change its data`
-    );
-  }
-  if (!hasAlpha) {
-    warn(`${label}: the slot has no alpha channel, so there is no coverage to keep`);
-    return undefined;
-  }
-  if (!settings.mipmaps) {
-    warn(`${label}: mipmaps are off, so there are no levels to scale`);
-    return undefined;
-  }
-  return cut;
-};
-
-/**
  * Encodes an atlas slot (p299 D3): the layout filled with the slot's `fill` (RGB(A), linear;
  * default transparent black, an RGB fill is opaque), each cell's source resized into its content
  * rect and edge-extended over its padding (or the slot's ready-made `image`, as it is), then
@@ -602,7 +570,13 @@ export const encodeTextureAtlasSlot = async (
     ? imageProbe.hasAlpha
     : probes.some((probe) => probe?.hasAlpha) || (fill?.length === 4 && fill[3] < 1);
   const channels = hasAlpha ? 4 : 3;
-  const coverageCut = getCoverageCut(source, slot, settings, hasAlpha, opts.warn);
+  const coverageCut = resolveCoverageCut(source.alphaCoverage, {
+    label: `slots.${source.slot}.optimize.alphaCoverage`,
+    slot,
+    settings,
+    hasAlpha,
+    warn: opts.warn,
+  });
 
   // The levels stored: from the first that fits maxSize to the last the layout keeps apart (or
   // to 1×1 with the full chain)
@@ -633,11 +607,8 @@ export const encodeTextureAtlasSlot = async (
     );
   }
   // Exact halving while the layout keeps the cells apart (its size is aligned to 2^levels); the
-  // full chain's levels past that can have an odd size, area-filtered to the GPU's floor(size / 2)
-  const nextLevel = (img: Img) =>
-    img.width % 2 || img.height % 2
-      ? resizeImage(img, Math.max(1, img.width >> 1), Math.max(1, img.height >> 1), isNormal)
-      : halve(img, isNormal);
+  // full chain's levels past that can have an odd size, area-filtered
+  const nextLevel = (img: Img) => getNextMipLevel(img, isNormal);
 
   const composeLevel0 = async () => {
     if (image) {

@@ -159,28 +159,6 @@ export const AssetOptimizeSchema = z
 
 export type AssetOptimize = z.infer<typeof AssetOptimizeSchema>;
 
-/** A `*.texture.json`'s `optimize`: it names its slot and has no geometry. */
-export const TextureOptimizeSchema = z
-  .union([z.literal(false), z.strictObject(OptimizeObjectShape).omit({ mesh: true })])
-  .describe(
-    'Asset optimization (p300): a profile, the slot and per-slot overrides, or false to keep the file as it is.'
-  );
-
-/**
- * A `*.textureArray.json`'s `optimize` (p299 D2): like a texture's, but never `false` (nor
- * `textures: false`). An array is only ever a KTX2 file `ktx` encodes, so it has no form "as it
- * is".
- */
-export const TextureArrayOptimizeSchema = z
-  .strictObject({
-    ...OptimizeObjectShape,
-    textures: TexturesSettingsSchema.optional().describe('Per-slot overrides.'),
-  })
-  .omit({ mesh: true })
-  .describe(
-    "Asset optimization (p300): a profile, the slot and per-slot overrides, applied to every layer. The codec can't be none: an array is a KTX2 file."
-  );
-
 /** Slots whose alpha isn't coverage (a normal map's, data packed into it): never scaled */
 export const NON_COVERAGE_SLOTS: readonly TextureSlot[] = ['normal', 'data'];
 
@@ -211,6 +189,38 @@ export const refineAlphaCoverageSlot = (
     });
   }
 };
+
+/**
+ * A `*.texture.json`'s `optimize`: it names its slot and has no geometry. `alphaCoverage` (p341)
+ * is the texture's own, like an atlas slot's: not in a profile or a rule.
+ */
+export const TextureOptimizeSchema = z
+  .union([
+    z.literal(false),
+    z
+      .strictObject(OptimizeObjectShape)
+      .omit({ mesh: true })
+      .extend({ alphaCoverage: AlphaCoverageSchema.optional() })
+      .superRefine(refineAlphaCoverageSlot),
+  ])
+  .describe(
+    'Asset optimization (p300): a profile, the slot, per-slot overrides and the alphaCoverage, or false to keep the file as it is.'
+  );
+
+/**
+ * A `*.textureArray.json`'s `optimize` (p299 D2): like a texture's, but never `false` (nor
+ * `textures: false`). An array is only ever a KTX2 file `ktx` encodes, so it has no form "as it
+ * is".
+ */
+export const TextureArrayOptimizeSchema = z
+  .strictObject({
+    ...OptimizeObjectShape,
+    textures: TexturesSettingsSchema.optional().describe('Per-slot overrides.'),
+  })
+  .omit({ mesh: true })
+  .describe(
+    "Asset optimization (p300): a profile, the slot and per-slot overrides, applied to every layer. The codec can't be none: an array is a KTX2 file."
+  );
 
 /** A `*.importedAsset.json`'s `optimize`: its textures are classified by their material slot. */
 export const ImportedAssetOptimizeSchema = z

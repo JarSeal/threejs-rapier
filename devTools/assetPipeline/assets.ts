@@ -240,6 +240,11 @@ export const collectPipelineAssets = (assetJsons: AssetJson[]) => {
       continue;
     }
     const { type, id, jsonFile, data } = assetJson;
+    // The JSON's own (p341), for every use: a scene entry has no `optimize`
+    const alphaCoverage =
+      assetJson.type === 'texture' && assetJson.data.optimize
+        ? assetJson.data.optimize.alphaCoverage
+        : undefined;
     for (const useData of listAssetUses(data)) {
       const use = resolveAssetUse(jsonFile, useData);
       if (!use || 'error' in use) continue;
@@ -264,7 +269,7 @@ export const collectPipelineAssets = (assetJsons: AssetJson[]) => {
         source: use.source,
         ...(data.optimize !== undefined ? { optimize: data.optimize } : {}),
         ...(type === 'texture'
-          ? { isSrgb: use.isSrgb }
+          ? { isSrgb: use.isSrgb, ...(alphaCoverage !== undefined ? { alphaCoverage } : {}) }
           : {
               importTextures: use.importTextures,
               ...(use.lodChain ? { lodChain: use.lodChain } : {}),
