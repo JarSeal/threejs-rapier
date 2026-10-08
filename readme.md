@@ -122,8 +122,8 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 | `yarn build`                          | Type-check and production build to `dist/` (bundle treemap in `dist-stats/`). Fails on a shipped asset with no optimized output or over its budget. |
 | `yarn build:test`                     | Production build with `VITE_APP_ENV=test`.                                                                                                          |
 | `yarn lint`                           | ESLint with Prettier.                                                                                                                               |
-| `yarn docs`                           | TypeDoc API docs for the engine and toolkit, written to `docs-api/`.                                                                                |
-| `yarn hub:build`                      | Builds the Ækasha Hub (guides, examples, issues, changelog) into `dist-hub/`, a static site. `yarn build` runs it too.                              |
+| `yarn docs`                           | TypeDoc's own HTML API docs for the engine and toolkit, written to `docs-api/`.                                                                     |
+| `yarn hub:build`                      | Builds the Ækasha Hub (guides, examples, API reference, issues, changelog) into `dist-hub/`. `yarn build` runs it too.                              |
 | `yarn hub:preview [--base /hub/]`     | Serves `dist-hub/` locally (port 8090) the way a static host would.                                                                                 |
 | `yarn gatherAppData`                  | Runs the JSON → generated data pipeline by hand.                                                                                                    |
 | `yarn setupAssetTools [--force]`      | Downloads the KTX2 texture encoder into `.tools/` (Linux, WSL2, macOS).                                                                             |
@@ -379,7 +379,7 @@ The engine, toolkit and example app each have their own semantic version and cod
 ## Documentation
 
 - **Ækasha Hub**: run `yarn dev` and open `http://localhost:8080/hub/` for the getting-started guide, examples, known issues and the changelog, all searchable (⌘K / Ctrl+K), or build it as a static site with `yarn hub:build`. To add or edit its pages, see [writing Hub pages](docs/techniques/hub-authoring.md).
-- **API reference**: run `yarn docs` and open `docs-api/index.html` (covers the engine and the toolkit).
+- **API reference**: the Hub's Documentation section (`/hub/documentation/`): every engine and toolkit export with its signature, JSDoc and source link, searchable and linked from the other Hub pages. `yarn docs` still writes TypeDoc's own HTML to `docs-api/`.
 - **Guides**: [`docs/techniques/`](docs/techniques/), eg. [asset optimization](docs/techniques/asset-optimization.md).
 - **Design docs**: [`docs/plans/`](docs/plans/). Files prefixed `_DONE_` describe features that are already implemented.
 - **Contributor and agent guide**: [`.claude/CLAUDE.md`](.claude/CLAUDE.md).

@@ -1,7 +1,7 @@
 Status: draft | not-implemented
 Category: Instructions, Hub
 Epic: p550_aekasha-hub-epic.md
-Blocked by: p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md
+Blocked by: p554_hub-examples-start-scene-and-example-scenes.md
 
 # Hub Features & Homepage Content
 

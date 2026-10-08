@@ -1,6 +1,6 @@
 Status: draft | epic — not-implemented
 Category: Instructions, Examples, Dev tooling
-Blocks: \_DONE_p551_hub-site-generator-and-dev-server.md, \_DONE_p552_hub-code-blocks-and-search.md, p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
+Blocks: \_DONE_p551_hub-site-generator-and-dev-server.md, \_DONE_p552_hub-code-blocks-and-search.md, \_DONE_p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
 Related: \_DONE_p342_dev-file-server.md (the dev-only Vite plugin pattern; the example scenes' Hub images are written through it), \_DONE_p300_asset-optimization-pipeline-plan.md (what `yarn assets` makes of the Æ symbol's Draco GLB), `docs/templates/todo-plan-prompts.txt` (the original prompt, "Instruction/example pages and example scenes")
 
 # Ækasha Hub — Epic
@@ -219,9 +219,9 @@ the existing `readme.md` rule.
 | --- | --- | --- |
 | \_DONE_p551_hub-site-generator-and-dev-server.md (implemented) | The generator, the dev plugin, `dist-hub/`, the design shell, the Issues and Version pages, the CLAUDE.md rule | — |
 | \_DONE_p552_hub-code-blocks-and-search.md (implemented) | Code blocks (highlighting, line numbers and highlights, copy, groups, snippet includes) and search | — |
-| p553_hub-api-documentation.md | Documentation: the API from TypeDoc's JSON, in the Hub's style | — (p552 is done) |
+| \_DONE_p553_hub-api-documentation.md (implemented) | Documentation: the API from TypeDoc's JSON, in the Hub's style | — |
 | p554_hub-examples-start-scene-and-example-scenes.md | `?startScene=`, the example scenes, the Æ symbol model, the example pages, the hero image | — (p552 is done) |
-| p555_hub-features-and-homepage-content.md | The feature pages and the homepage's final content | p553, p554 |
+| p555_hub-features-and-homepage-content.md | The feature pages and the homepage's final content | p554 (p553 is done) |
 
 Order: p551, then p552, then p553 and p554 in either order, then p555. p554's Phase 1
 (`?startScene`) is engine-only and can land at any time.

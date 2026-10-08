@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: implemented (Phases 1-4)
 Category: Dev tooling, Hub, Documentation
 Epic: p550_aekasha-hub-epic.md
 Blocks: p555_hub-features-and-homepage-content.md (its `api:` links)
@@ -301,7 +301,7 @@ As built:
   the Documentation page (`HubApiLinkResult`'s `anchor` may be empty: the page's top).
 - **Logs:** an update line names at most 5 pages (an API rebuild can change all of them).
 
-### Phase 4 — Docs and versioning
+### Phase 4 — Docs and versioning — done
 
 CLAUDE.md:
 
@@ -311,6 +311,16 @@ CLAUDE.md:
 
 `readme.md`'s Documentation section points to the Hub. `CHANGELOG.md` Project entry. Mark the plan
 done.
+
+As built:
+
+- **CLAUDE.md has no TypeDoc paragraph:** the upgrade note is the last sub-bullet of the Hub
+  section's new Documentation bullet (what an upgrade touches: the cache hash, `Kind`'s
+  `satisfies`, the JSON model's shape, `EXTRACT_VERSION`). The `yarn docs` command names the
+  excludes and calls TypeDoc's HTML the fallback, and the dev plugin bullet says an engine or
+  toolkit save marks the API docs stale.
+- **Changelog:** the branch's existing Project entry (`aekasha-hub`) is extended, and its "the API
+  documentation comes in a later branch" is gone. No part is bumped (§4).
 
 ## 4. Versioning
 

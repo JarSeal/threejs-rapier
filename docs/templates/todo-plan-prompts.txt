@@ -197,7 +197,7 @@ Another thing I would like to study, and this would be the optimal place for the
 
 When the whole codebase's structure and build process is sound, we should go through the rest of the files (code readability/good practices, perfomance, documentation). We can then update the Hub's documentation and be happy!
 
-CLAUDE.md should have all these coding practices, structure, and main flow documented in it (you know best what should be there).
+CLAUDE.md should have all these coding practices, structure, and main flow documented in it (you know best what should be there). Check if there are any existing plans that should be integrated into this EPIC.
 
 If for some reason this plan or some of its features can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
