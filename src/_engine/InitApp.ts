@@ -53,7 +53,7 @@ import { load3DSymbols } from './debug/3DSymbols';
 import { registerDebugToolsModule } from './debug/DebugToolsManager';
 import { registerRaycastDebugGUI } from './core/Raycast';
 import { registerOnScreenTools } from './debug/OnScreenTools';
-import { DEBUG_TOASTER_ID, registerDebuggerGUI } from './debug/DebuggerGUI';
+import { DEBUG_TOASTER_ID, flushQueuedDebugToasts, registerDebuggerGUI } from './debug/DebuggerGUI';
 import { initUndoRedo, registerUndoRedoModule } from './debug/UndoRedo';
 import { registerPostFxProfiler } from './debug/PostFXProfiler';
 import { registerAxesGizmoModule } from './debug/AxesGizmo';
@@ -188,6 +188,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
           },
         })
       );
+      // Toasts from the boot, eg. an unknown ?startScene
+      flushQueuedDebugToasts();
     }
 
     // Load draggableWindow states

@@ -23,11 +23,20 @@ import {
   resetPhysicsRayStats,
   resetPhysicsWorld,
 } from './PhysicsAPI';
-import { DEBUGGER_SCENE_LOADER_ID, disableDebugger } from '../debug/DebuggerGUI';
+import {
+  addDebugToastWhenReady,
+  DEBUGGER_SCENE_LOADER_ID,
+  disableDebugger,
+} from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './Input/InputState';
 import { getCanvasParentElem } from './Renderer';
 import { getDebugToolsState } from '../debug/DebugToolsManager';
-import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, isDebugEnvironment } from './Config';
+import {
+  getStartSceneQueryParam,
+  IS_DEBUG_ENV,
+  IS_PROD_TEST_MODE,
+  isDebugEnvironment,
+} from './Config';
 import { activateSceneDefaultSkyBox, clearSkyBox } from './SkyBox/SkyBox';
 import {
   handleDraggableWindowsOnSceneChangeEnd,
@@ -405,23 +414,43 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       ? getDebugToolsState(true)
       : null;
 
-  if (
+  // ?startScene=<sceneId> (debug env and prod test mode, getStartSceneQueryParam) wins over the
+  // Debug tools' start scene. An unknown id falls back to the scene loaded without it
+  const startSceneParam = !firstSceneLoaded ? getStartSceneQueryParam() : null;
+  let startSceneOverride: string | null = null;
+  if (startSceneParam) {
+    if (getGeneratedSceneData(startSceneParam) && sceneFileObjects[startSceneParam]) {
+      startSceneOverride = startSceneParam;
+    } else {
+      const msg = `Unknown scene id "${startSceneParam}" in the startScene URL param, loading the usual start scene instead.`;
+      lwarn(msg);
+      addDebugToastWhenReady({ type: 'warning', title: 'Unknown startScene', message: msg });
+    }
+  }
+
+  const useDebugStartScene = Boolean(
     debugToolsState?.scenesListing.useDebugStartScene &&
-    debugToolsState.scenesListing.debugStartScene
-  ) {
-    sceneId = debugToolsState.scenesListing.debugStartScene;
+      debugToolsState.scenesListing.debugStartScene
+  );
+
+  if (startSceneOverride || useDebugStartScene) {
+    sceneId = startSceneOverride || debugToolsState?.scenesListing.debugStartScene || sceneId;
 
     // Clear out any hardcoded start functions passed by index.ts
     // to guarantee the lookup pulls dynamically from sceneFileObjects instead
     overrideNextSceneFn = undefined;
+  }
 
-    // Resolve your loader @TODO: Override with the explicit debugger loader
-    // The debugger's own scene-loader UI is IS_DEBUG_ENV-only (never registered under
-    // isProdTest) — only honor this sub-option in real debug mode, or targetLoaderId would
-    // point at a loader that was never created.
-    if (isDebugEnvironment() && debugToolsState.scenesListing.useDebuggerSceneLoader) {
-      targetLoaderId = DEBUGGER_SCENE_LOADER_ID;
-    }
+  // Resolve your loader @TODO: Override with the explicit debugger loader
+  // The debugger's own scene-loader UI is IS_DEBUG_ENV-only (never registered under
+  // isProdTest) — only honor this sub-option in real debug mode, or targetLoaderId would
+  // point at a loader that was never created. It applies to a ?startScene too.
+  if (
+    useDebugStartScene &&
+    isDebugEnvironment() &&
+    debugToolsState?.scenesListing.useDebuggerSceneLoader
+  ) {
+    targetLoaderId = DEBUGGER_SCENE_LOADER_ID;
   }
 
   // Resolve Scene Data using the final resolved sceneId

@@ -304,6 +304,7 @@ let config: AppConfig = {
 const urlParams = new URLSearchParams(window.location.search);
 isProdTestQueryParam = urlParams.get('isProdTest') === 'true';
 isDebugQueryParam = urlParams.get('isDebug') === 'true';
+const startSceneQueryParam = urlParams.get('startScene') || null;
 
 // Load ENV variables and get curEnvironment
 envVars = import.meta.env;
@@ -517,6 +518,16 @@ export const IS_DEBUG_ENV =
 // @TODO: Replace the isProdTestMode with this
 export const IS_PROD_TEST_MODE =
   (curEnvironment === 'development' || curEnvironment === 'test') && isProdTestQueryParam;
+
+/**
+ * The `?startScene=<sceneId>` URL parameter: the scene the first `loadScene` of a page load
+ * loads instead of the one it was asked for (and instead of the Debug tools' start scene).
+ * Read only in the debug env and prod test mode ('development' and 'test' environments), so a
+ * production build never reads it.
+ * @returns the scene id, or null when the param isn't set or isn't read in this mode
+ */
+export const getStartSceneQueryParam = () =>
+  IS_DEBUG_ENV || IS_PROD_TEST_MODE ? startSceneQueryParam : null;
 
 /**
  * Checks whether the current environment is a production environment.

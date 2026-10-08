@@ -21,6 +21,29 @@ export const DEBUG_TOASTER_ID = 'debugToaster';
 export const addDebugToast = (props: Omit<ToastProps, 'toasterId'>) =>
   hasToaster(DEBUG_TOASTER_ID) ? addToast({ ...props, toasterId: DEBUG_TOASTER_ID }) : null;
 
+const queuedDebugToasts: Omit<ToastProps, 'toasterId'>[] = [];
+
+/**
+ * Like {@link addDebugToast}, but a toast added before the debug toaster exists waits for it:
+ * for messages from the boot itself (the app start function and the first scene load run before
+ * InitEngine creates the toaster). A no-op outside the debug environment.
+ * @param props (object) the toast's props, without `toasterId`
+ */
+export const addDebugToastWhenReady = (props: Omit<ToastProps, 'toasterId'>) => {
+  if (!IS_DEBUG_ENV) return;
+  if (hasToaster(DEBUG_TOASTER_ID)) {
+    addDebugToast(props);
+    return;
+  }
+  queuedDebugToasts.push(props);
+};
+
+/** Shows the toasts {@link addDebugToastWhenReady} queued. InitEngine calls it right after it
+ * creates the debug toaster. */
+export const flushQueuedDebugToasts = () => {
+  for (const props of queuedDebugToasts.splice(0)) addDebugToast(props);
+};
+
 type DebuggerGUIModule = typeof import('../core/Debug/_dbg__DebuggerGUI');
 let debugGUI: DebugModuleRef<DebuggerGUIModule> | null = null;
 
