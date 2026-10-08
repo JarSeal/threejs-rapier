@@ -11,7 +11,8 @@
       },
       "image": "./largeWorldRockImpostor.albedo.png",
       "optimize": {
-        "slot": "baseColor"
+        "slot": "baseColor",
+        "alphaCoverage": 0.5
       }
     },
     "normalDepth": {

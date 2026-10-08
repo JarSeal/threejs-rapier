@@ -2111,10 +2111,10 @@
               }
             }
           },
-          "__url": "/aek-assets/app/impostors/largeWorldRockImpostor.atlas.albedo.c7c25643.ktx2",
+          "__url": "/aek-assets/app/impostors/largeWorldRockImpostor.atlas.albedo.e0bc22c0.ktx2",
           "__bytes": {
-            "in": 45240,
-            "out": 81122
+            "in": 45274,
+            "out": 82131
           },
           "__vramBytes": {
             "in": 3981200,
@@ -3870,10 +3870,10 @@
               }
             }
           },
-          "__url": "/aek-assets/app/impostors/largeWorldRockImpostor.atlas.normalDepth.cd48229e.ktx2",
+          "__url": "/aek-assets/app/impostors/largeWorldRockImpostor.atlas.normalDepth.644af352.ktx2",
           "__bytes": {
-            "in": 1012928,
-            "out": 767763
+            "in": 1015620,
+            "out": 768041
           },
           "__vramBytes": {
             "in": 3981200,
@@ -3940,10 +3940,10 @@
               }
             }
           },
-          "__url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.albedo.ad0e5c1c.ktx2",
+          "__url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.albedo.5916d4c9.ktx2",
           "__bytes": {
             "in": 1464,
-            "out": 5563
+            "out": 5603
           },
           "__vramBytes": {
             "in": 182656,
@@ -8488,10 +8488,10 @@
           }
         }
       },
-      "__url": "/aek-assets/app/impostors/largeWorldRockImpostor.atlas.albedo.c7c25643.ktx2",
+      "__url": "/aek-assets/app/impostors/largeWorldRockImpostor.atlas.albedo.e0bc22c0.ktx2",
       "__bytes": {
-        "in": 45240,
-        "out": 81122
+        "in": 45274,
+        "out": 82131
       },
       "__vramBytes": {
         "in": 3981200,
@@ -10248,10 +10248,10 @@
           }
         }
       },
-      "__url": "/aek-assets/app/impostors/largeWorldRockImpostor.atlas.normalDepth.cd48229e.ktx2",
+      "__url": "/aek-assets/app/impostors/largeWorldRockImpostor.atlas.normalDepth.644af352.ktx2",
       "__bytes": {
-        "in": 1012928,
-        "out": 767763
+        "in": 1015620,
+        "out": 768041
       },
       "__vramBytes": {
         "in": 3981200,
@@ -10319,10 +10319,10 @@
           }
         }
       },
-      "__url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.albedo.ad0e5c1c.ktx2",
+      "__url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.albedo.5916d4c9.ktx2",
       "__bytes": {
         "in": 1464,
-        "out": 5563
+        "out": 5603
       },
       "__vramBytes": {
         "in": 182656,
