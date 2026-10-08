@@ -6,8 +6,7 @@ import type { MatProps } from '../../../_engine/core/Material';
 import { createMeshEntity } from '../../../_engine/core/MeshManager';
 import type { ColliderParams } from '../../../_engine/core/Physics/PhysicsAPITypes';
 import { createPhysicsEntity } from '../../../_engine/core/PhysicsManager';
-import { registerOnSceneExit } from '../../../_engine/core/Scene';
-import { getHUDRootCMP } from '../../../_engine/core/HUD';
+import { createExampleHud } from '../exampleHud';
 
 const SCENE_ID = 'examplePhysics';
 /** The oldest dropped shape is deleted past this many */
@@ -69,28 +68,6 @@ const dropShape = async (shape: Shape, position: { x: number; y: number; z: numb
 };
 // #endregion physics-drop
 
-/** A key hint over the canvas, removed with the scene */
-const showDropHint = () => {
-  const hint = getHUDRootCMP().add({
-    text: 'Space: drop a shape',
-    style: {
-      // #hudRoot is a 0 × 0 box: place the hint against the viewport
-      position: 'fixed',
-      bottom: '72px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      padding: '6px 12px',
-      borderRadius: '6px',
-      background: 'rgba(0, 0, 0, 0.5)',
-      color: '#fff',
-      font: '14px sans-serif',
-      whiteSpace: 'nowrap',
-      pointerEvents: 'none',
-    },
-  });
-  registerOnSceneExit(SCENE_ID, () => hint.remove());
-};
-
 // #region physics-scene (shown in the Hub: hub/pages/examples/physics/)
 export const scene = async () => {
   // The ground: a mesh with a FIXED body, which nothing moves
@@ -127,6 +104,6 @@ export const scene = async () => {
     sceneId: SCENE_ID,
     fn: () => void dropRandomShape(),
   });
-  showDropHint();
+  createExampleHud('Space: drop a shape');
 };
 // #endregion physics-scene

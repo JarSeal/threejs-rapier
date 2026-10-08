@@ -6,6 +6,7 @@ import {
   SunShadowFitComponentData,
   SunShadowFitComponentType,
 } from './toolkit/ecs/effects/SunShadowFit';
+import { SpinComponentData, SpinComponentType } from './app/examples/ecs/SpinComponent';
 
 /**
  * App and toolkit components (app specific)
@@ -15,13 +16,16 @@ import {
  *   ...HoverToolComponentType,  // Imported from toolkit
  * }
  */
+// #region ecs-component-types (shown in the Hub: hub/pages/examples/ecs/)
 export const AppComponentType = {
   HEALTH: 'APP_HEALTH',
   INSTANCED_STRESS_TEST_DATA: 'APP_INSTANCED_STRESS_TEST_DATA',
   ...HoverToolComponentType,
   ...FollowToolComponentType,
   ...SunShadowFitComponentType,
+  ...SpinComponentType,
 } as const;
+// #endregion ecs-component-types
 
 /**
  * Data types from toolkit and other sources.
@@ -29,7 +33,12 @@ export const AppComponentType = {
  * type ToolKitComponentData = {};
  * type ToolKitComponentData = HoverComponentData & SomeOtherComponentData;
  */
-type ExtraComponentData = HoverComponentData & FollowComponentData & SunShadowFitComponentData;
+// #region ecs-component-data (shown in the Hub: hub/pages/examples/ecs/)
+type ExtraComponentData = HoverComponentData &
+  FollowComponentData &
+  SunShadowFitComponentData &
+  SpinComponentData;
+// #endregion ecs-component-data
 
 /** App specific components (extended by ExtraComponentData) */
 export interface AppComponentData extends ExtraComponentData {

@@ -30,5 +30,7 @@ from then on the simulation moves the entity's transform, and the transform move
   `name` shows in the debug key shortcuts dialog (`u`).
 - Deleting an entity ([`deleteEntity`](api:ECSWorld.deleteEntity)) removes its body and
   colliders too.
+- `createExampleHud` (`src/app/examples/exampleHud.ts`) is the examples' own HUD line: a
+  `div` in the HUD, removed when the scene exits.
 
 Back to the [examples](hub:examples).

@@ -13438,6 +13438,92 @@
       "id": "topDownTestScene",
       "sceneFile": "./scene_topDownTest.ts"
     },
+    "exampleEcs": {
+      "name": "Example: Custom component & system",
+      "description": "A SPIN component of the app's own and the system that turns every entity that has it: a row of shapes, each turning about its own axis at its own speed, one of them hovering too.",
+      "backgroundColor": "#1c212b",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 100,
+            "position": {
+              "x": 0,
+              "y": 3.5,
+              "z": 9
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 45,
+            "appId": "exampleEcsCamera"
+          },
+          "entityOpts": {
+            "appId": "exampleEcsCamera",
+            "debugData": {
+              "name": "ECS example camera"
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.6,
+            "appId": "exampleEcsAmbient"
+          },
+          "entityOpts": {
+            "appId": "exampleEcsAmbient",
+            "debugData": {
+              "name": "ECS example ambient light"
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 5,
+              "y": 10,
+              "z": 4
+            },
+            "targetPos": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowCameraNearFar": [
+              1,
+              30
+            ],
+            "shadowCameraFrustum": [
+              -8,
+              8,
+              8,
+              -8
+            ],
+            "appId": "exampleEcsSun"
+          },
+          "entityOpts": {
+            "appId": "exampleEcsSun",
+            "debugData": {
+              "name": "ECS example sun"
+            }
+          }
+        }
+      ],
+      "id": "exampleEcs",
+      "sceneFile": "./examples/ecs/exampleEcs.ts"
+    },
     "examplePhysics": {
       "name": "Example: Physics",
       "description": "A static ground with a box, a sphere, a capsule and a cylinder dropping onto it, each a mesh entity with a Rapier body from createPhysicsEntity. Space drops another one.",
@@ -13633,6 +13719,82 @@
       ],
       "id": "exampleQuickStart",
       "sceneFile": "./examples/quickStart/exampleQuickStart.ts"
+    },
+    "exampleSkyBox": {
+      "name": "Example: Sky box & day-night",
+      "description": "The DAY_NIGHT sky box preset on a two-minute day, over a ground with a few objects to light: its sun and moon are the scene's only lights. Keys play and pause the day, move the time and change its speed.",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 500,
+            "position": {
+              "x": 7,
+              "y": 2.2,
+              "z": 9
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 2.5,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 50,
+            "appId": "exampleSkyBoxCamera"
+          },
+          "entityOpts": {
+            "appId": "exampleSkyBoxCamera",
+            "debugData": {
+              "name": "Sky box example camera"
+            }
+          }
+        }
+      ],
+      "skyboxes": [
+        {
+          "base": {
+            "type": "COLOR",
+            "color": "#000000"
+          },
+          "atmosphere": {
+            "nightSkyColor": "#0a1020"
+          },
+          "suns": [
+            {
+              "glowIntensity": 0.4,
+              "light": {}
+            }
+          ],
+          "moons": [
+            {
+              "phase": 0.4,
+              "phaseMode": "CYCLE",
+              "light": {
+                "intensity": 0.5
+              }
+            }
+          ],
+          "stars": {
+            "milkyWay": {}
+          },
+          "clouds": {
+            "coverage": 0.35
+          },
+          "ground": {},
+          "dayNight": {
+            "timeOfDay": 16,
+            "cycleDurationSec": 120
+          },
+          "id": "exampleSkyBox",
+          "debugData": {
+            "name": "Sky box example",
+            "description": "The DAY_NIGHT preset (atmosphere, sun and moon with their lights, stars and Milky Way, clouds, ground) on a two-minute day."
+          }
+        }
+      ],
+      "id": "exampleSkyBox",
+      "sceneFile": "./examples/skyBox/exampleSkyBox.ts"
     },
     "exampleToolkit": {
       "name": "Example: Toolkit",
@@ -14088,6 +14250,33 @@
       },
       "__sourcePath": "src/app/cameras/topDownTestCamera.camera.json"
     },
+    "exampleEcsCamera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 100,
+        "position": {
+          "x": 0,
+          "y": 3.5,
+          "z": 9
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 1,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 45,
+        "appId": "exampleEcsCamera"
+      },
+      "entityOpts": {
+        "appId": "exampleEcsCamera",
+        "debugData": {
+          "name": "ECS example camera"
+        }
+      },
+      "__sourcePath": "src/app/examples/ecs/exampleEcsCamera.camera.json"
+    },
     "examplePhysicsCamera": {
       "camProps": {
         "active": true,
@@ -14141,6 +14330,33 @@
         }
       },
       "__sourcePath": "src/app/examples/quickStart/exampleQuickStartCamera.camera.json"
+    },
+    "exampleSkyBoxCamera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 500,
+        "position": {
+          "x": 7,
+          "y": 2.2,
+          "z": 9
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 2.5,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 50,
+        "appId": "exampleSkyBoxCamera"
+      },
+      "entityOpts": {
+        "appId": "exampleSkyBoxCamera",
+        "debugData": {
+          "name": "Sky box example camera"
+        }
+      },
+      "__sourcePath": "src/app/examples/skyBox/exampleSkyBoxCamera.camera.json"
     },
     "exampleToolkitCamera": {
       "camProps": {
@@ -14527,6 +14743,57 @@
         }
       },
       "__sourcePath": "src/app/lights/topDownTestSun.light.json"
+    },
+    "exampleEcsAmbient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#ffffff",
+        "intensity": 0.6,
+        "appId": "exampleEcsAmbient"
+      },
+      "entityOpts": {
+        "appId": "exampleEcsAmbient",
+        "debugData": {
+          "name": "ECS example ambient light"
+        }
+      },
+      "__sourcePath": "src/app/examples/ecs/exampleEcsAmbient.light.json"
+    },
+    "exampleEcsSun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 5,
+          "y": 10,
+          "z": 4
+        },
+        "targetPos": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowCameraNearFar": [
+          1,
+          30
+        ],
+        "shadowCameraFrustum": [
+          -8,
+          8,
+          8,
+          -8
+        ],
+        "appId": "exampleEcsSun"
+      },
+      "entityOpts": {
+        "appId": "exampleEcsSun",
+        "debugData": {
+          "name": "ECS example sun"
+        }
+      },
+      "__sourcePath": "src/app/examples/ecs/exampleEcsSun.light.json"
     },
     "examplePhysicsAmbient": {
       "lightProps": {
@@ -23203,6 +23470,47 @@
         "description": "The SPACE preset (dense stars, two nebulae, no atmosphere) with a second, small blue sun. The primary sun's light frames its shadows on the origin, where the space demo's asteroids are."
       },
       "__sourcePath": "src/app/skyboxes/space.skybox.json"
+    },
+    "exampleSkyBox": {
+      "base": {
+        "type": "COLOR",
+        "color": "#000000"
+      },
+      "atmosphere": {
+        "nightSkyColor": "#0a1020"
+      },
+      "suns": [
+        {
+          "glowIntensity": 0.4,
+          "light": {}
+        }
+      ],
+      "moons": [
+        {
+          "phase": 0.4,
+          "phaseMode": "CYCLE",
+          "light": {
+            "intensity": 0.5
+          }
+        }
+      ],
+      "stars": {
+        "milkyWay": {}
+      },
+      "clouds": {
+        "coverage": 0.35
+      },
+      "ground": {},
+      "dayNight": {
+        "timeOfDay": 16,
+        "cycleDurationSec": 120
+      },
+      "id": "exampleSkyBox",
+      "debugData": {
+        "name": "Sky box example",
+        "description": "The DAY_NIGHT preset (atmosphere, sun and moon with their lights, stars and Milky Way, clouds, ground) on a two-minute day."
+      },
+      "__sourcePath": "src/app/examples/skyBox/exampleSkyBox.skybox.json"
     }
   },
   "postFx": {

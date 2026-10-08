@@ -143,6 +143,14 @@ export const sceneFileObjects: {
       }
     ).scene({ sceneData, assets });
   },
+  exampleEcs: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/ecs/exampleEcs.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
   examplePhysics: async ({ sceneData, assets }) => {
     const module = await import('../app/./examples/physics/examplePhysics.ts');
     await (
@@ -153,6 +161,14 @@ export const sceneFileObjects: {
   },
   exampleQuickStart: async ({ sceneData, assets }) => {
     const module = await import('../app/./examples/quickStart/exampleQuickStart.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
+  exampleSkyBox: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/skyBox/exampleSkyBox.ts');
     await (
       module as {
         scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;

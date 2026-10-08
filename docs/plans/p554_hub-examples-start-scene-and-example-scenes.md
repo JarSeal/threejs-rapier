@@ -328,5 +328,7 @@ As built:
    - move lodShowcase into `src/app/examples/` as an example, renamed and with Hub text as its
      description (later LOD plans add lanes to it, so its home is a choice for them too).
 
+   Decided: keep both (`exampleLod` for the page's code, lodShowcase as the full demo).
+
    Whichever: lodShowcase is a strong featured-example card for p555's homepage (every level of
    every lane in one frame), taken from a camera stop.

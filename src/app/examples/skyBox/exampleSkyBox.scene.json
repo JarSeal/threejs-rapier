@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../../.schemas/scene.schema.json",
+  "id": "exampleSkyBox",
+  "sceneFile": "./examples/skyBox/exampleSkyBox.ts",
+  "name": "Example: Sky box & day-night",
+  "description": "The DAY_NIGHT sky box preset on a two-minute day, over a ground with a few objects to light: its sun and moon are the scene's only lights. Keys play and pause the day, move the time and change its speed.",
+  "cameras": ["exampleSkyBoxCamera"],
+  "skyboxes": ["exampleSkyBox"]
+}

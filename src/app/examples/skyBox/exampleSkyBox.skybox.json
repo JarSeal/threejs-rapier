@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../../.schemas/skyBox.schema.json",
+  "id": "exampleSkyBox",
+  "preset": "DAY_NIGHT",
+  "dayNight": { "timeOfDay": 16, "cycleDurationSec": 120 },
+  "debugData": {
+    "name": "Sky box example",
+    "description": "The DAY_NIGHT preset (atmosphere, sun and moon with their lights, stars and Milky Way, clouds, ground) on a two-minute day."
+  }
+}
