@@ -23,6 +23,46 @@ feature page links its API (p553) and its example (p554).
 - **`docs/issues/`** has three issues (p551 gives each a page). Two are three.js bugs that
   affect lights and instancing.
 - **`CHANGELOG.md`**'s latest entry is exposed by p551 as `latestChange` in `hub-data.js`.
+- **Landed on `main` after this plan was written** (impostor LOD Phases 4-5, `_DONE_p351`; alpha
+  coverage mips, `_DONE_p341`; both in `CHANGELOG.md`'s `2026-10-08 — finalize-impostor-billboard-lod`
+  entry, engine 4.13.0 and app 1.8.0). What the feature pages need from it:
+  - **Exported impostors.** An impostor bakes at load (20-115 ms), or is exported once from the LOD
+    tab's Impostors folder into the repo: `<id>.impostor.json` (`schemas/impostorSchema.ts`, union
+    by `kind`: `OCTAHEDRAL` | `CROSS_QUADS`; written by the export, never by hand), its
+    `<id>.textureAtlas.json` and the PNGs, which the asset pipeline encodes to KTX2 (about a quarter
+    of a bake's GPU memory). A scene that lists the ids in its JSON's `impostors` loads them, and
+    `generateOctahedralImpostor` / `generateCrossQuads` called with a listed `id` build from the
+    export instead of baking. The debug env warns when the source mesh, material or options no
+    longer match the export's fingerprint (`getImpostorSourceHash`); the export is used anyway.
+    New exports go to `AppConfig.lod.impostorExportDir` (default `src/app/impostors`, where
+    largeWorld's and lodShowcase's are). CLAUDE.md's Impostors section, "Exports".
+  - **The `lodShowcase` scene** (`src/app/lodShowcase.ts`, `name: "LOD showcase"`): the LOD
+    system's demo and verification scene, one feature per lane, every level of every lane on screen
+    from the start camera (hand-made levels in a `*.mesh.json`, a generated chain with `AUTO`, a
+    tree pool ending in exported cross-quads and a cull fade, a pool ending in an exported flat
+    octahedral impostor, a baked and an exported impostor side by side, a static instance cell),
+    under the `dayNight` sky held at 15:00. Its scene-scoped "LOD demo" tab has camera stops on
+    both sides of every switch, a dolly down the lanes, the time of day and each lane's levels and
+    triangles. `readme.md`'s LOD selection feature and its LOD example point at it.
+  - **Numbers worth quoting, measured in `_DONE_p351` Phase 5** (WebGPU, Apple GPU): 400 knots at
+    the impostor band's distances add 2.3 ms of GPU time as the 16,384-triangle mesh, 0.12 ms as
+    the chain's 982-triangle last level, 0.07 ms as a flat impostor (`surfaceDepth: false`) and
+    0.43 ms as one with surface depth (writing depth from the shader turns off early depth tests).
+    So an impostor pays off against heavy meshes, not low-poly ones (largeWorld's 80-triangle
+    rock). The no-pop recorder on the dolly: 200 level changes, 0 pops (176 with fades off).
+  - **Alpha-coverage mips:** `optimize.alphaCoverage` (a `*.texture.json` or an atlas slot, set to
+    the material's `alphaTest`) keeps an alpha-cut texture's coverage in its mip levels, so leaf
+    cards and impostor edges don't thin out with distance. An exported impostor's albedo slot gets
+    it by itself. `docs/techniques/asset-optimization.md` has two new sections: "Alpha-cut
+    textures" and "Impostor atlases".
+  - **Texture atlases:** a slot can be a ready-made `image` (every cell needs a `rect`) and
+    `mipChain: "FULL"` builds every mip level down to 1 × 1.
+  - **The dev file server's second writer:** the impostor export writes its four files in one
+    `writeDevFiles` batch, shows the gather's result as a toast after the reload, and without the
+    dev files (a LAN device, `AEK_DEV_FILES=false`) downloads them and lists the paths.
+  - **Asset JSON types:** CLAUDE.md's suffix list now names all of them, `*.impostor.json` new
+    among them (also `*.textureArray.json`, `*.textureAtlas.json`, `*.postFx.json`, which the
+    list was missing before).
 
 ## 2. Design
 
@@ -35,13 +75,13 @@ feature page links its API (p553) and its example (p554).
 | `rendering` | WebGPU renderer, WebGL fallback, PostFX | Quick start |
 | `ecs` | ECS: entities, components, plugins, stages, managed entities | Custom component & system |
 | `physics` | Physics API, threads, transform buffer, deterministic loads, simulation tiers | Physics |
-| `scenes-and-assets` | Scene and asset JSON, the gatherer, `__saveData` | Quick start |
-| `asset-optimization` | The asset pipeline: KTX2, meshopt/Draco, budgets, lock file | Toolkit |
+| `scenes-and-assets` | Scene and asset JSON (every suffix, the scene's `impostors` list), the gatherer, `__saveData` | Quick start |
+| `asset-optimization` | The asset pipeline: KTX2, meshopt/Draco, budgets, lock file, alpha-coverage mips, atlas images and full mip chains | Toolkit |
 | `sky-box` | The layered sky, presets, day-night | Sky box & day-night |
-| `lod` | LOD chains, selection, cross-fades, impostors, instanced pools | LOD & instancing |
+| `lod` | LOD chains, selection, cross-fades, impostors (baked and exported), instanced pools | LOD & instancing, and `lodShowcase` (the full demo) |
 | `spatial-index` | Grids, domains, scene scope | — |
 | `viewports` | Viewports and views | — |
-| `debug-suite` | Drawer tabs, profiler, GPU memory, undo, character tools, dev file server, material editor | Your own debug tab |
+| `debug-suite` | Drawer tabs (the LOD tab's overlay and Impostors export among them), profiler, GPU memory, undo, character tools, dev file server, material editor | Your own debug tab |
 | `characters` | The dynamic character controller | — |
 | `toolkit` | What the toolkit holds and how to use or copy it | Toolkit |
 
@@ -58,6 +98,21 @@ Metadata: `aek:tags`, `aek:icon`, `aek:featured` (4 pages: rendering, physics, e
 as in the design's "WebGPU Renderer / Physics / Modular Architecture / Developer Tools").
 
 The content is checked against the code, like CLAUDE.md, not paraphrased from the readme.
+
+The `lod` page carries the most since §1's additions:
+
+- **How it works** in the order a developer meets it: a level is a screen size (`r × k / d`); levels
+  are hand-made (a `*.mesh.json`'s `lod`, which a JSON include can show whole:
+  `src/app/lodShowcase/lodShowcaseHandMade.mesh.json`), or `AUTO` from a chain; cross-fades; pools;
+  impostors as the last level.
+- **Impostors** as a choice with its costs: cross-quads for vegetation, octahedral for anything
+  seen from above, `surfaceDepth: false` for objects standing on the ground, and only against heavy
+  meshes (§1's numbers). Then bake at load against export, and the export's workflow: the LOD tab's
+  Impostors folder, the four files, the scene's `impostors` list, the stale warning and re-export.
+- **"Read more"** links `docs/techniques/asset-optimization.md#impostor-atlases` and
+  `#alpha-cut-textures` next to the CLAUDE.md sections.
+- **The example:** p554's `exampleLod` for the code, and `lodShowcase` for seeing every feature at
+  once (p554 §5's open question 5 decides how it's linked).
 
 ### 2.2 The `cards` directive
 
@@ -99,6 +154,12 @@ list (`hub.config.ts`: the folder split, plans, bootstrap flow, build config not
 feature page (by `aek:covers` in its head, eg. `content="Sky box"`). A new subsystem section without a
 page is a warning, so the Hub rule (p550 §5) has a check behind it. It's skipped in `public` builds
 outside the repo.
+
+- `aek:covers` takes a comma-separated list: the `lod` page covers four sections (Instanced mesh
+  pools, LOD chains, LOD selection, Impostors). The Impostors section now also holds the exports
+  and the `lodShowcase` scene, so a change there is a change to the `lod` page.
+- The ignore list also needs "Ækasha Hub" (the section `_DONE_p551` added): it's tooling, not a
+  feature.
 
 ## 3. Phases
 

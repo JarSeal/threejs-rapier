@@ -44,6 +44,39 @@ opens in debug or prod test mode with a new URL parameter, `?startScene=<sceneId
   `yarn dev`), into `src/app/`, `src/toolkit/` or `src/public/`, not `hub/`.
 - **Scene-scoped debug tabs** are created from the scene file in the debug env through a dynamic
   `import()` of an `_dbg__` module (`app/_dbg__spaceDemo.ts`, `createDebuggerTab({ sceneId })`).
+- **Landed on `main` after this plan was written** (impostor LOD Phases 4-5, `_DONE_p351`; alpha
+  coverage mips, `_DONE_p341`):
+  - **`lodShowcase`** (`src/app/lodShowcase.scene.json` + `lodShowcase.ts`, `lodShowcase/`) is
+    already a full LOD demo: six lanes (hand-made levels in a `*.mesh.json`, a generated chain with
+    `AUTO`, a tree pool ending in exported cross-quads, a pool ending in an exported flat
+    octahedral impostor, a baked and an exported impostor side by side, a static instance cell),
+    every level on screen from the start camera. It's an ordinary app scene in `src/app/`, not
+    under `examples/`, named "LOD showcase" (not "Example: …"), and its `description` cites its
+    plan file, so it isn't Hub text as it is. A lane is a module (`lanes/*.ts`, `ShowcaseLane`)
+    placed by a layout engine (`lodShowcase/layout.ts`): good to run, too much code for a page.
+  - **Its "LOD demo" tab** (`app/_dbg__lodShowcase.ts`, `createLodShowcaseTab`) is a second
+    scene-scoped tab next to the space demo's, persisting one state key (`AEK_debugLodShowcase`).
+    Its camera stops are exported (`setShowcaseCameraStop`, `getShowcaseCameraStops`), so a Hub
+    image can be taken from a named stop; the dolly (`startShowcaseDolly`) is a scene app looper.
+  - **Exported impostors** (CLAUDE.md, Impostors, "Exports"): the LOD tab's Impostors folder writes
+    `<id>.impostor.json`, `<id>.textureAtlas.json` and two PNGs through `writeDevFiles` into
+    `AppConfig.lod.impostorExportDir` (default `src/app/impostors`), or where the impostor's files
+    already are. A scene loads them by listing the ids in its JSON's `impostors`. Without the dev
+    files the export downloads the files and lists their paths, and after a write it shows the
+    gather's result as a toast (`onDevDataGathered`). That is the precedent §2.4's "Save Hub
+    image" follows.
+  - **What the LOD lanes found** (`_DONE_p351` Phase 5) that an LOD example meets too:
+    - `AUTO`'s default (`maxPixelError` 1 at 1080p) keeps a chain's finer levels only very near
+      the camera. lodShowcase's knot stops its chain at 6 % and asks
+      `{ auto: true, maxPixelError: 0.25 }`, resolving the levels with `resolveAutoLod` before
+      placing the meshes.
+    - An impostor pays off only against heavy meshes, and a flat one (`surfaceDepth: false`) for
+      objects standing on the ground (§2.2's `exampleLod` row).
+    - An exported impostor is only fresh while the call's geometry, material and options match the
+      export's fingerprint; the debug env warns otherwise.
+    - An `InstancedMesh` entity (a static instance cell) is placed through its `Transform`, not
+      `mesh.position`.
+    - A `*.mesh.json` is one entity at its own position; copies of it are placed in code.
 
 ## 2. Design
 
@@ -83,6 +116,13 @@ drift.
 The pages explain the code (from the regions), list the APIs used (`api:` links once p553 is in) and
 link the feature pages (p555).
 
+`exampleLod` since lodShowcase (§1): it stays the small scene a page can show whole. A pool over a
+heavy procedural mesh (lodShowcase's knot, not a low-poly one: a chain of a low-poly mesh has
+nothing to remove) with its generated chain's levels and an impostor last. The impostor should be
+exported, so the example loads without a bake: export it once from the LOD tab, move its files
+next to the scene (a re-export then writes there) and list it in the scene's `impostors`. The page
+links lodShowcase as the full demo (open question 5).
+
 ### 2.3 The Æ symbol model (toolkit)
 
 `devTools/toolkit/buildAekashaSymbol.ts` (`yarn tsx`, run when the glyph changes; its output is
@@ -113,6 +153,8 @@ created by each example scene in the debug env) with **Save Hub image**:
 - renders the active camera's view into a render target at a fixed size (1600×1000 for cards,
   2880×1080 for `exampleHubHero`), with PostFX;
 - writes `<sceneId>.hub.png` beside the scene through `writeDevFiles` + `encodePNG`.
+- follows the impostor export (`core/Debug/Lod/_dbg__ImpostorExport.ts`) where the dev files
+  can't write: it downloads the PNG and names the path to put it at.
 
 The generator picks images up by reference (`aek:image` in a page's head or a `cards` entry,
 p555): it converts them to webp at the sizes the layout uses (sharp) and records the PNG as the
@@ -206,3 +248,13 @@ set-up: Node from `.nvmrc` (22.13.0, `nvm use`), yarn 1, `yarn`, `yarn dev`, ope
    would make the links work there too.
 4. **More examples:** input and key bindings, characters, viewports, PostFX, the material editor.
    Added when their pages are written (p555 lists the gaps).
+5. **`exampleLod` and `lodShowcase`** (§1): the showcase already shows every LOD feature, with a
+   tab to explore it, but its code is spread over a layout engine and six lane modules. Options:
+   - keep both: `exampleLod` for the page's code, and the LOD page's `::: scene lodShowcase` as
+     "the full demo" (the directive takes any scene id). Recommended;
+   - drop `exampleLod` and build the page on lodShowcase, including one lane's region per feature;
+   - move lodShowcase into `src/app/examples/` as an example, renamed and with Hub text as its
+     description (later LOD plans add lanes to it, so its home is a choice for them too).
+
+   Whichever: lodShowcase is a strong featured-example card for p555's homepage (every level of
+   every lane in one frame), taken from a camera stop.

@@ -51,6 +51,13 @@ This file holds the decisions every child plan shares. The work is split into th
 - **Brand assets:** the Æ glyph is one SVG path in `src/public/favicon.svg` (and
   `core/UI/icons/svg/aekasha.svg`). `favicon.ico`, `favicon.svg` and `apple-touch-icon.png` are in
   `src/public/`.
+- **Landed on `main` the same day, after these plans were written:** impostor LOD Phases 4-5
+  (`_DONE_p351`: exported impostors and the `*.impostor.json` asset type, the `lodShowcase` scene
+  and its "LOD demo" tab) and alpha coverage mips (`_DONE_p341`), engine 4.13.0 and app 1.8.0,
+  merged into `aekasha-hub`. What each child plan needs from them is in its own grounding: p553
+  (the new impostor modules and schema), p554 (lodShowcase against `exampleLod`, the export as
+  the "Save Hub image" precedent) and p555 (the `lod`, `asset-optimization`, `scenes-and-assets`
+  and `debug-suite` pages). p552 needs nothing from them.
 - **Libraries already there:** `sass` 1.104 and `sharp` (devDeps), `draco3dgltf` and
   `@gltf-transform/*` (devDeps). `markdown-it` and a shiki build come in only through TypeDoc,
   so they aren't ours to import.

@@ -26,6 +26,22 @@ separate `docs-api/` site.
 - **`{@link}` is used** across the engine's JSDoc (`{@link LoadSceneProps}` in
   `core/SceneLoader.ts`).
 - **The repo URL** is in `package.json` (`repository`, `engine_metadata.repository`).
+- **Landed on `main` after this plan was written** (impostor LOD Phase 4, `_DONE_p351`; about 60
+  more `/**` blocks in `src/_engine`, the toolkit unchanged):
+  - `core/Lod/Impostors/` has four new modules: `ImpostorExports.ts` (`getImpostorExport`,
+    `warnIfImpostorExportStale`), `ImpostorFormat.ts` (`IMPOSTOR_EXPORT_FORMAT_VERSION`,
+    `IMPOSTOR_KINDS`, `getImpostorDefSlots`, `ImpostorAtlasVOrigin`; no imports, since the gatherer
+    and the schema share it), `ImpostorRegistry.ts` (`getImpostorRecord`, `getImpostorRecords`) and
+    `ImpostorSourceHash.ts` (`getImpostorSourceHash`). The generators split into bakes
+    (`bakeOctahedralImpostorAtlases`, `bakeCrossQuadsAtlases`) and builds
+    (`buildOctahedralImpostor`, `buildCrossQuads`). With `Octahedral.ts` and the material, the
+    folder is nine modules: the landing page's `core/Lod/Impostors/` group.
+  - `schemas/impostorSchema.ts` (`ImpostorAssetSchema`, a `z.discriminatedUnion` by `kind`;
+    `ImpostorDef`, a conditional type over its `z.infer`). Like `SkyBoxDef` (Phase 1's exit), it
+    shows how TypeDoc's model renders Zod-derived types, and is worth a look in the same check.
+  - `AppConfig.lod.impostorExportDir` (`core/Config.ts`), a new documented config property.
+  - The export's implementation, `core/Debug/Lod/_dbg__ImpostorExport.ts`, is a `_dbg__` file:
+    §2.1's exclude leaves it out.
 
 ## 2. Design
 
