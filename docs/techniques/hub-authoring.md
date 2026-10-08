@@ -13,7 +13,7 @@ hub/_assets/ (SCSS, TS, icons, fonts) ──┘
                                         ▼
             .cache/hub/dev/ or dist-hub/
               examples/physics/index.html
-              _assets/hub.css?v=…, hub.js?v=…, hub-data.js?v=…
+              _assets/hub.css?v=…, hub.js?v=…, hub-data.js?v=…, hub-search.js?v=…
 ```
 
 - **Sources** are in `hub/` at the repo root, outside Vite's root. The app's dev server never serves them raw, and nothing can import them into the app's bundle.
@@ -143,7 +143,116 @@ Nested.
 ::::
 ```
 
-Callouts are the first directives. Later plans add `code-group` (p552), `scene` (p554) and `cards` (p555) through `registerHubDirective(name, { open, close })` in `devTools/hub/markdown.ts`, without touching the parser.
+The other directives are `code-group` ([Code groups](#code-groups)), and later `scene` (p554) and `cards` (p555). A new one is added through `registerHubDirective(name, { open, close })` in `devTools/hub/markdown.ts`, without touching the parser.
+
+## Code blocks
+
+Code is highlighted by [shiki](https://shiki.style/) when the Hub is built (`devTools/hub/code.ts`), so a page carries highlighted HTML and no highlighter. The two themes (`devTools/hub/codeThemes.ts`) follow the Hub's dark and light theme. The Hub's own [Code blocks page](../../hub/pages/documentation/code-blocks/intro.md) (`/hub/documentation/code-blocks/`) shows every feature rendered, and its "All together" block uses them all at once.
+
+Write a fence with a language, and put options after the language (the fence's _meta_):
+
+````md
+```ts title="src/app/myScene.ts" {3,5-7}
+// The code
+```
+````
+
+| Meta                               | What it does                                                                               |
+| ---------------------------------- | ------------------------------------------------------------------------------------------ |
+| `title="…"`                        | A header with the file name. The header also has the language badge and the copy button.   |
+| `{3,5-7}`                          | Highlights those lines, counted from the block's first line (whatever `startLine` is).     |
+| `showLineNumbers`, `noLineNumbers` | Line numbers are on from 4 lines. These override it.                                       |
+| `startLine=40`                     | Numbers the lines from 40, for an excerpt.                                                 |
+| `wrap`                             | Wraps long lines. Without it, they scroll sideways.                                        |
+| `collapse`                         | Shows the first 15 lines and a "Show all N lines" button. It's on by itself from 31 lines. |
+
+An unknown meta word is a warning.
+
+- **Languages:** `ts`, `tsx`, `js`, `json`, `jsonc`, `bash` (and `sh`, `shell`), `scss`, `css`, `html`, `wgsl`, `glsl`, `diff`, `yaml` and `md`. A fence without a language, or with `text`, `txt` or `plain`, is plain. An unknown language is plain too, with a warning.
+- **Inline code** with a language after it is highlighted: `` `createMeshEntity(props)`{ts} ``. Plain inline code stays as it is.
+- **Copy** copies the code as a reader would type it. The line numbers, the notation comments and the `--` lines aren't in it.
+- **Without JS**, every line shows, and the copy buttons and the code group tabs are hidden.
+
+### Notation comments
+
+A comment at the end of a line marks that line. On a line of its own, it marks the next one. `focus:4` (and `highlight:4`, …) marks that many lines. The comments are removed from the page and from what copy copies.
+
+| Comment                                  | Marks the line as                                                          |
+| ---------------------------------------- | -------------------------------------------------------------------------- |
+| `// [!code highlight]`                   | highlighted                                                                |
+| `// [!code ++]`, `// [!code --]`         | added or removed, with a + or − gutter. Copy leaves the removed lines out. |
+| `// [!code focus]`                       | focused: the other lines are dimmed until the reader points at the block   |
+| `// [!code error]`, `// [!code warning]` | an error or a warning                                                      |
+
+Use the language's own comment: `/* [!code ++] */` in CSS, `# [!code ++]` in bash and YAML.
+
+### Code groups
+
+Fences inside `::: code-group` become tabs, labelled by their titles (else their languages). Use them for things a reader picks one of, or for the scene JSON next to its TS:
+
+````md
+::: code-group
+
+```bash title="yarn"
+yarn dev
+```
+
+```bash title="yarn (HTTPS)"
+yarn dev:https
+```
+
+:::
+````
+
+A group holds only code blocks, two or more. Anything else in it is a warning.
+
+## Snippet includes
+
+Show the real code instead of a copy of it. `<<<` on a line of its own includes a file, or part of it, as a code block (`devTools/hub/snippets.ts`). The page can't drift from the code, and a renamed region fails the build instead of going stale.
+
+| Include                                | What it shows                           |
+| -------------------------------------- | --------------------------------------- |
+| `<<< path/from/repo/root.ts`           | The whole file                          |
+| `<<< path/from/repo/root.ts#name`      | The region `name`, numbered from 1      |
+| `<<< path/from/repo/root.json#L10-L24` | Lines 10 to 24, numbered as in the file |
+
+- **The path is from the repo root** and must stay inside it, symlinks included. Only text files can be included. The extension picks the language (`.ts`, `.json`, `.scss`, `.wgsl`, `.vert` / `.frag`, `.md`, …: the table in `snippets.ts`).
+- **The title is the path.** After the path, the fence meta works as on a fence and can replace the title: `<<< src/app/space.ts#asteroids {3-5} title="space.ts" wrap`.
+- **An include is an ordinary code block**, so it works inside `::: code-group` and takes notation comments from the source.
+- **The code is dedented**, and blank lines around it are dropped.
+
+### Regions
+
+Mark a region in the source with `#region` and `#endregion` in a comment:
+
+```ts
+// #region dynamic-box (shown in the Hub: hub/pages/documentation/code-blocks/)
+const createDynamicBox = async (id: string, position: PhysVector, color: number) => {
+  // …
+};
+// #endregion dynamic-box
+```
+
+- **Use the language's own comment:** `/* #region name */` in CSS, `<!-- #region name -->` in HTML and Markdown, `# #region name` in bash and YAML.
+- **The first word after `#region` is the name.** Text after it is a note. Use the note to say which page shows the region, so whoever edits the code knows a page depends on it.
+- **The marker lines are left out of the page**, and so are the markers of regions nested inside it. A bare `#endregion` closes the innermost region.
+- **JSON has no comments,** so a `.json` file is included whole or by lines. A `.jsonc` file can have regions.
+- **A region name must be unique in its file.** A duplicate, an unclosed region and an empty one are errors.
+
+::: warning A region is part of a page
+Renaming or removing a region that a page includes fails `yarn hub:build`, and so does moving the file. The error names the page and line. Fix the include in the same change.
+:::
+
+## Search
+
+The search box (⌘K, Ctrl+K or `/`) searches every page except the homepage. `yarn hub:build` builds the index (`devTools/hub/search.ts`) from each page's rendered body: its markup, its Markdown and the generated sections. The browser loads the search code and the index only when someone first uses the search.
+
+- **A heading with an id is a search result.** Each section from a heading to the next is one result, with the headings above it as the breadcrumb. The text before a page's first heading is the page's own result, along with its `<title>`, `aek:tags` and `aek:description`. Headings make a long page easier to search as well as to read.
+- **The title, headings and tags weigh the most.** Put the words a reader would search for in `aek:tags`, especially those the page doesn't spell out (`rapier` on the physics page).
+- **Code blocks add their identifiers, not their keywords.** Identifiers are split at camelCase too, so `mesh` finds `createMeshEntity`.
+- **`yarn hub:build` prints the index's size.** Over 1 MB it warns. The index is loaded whole on first use, so keep it lean.
+
+No Hub file needs to change for a new page to be found: it's indexed on the next build.
 
 ## Images
 
@@ -232,8 +341,9 @@ While `yarn dev` runs, every save under `hub/` rebuilds the whole Hub (tens of m
 | The SCSS                                                    | The stylesheet is swapped in place, without a reload.                                       |
 | The Hub's TS, an icon, a font or an image in `hub/_assets/` | Every Hub tab reloads.                                                                      |
 | `CHANGELOG.md`, `package.json`, a `docs/issues/*.md`        | The Version or Issues pages reload (a new engine version also reaches every page's footer). |
+| A file a page includes with `<<<`                           | The pages that include it reload.                                                           |
 | `hub/hub.config.ts` or the generator (`devTools/hub/`)      | Vite restarts the dev server, and open Hub tabs reload once it's back.                      |
-| Anything in the app, toolkit or engine                      | Nothing: the Hub isn't rebuilt.                                                             |
+| Anything else in the app, toolkit or engine                 | Nothing: the Hub isn't rebuilt.                                                             |
 
 App tabs are never reloaded by a Hub save, and Hub tabs aren't reloaded by a scene gather. The Hub's dev client listens only to its own event (`aek:hub`).
 
@@ -243,19 +353,26 @@ App tabs are never reloaded by a Hub save, and Hub tabs aren't reloaded by a sce
 
 The same checks run in dev and in `yarn hub:build`. In dev, an error shows the error page. In `yarn hub:build`, an error fails the build, and so `yarn build` fails too.
 
-| Message (shortened)                                    | Fix                                                 |
-| ------------------------------------------------------ | --------------------------------------------------- |
-| `Dead link hub:…: no page at hub/pages/…`              | Fix the path, or add the page.                      |
-| `Dead link hub:…#x: "<page>" has no #x`                | The heading was renamed, or the id is misspelt.     |
-| `No slot for it: add an empty element with id="…"`     | An `.md` has no matching slot in its `index.html`.  |
-| `Its folder has no index.html, so it's no page's`      | An `.md` is in a folder that isn't a page.          |
-| `No parent page: hub/pages/…/index.html is missing`    | Add the parent page, so the nav can reach this one. |
-| `No <title>`                                           | Every page needs one.                               |
-| `Image not found` / `Image outside its page's folder`  | Move the image into the page's folder.              |
-| `":::name" has no closing ":::"` / `Unknown directive` | Close the directive, or fix its name.               |
-| `Unknown icon` / `{{asset:…}}: no such file`           | Check the name against `hub/_assets/`.              |
-| Warning: `Slot "…" has no ….md: it stays empty`        | Add the `.md`, or remove the slot.                  |
-| Warning: `Unknown <meta name="aek:…">`                 | A misspelt metadata name.                           |
+| Message (shortened)                                    | Fix                                                   |
+| ------------------------------------------------------ | ----------------------------------------------------- |
+| `Dead link hub:…: no page at hub/pages/…`              | Fix the path, or add the page.                        |
+| `Dead link hub:…#x: "<page>" has no #x`                | The heading was renamed, or the id is misspelt.       |
+| `No slot for it: add an empty element with id="…"`     | An `.md` has no matching slot in its `index.html`.    |
+| `Its folder has no index.html, so it's no page's`      | An `.md` is in a folder that isn't a page.            |
+| `No parent page: hub/pages/…/index.html is missing`    | Add the parent page, so the nav can reach this one.   |
+| `No <title>`                                           | Every page needs one.                                 |
+| `Image not found` / `Image outside its page's folder`  | Move the image into the page's folder.                |
+| `":::name" has no closing ":::"` / `Unknown directive` | Close the directive, or fix its name.                 |
+| `Unknown icon` / `{{asset:…}}: no such file`           | Check the name against `hub/_assets/`.                |
+| `No such file: …` (an include)                         | The included file moved. Fix the path after `<<<`.    |
+| `No "#region x" in it (it has: …)`                     | The region was renamed or removed. Use one listed.    |
+| `"#region x" … has no "#endregion x"`                  | Close the region in the source.                       |
+| `#L…: … has lines 1-N`                                 | The file got shorter. Fix the range, or use a region. |
+| Warning: `Slot "…" has no ….md: it stays empty`        | Add the `.md`, or remove the slot.                    |
+| Warning: `Unknown <meta name="aek:…">`                 | A misspelt metadata name.                             |
+| Warning: `Unknown code language "…"`                   | Use a listed language, or `text`.                     |
+| Warning: `Unknown "…" in the code block's meta`        | A misspelt fence option.                              |
+| Warning: `The search index is …, over 1 MB`            | Index less: fewer or shorter pages, fewer fields.     |
 
 ## Publishing
 
@@ -267,4 +384,4 @@ The same checks run in dev and in `yarn hub:build`. In dev, an error shows the e
 
 ## Keeping it current
 
-A change that adds, changes or removes an engine or toolkit feature or public API updates its Hub content in the same branch: the feature page, the example page and its scene, and the snippets they include. Run `yarn hub:build` before you commit. It catches the links your change broke.
+A change that adds, changes or removes an engine or toolkit feature or public API updates its Hub content in the same branch: the feature page, the example page and its scene, and the snippets they include. A `#region` marker in engine, toolkit or app code means a page includes that code, so renaming or removing it breaks the page. Run `yarn hub:build` before you commit. It catches the links and includes your change broke.

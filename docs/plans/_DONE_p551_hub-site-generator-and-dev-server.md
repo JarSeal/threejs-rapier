@@ -1,7 +1,7 @@
 Status: implemented (Phases 1-6)
 Category: Dev tooling, Hub
 Epic: p550_aekasha-hub-epic.md
-Blocks: p552_hub-code-blocks-and-search.md, p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
+Blocks: \_DONE_p552_hub-code-blocks-and-search.md, p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
 Related: \_DONE_p342_dev-file-server.md (the dev-only plugin pattern this copies)
 
 # Hub Site Generator & Dev Server

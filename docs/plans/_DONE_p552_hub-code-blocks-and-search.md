@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: implemented (Phases 1-4)
 Category: Dev tooling, Hub
 Epic: p550_aekasha-hub-epic.md
 Blocks: p553_hub-api-documentation.md (its search entries), p554_hub-examples-start-scene-and-example-scenes.md (its snippets)
@@ -199,12 +199,32 @@ As built:
   Lowering the prefix weight hurt other queries. Revisit when p553–p555 add more pages than
   changelog.
 
-### Phase 4 — Docs and versioning
+### Phase 4 — Docs and versioning — done
 
 `docs/techniques/hub-authoring.md`: the fence meta, notation comments, code groups, snippet
 includes and region markers. CLAUDE.md's Hub section: snippet regions (a `// #region` in engine
 or app code is a Hub include: renaming it breaks a page). `CHANGELOG.md` Project entry, mark the
 plan done.
+
+As built:
+
+- `hub-authoring.md` gained Code blocks (with notation comments and code groups), Snippet
+  includes (with regions) and Search (what's indexed, and how titles, headings and `aek:tags`
+  weigh) sections. It also gained the include and code warnings in its errors table, and an
+  included file in its dev refresh table. It links to the Hub's Code blocks page for the
+  rendered reference rather than repeating every example.
+- CLAUDE.md's Hub section got Code blocks, Snippet includes and Search bullets, with the
+  `#region` rule in bold. Its Output bullet now lists `hub-search.js` and the chunks, and the dev
+  plugin bullet lists included files among the watched sources.
+- The branch's existing `CHANGELOG.md` entry (`aekasha-hub`, p551's) is extended rather than a
+  second one added: p552 ships in the same branch, and its sentence saying code blocks and search
+  "come in later branches" was wrong.
+- Versioning differs from §4's "Project only": Phase 2's region comment in
+  `src/app/physicsTest.ts` is an app change to `yarn checkVersions --against main`, so the app
+  gets a patch (1.8.0 → 1.8.1, an App section in the entry). The project version follows the
+  engine's and stays.
+- The readme's Hub line mentions search. The Code blocks page's tags and description name snippet
+  includes, so search finds it.
 
 ## 4. Versioning
 

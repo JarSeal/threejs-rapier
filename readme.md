@@ -378,7 +378,7 @@ The engine, toolkit and example app each have their own semantic version and cod
 
 ## Documentation
 
-- **Ækasha Hub**: run `yarn dev` and open `http://localhost:8080/hub/` for the getting-started guide, examples, known issues and the changelog, or build it as a static site with `yarn hub:build`. To add or edit its pages, see [writing Hub pages](docs/techniques/hub-authoring.md).
+- **Ækasha Hub**: run `yarn dev` and open `http://localhost:8080/hub/` for the getting-started guide, examples, known issues and the changelog, all searchable (⌘K / Ctrl+K), or build it as a static site with `yarn hub:build`. To add or edit its pages, see [writing Hub pages](docs/techniques/hub-authoring.md).
 - **API reference**: run `yarn docs` and open `docs-api/index.html` (covers the engine and the toolkit).
 - **Guides**: [`docs/techniques/`](docs/techniques/), eg. [asset optimization](docs/techniques/asset-optimization.md).
 - **Design docs**: [`docs/plans/`](docs/plans/). Files prefixed `_DONE_` describe features that are already implemented.

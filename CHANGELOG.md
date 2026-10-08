@@ -6,26 +6,35 @@ Earlier releases are only recorded in the git history.
 
 ## 2026-10-08 — aekasha-hub
 
+### App 1.8.1 (Preschooler)
+
+**Changed**
+
+- `src/app/physicsTest.ts` marks its dynamic box code as the region `dynamic-box` (a comment only), which the Hub's "Code blocks" page includes. Renaming the region breaks that page.
+
 ### Project
 
 **Added**
 
-- The Ækasha Hub: the engine's instructions, examples and documentation as a static site, with its sources in `hub/` and its generator in `devTools/hub/`. This first version is the site itself; the code blocks and search, the API documentation, the example scenes and the feature pages come in later branches.
+- The Ækasha Hub: the engine's instructions, examples and documentation as a static site, with its sources in `hub/` and its generator in `devTools/hub/`. This first version is the site itself, its code blocks and its search; the API documentation, the example scenes and the feature pages come in later branches.
   - Pages: a folder under `hub/pages/` per URL, with an `index.html` (the title and the `aek:` menu metadata in its `<head>`, the page's markup in its `<body>`) and a Markdown file for each of its slots. The nav is built from the pages' metadata, at build time.
   - Markdown (markdown-it): heading anchors and an "On this page" table of contents, `hub:` links between pages that are checked at build time (a dead link or `#hash` fails the build with its file and line), `::: tip|note|warning|danger` callouts and a directive registry for later ones, and images converted to WebP.
   - The design shell: a top nav with dropdowns, breadcrumbs, a footer, a dark and a light theme (saved, else the system's), a mobile menu, keyboard navigation, self-hosted Inter and Lucide icons, and a homepage with a hero and the slots for its later content.
   - Generated sections: Issues (a page per `docs/issues/*.md`, listed by status) and Version (the engine, toolkit, app and project versions and the build, then the whole `CHANGELOG.md` with an anchor per entry).
+  - Code blocks, highlighted by shiki when the Hub is built (no highlighter in the pages), in a dark and a light theme of the Hub's own: line numbers, line highlights (`{3,5-7}`), diff, focus, error and warning lines (shiki's `// [!code …]` comments, removed from the page), a title and language badge, a copy button that copies the clean source, `wrap`, `collapse` (by itself above 30 lines), `::: code-group` tabs, and highlighted inline code (`` `fn()`{ts} ``). The Documentation section's "Code blocks" page is the reference.
+  - Snippet includes: `<<< path/from/repo/root.ts#region` shows a file's region (or the whole file, or `#L10-L24`) as a code block, so a page shows the real code. Regions are marked with `#region name` / `#endregion name` comments in the source. A missing file or region fails the build with the page and line, and in dev an edit to an included file reloads the pages that show it.
+  - Search (⌘K, Ctrl+K or `/`): a dialog over a minisearch index of every page's sections, built with the Hub, with prefix and typo-tolerant matching, results grouped by section with their breadcrumbs and the matches marked, and the closest page titles when nothing matches. The search code and the index load on first use. `yarn hub:build` prints the index's size, and warns over 1 MB.
 - `yarn dev` serves the Hub at `/hub/` (`devTools/hubPlugin.ts`, dev server only; `AEK_HUB=false` turns it off). It builds on the first request, rebuilds on every save under `hub/` and in its other sources, and refreshes only the open Hub tabs whose page changed (a stylesheet change without a reload). It never reloads the app's tabs. A page with an error is served as an error page with the file and line, and comes back by itself when it's fixed.
 - `yarn hub:build [--out <dir>]` builds the public site into `dist-hub/`: relative links (it works at a domain root and under `/hub/`), a `404.html`, a Netlify `_headers` file, and `?v=<content hash>` on every asset. An error fails it. `yarn hub:preview [--base /hub/]` serves the build as a static host would.
-- `docs/techniques/hub-authoring.md`: how to write Hub pages.
-- CLAUDE.md: the Hub's section, the issue-file convention (`**Title:**` on line 1, then `Key: value` lines with `Status:` first), and the rule that a change to an engine or toolkit feature or public API updates its Hub content in the same branch.
+- `docs/techniques/hub-authoring.md`: how to write Hub pages, their code blocks, snippet includes and region markers, and what search indexes.
+- CLAUDE.md: the Hub's section, the issue-file convention (`**Title:**` on line 1, then `Key: value` lines with `Status:` first), the rule that a change to an engine or toolkit feature or public API updates its Hub content in the same branch, and that a `#region` marker in engine, toolkit or app code is a Hub include (renaming it breaks a page).
 
 **Changed**
 
 - `yarn build` and `yarn build:test` also type-check `hub/` (`tsc -p hub`) and build the Hub into `dist-hub/` at the end. `AEK_HUB=false` skips the Hub build, and `AEK_HUB_IN_DIST=true` also copies it into `dist/hub/` (off by default).
 - The project metadata (versions, codenames, packages, build commit and time) is built by `devTools/projectMetadata.ts`, shared by `vite.config.ts` and the Hub. `__PROJECT_METADATA__` and `index.html`'s placeholders are unchanged.
 - The Stop hook runs on changes in `hub/`, `devTools/` and `vite.config.ts` too, and type-checks `hub/`. ESLint ignores `dist-hub/`.
-- New dev dependencies: `markdown-it` 14.3.1 and `@types/markdown-it` 14.1.2.
+- New dev dependencies: `markdown-it` 14.3.1, `@types/markdown-it` 14.1.2, `shiki` 4.5.0, `@shikijs/transformers` 4.5.0 and `minisearch` 7.2.0.
 
 ## 2026-10-08 — finalize-impostor-billboard-lod
 
