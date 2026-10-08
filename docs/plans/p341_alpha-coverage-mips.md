@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Assets, Textures
 Blocks: p351_impostor-billboard-lod.md (Phase 5: its cross-quad lane and no-pop dolly)
 Related: p299_texture-arrays-and-atlases.md (the atlas mip chain this extends), \_DONE_p300_asset-optimization-pipeline-plan.md (the pipeline), p308_terrain-scatter.md (leaf cards)
@@ -92,12 +92,50 @@ As built:
   against the unscaled chain: levels 1-4 1.000 (0.998-0.837), 7 × 4 1.006 (0.254), 3 × 2 0.939
   (0), 1 × 1 0 (0); Phase 2 measures the decoded export.
 
-### Phase 2 — Impostor exports
+### Phase 2 — Impostor exports — done
 
 The export writes `alphaCoverage`; re-export largeWorld's tree and rock. Measured with p351 Phase 4
 section 6's harness (`angles`, the tree at its switch distance and half): the export's area against
 level 1 at least the bake's (0.86-1.20), the trunks whole; half the distance no worse than now
 (exported against baked 1.5-4.5). The rock (solid, nearly convex) within section 5's figures.
+
+As built:
+
+- `_dbg__ImpostorExport.ts`'s `getAlbedoOptimize` writes `alphaCoverage: alphaTest` on both kinds'
+  albedo slots, only for a cut in (0, 1] (the schema's range; `alphaTest: 0` has no cut). The
+  octahedral albedo's alpha is also the weight of its depth blend (`OctahedralImpostorMaterial.ts`),
+  normalised, so a region's scale mostly cancels out there. The format version and the fingerprint
+  stay: a re-export changes only the atlas JSON (and the KTX2 outputs).
+- Re-exported both in one batch (WebGPU). The tree's PNGs and both `*.impostor.json` were
+  `unchanged`. The rock's PNGs were rewritten: it was first exported on WebGL2 (p351 Phase 4
+  section 3), and WebGPU rasterises a few edge texels differently (albedo: 523 of 746,496 texels, 15
+  fewer covered of 221,041; `normalDepth` mostly ±1-2/255). Kept.
+- Decoded KTX2 against level 0's coverage (cut 0.5; before in brackets). Tree: levels 1-3
+  1.002 / 1.002 / 0.999 (1.002 / 0.994 / 0.995), level 4 (15 × 8) 0.984 (0.813), level 5 (7 × 4)
+  0.989 (0.219), 3 × 2 1.143 (0), 1 × 1 0 (0). Its 8-bit input is 1.000 / 1.006 at levels 4-5, so the
+  rest is UASTC (open question 1). Rock: levels 1-4 1.000-1.005 (0.86-1.00), 27² and 13² 1.02
+  (0.37, 0), 6² 1.003, 3² 1.20, 1 × 1 0.
+- Tree, at the switch distance (16 views, WebGPU, Apple GPU; before, after and the bake measured on
+  the same day): area against level 1 0.81-1.10, mean 0.94 (0.74-1.01, mean 0.86); the bake
+  0.86-1.20, mean 0.99. IoU against level 1 mean 0.76 (0.71), the bake 0.77. Exported against baked:
+  luma difference 5.2-9.5 (5.5-11.7), IoU 0.81-0.93 (0.80-0.91), area 0.89-0.99 (0.82-0.92). At half
+  the distance, exported against baked 1.9-4.6 (1.5-4.3), IoU 0.93-0.97, area 0.97-1.00
+  (0.95-1.00): unchanged. In zoomed renders the trunks the old export broke up in the low views
+  (5°, 15°) are mostly back; at 1-2 px a trunk is near what the eye can judge.
+- The text's "at least the bake's" isn't met: the export draws 1-11 % less area than the bake (5 %
+  on average). The bake is the one that moved: its GPU mips, read back, hold 1.039 × level 0's
+  coverage at level 4 (15 × 8; levels 1-3 0.994-1.000, level 5 0.717, 3 × 2 1.84, 1 × 1 3.92), and
+  the switch distance samples levels 3-4 (p351 section 6). That overshoot (+4 %) plus UASTC's
+  shortfall at level 4 (-1.6 %) is most of the gap. Decided (after review): level 0's coverage is the
+  target, as §1 says, not the bake's; the exit is reworded to match.
+- Rock, at the switch distance (az 0°, 15° left out, as in p351): exported against level 0 luma
+  difference 6.1-8.6, IoU 0.82-0.87, area 0.90-1.01 (6.0-8.6 / 0.80-0.88 / 0.90-1.00 before);
+  against the bake 1.8-2.9, area 0.99-1.02. Half the distance 4.1-5.8 (4.0-5.9). Within section 5's
+  figures.
+- Found while measuring: the page the gather reloads after a dev files write can boot with two
+  module instances (`SceneLoader.ts` and `SceneLoader.ts?t=…` in one stack, "KTX2 textures can only
+  be loaded after the renderer has been created"), in the harness's page; a fresh load is clean. Not
+  this plan's; not chased.
 
 ### Phase 3 — Plain textures
 
@@ -106,8 +144,9 @@ and scales them. For p308's leaf cards and any alpha-cut texture outside an atla
 test texture with thin features.
 
 **Exit:** the tree's exported cross-quads keep level 0's coverage at every level (within 1 %),
-draw no thinner than the runtime bake at their switch distance, and the rock's export doesn't
-change measurably; `docs/techniques/asset-optimization.md` documents `alphaCoverage`.
+draw no thinner at their switch distance than level 0's coverage allows (the runtime bake draws a
+few percent thicker, its GPU mips overshooting level 0 there: Phase 2), and the rock's export
+doesn't change measurably; `docs/techniques/asset-optimization.md` documents `alphaCoverage`.
 
 ## 4. Versioning
 
@@ -117,6 +156,9 @@ pipeline itself is repo tooling (Project in the CHANGELOG).
 ## 5. Open questions
 
 1. UASTC's alpha error near the cut (about 7/255 on the tree's levels 1-2) remains. Does it matter
-   once coverage is scaled? Phase 2 measures; if so, a slot can raise its UASTC `level`.
+   once coverage is scaled? Phase 2 measures; if so, a slot can raise its UASTC `level`. Phase 2:
+   a little. It costs the tree's level 4 1.6 % of coverage (0.984 decoded against its 8-bit
+   input's 1.000), about a third of the remaining gap to the bake at the switch distance. Not tried
+   on the tree (Phase 1 found `rdo: 0` and `level: 4` no help on the test discs).
 2. Should runtime bakes get the same scale (a GPU pass after three's mip generation), so bake and
    export match again? Not needed while scenes ship exports; revisit if bakes stay common.
