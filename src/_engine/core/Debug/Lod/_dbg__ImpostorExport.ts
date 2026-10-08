@@ -35,7 +35,9 @@ import { readRenderTargetImageAsync } from '../_dbg__TexturePreview';
 // The gather that follows encodes the atlases as KTX2 (p300). Without the dev files (a LAN device
 // without AEK_DEV_FILES_LAN, AEK_DEV_FILES=false, a build) the files are downloaded instead, with
 // the repo paths to put them at. Both kinds export (octahedral: albedo and normalDepth slots;
-// cross-quads, section 6: albedo, and normal when baked with normals).
+// cross-quads, section 6: albedo, and normal when baked with normals). The albedo slot carries
+// the impostor's `alphaTest` as `alphaCoverage` (docs/plans/p341_alpha-coverage-mips.md), so its
+// mips keep level 0's coverage and thin features don't break up with distance.
 
 /** Where an impostor stands against the export the generated data has of it */
 export type ImpostorExportState =
@@ -166,6 +168,13 @@ const toJsonShading = (shading: { type: string; params: Record<string, unknown> 
   ),
 });
 
+/** The albedo slot's `optimize`: the `baseColor` profile, and its levels' alpha scaled to keep
+ * level 0's coverage at the impostor's cut (p341; `alphaCoverage` takes a cut in (0, 1]) */
+const getAlbedoOptimize = (alphaTest: number) => ({
+  slot: 'baseColor',
+  ...(alphaTest > 0 && alphaTest <= 1 && { alphaCoverage: alphaTest }),
+});
+
 /** Reads each slot's atlas target back into a PNG at its export path, then disposes the targets
  * (all of them, also on a failure) */
 const readAtlasImages = async (
@@ -224,7 +233,7 @@ const buildOctahedralExport = async (record: ImpostorRecord): Promise<ImpostorEx
       albedo: {
         texOpts: { colorSpace: 'srgb' },
         image: paths.getImage('albedo').ref,
-        optimize: { slot: 'baseColor' },
+        optimize: getAlbedoOptimize(settings.alphaTest),
       },
       // The object-space normal and the depth: data, compressed without RDO (decision 3)
       normalDepth: {
@@ -286,7 +295,7 @@ const buildCrossQuadsExport = async (record: ImpostorRecord): Promise<ImpostorEx
       albedo: {
         texOpts: { colorSpace: 'srgb' },
         image: paths.getImage('albedo').ref,
-        optimize: { slot: 'baseColor' },
+        optimize: getAlbedoOptimize(settings.alphaTest),
       },
       // The normal in each plane's own frame: a normal map, resized as unit vectors (decision 3)
       ...(atlases.normal && {

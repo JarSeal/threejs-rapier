@@ -222,7 +222,7 @@ The codecs per slot, as an export writes them:
 
 | Slot                       | Contents                                                | Settings                                                                                             |
 | -------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `albedo`                   | sRGB colour, alpha cut                                  | `slot: "baseColor"` (UASTC λ 2)                                                                      |
+| `albedo`                   | sRGB colour, alpha cut                                  | `slot: "baseColor"` (UASTC λ 2), `alphaCoverage` set to the impostor's alpha test (see above)        |
 | `normalDepth` (octahedral) | Object-space normal in RGB, depth in alpha, linear      | `slot: "data"` with `{ "codec": "uastc", "rdo": 0 }`: depth error moves the parallax and the shadows |
 | `normal` (cross-quads)     | Normal in the plane's frame (as the bake camera saw it) | `slot: "normal"` (resized as unit vectors)                                                           |
 
