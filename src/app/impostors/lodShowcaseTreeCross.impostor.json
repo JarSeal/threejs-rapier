@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../.schemas/impostor.schema.json",
+  "id": "lodShowcaseTreeCross",
+  "kind": "CROSS_QUADS",
+  "atlas": "lodShowcaseTreeCross",
+  "formatVersion": 1,
+  "sourceHash": "f5766ba79d8f7223",
+  "alphaTest": 0.5,
+  "shading": {
+    "type": "PHONGNODEMATERIAL",
+    "params": {
+      "shininess": 30,
+      "specular": "#111111"
+    }
+  },
+  "layout": {
+    "planes": 3,
+    "frameWidth": 76,
+    "frameHeight": 128,
+    "gutter": 4,
+    "atlasSize": [252, 136],
+    "center": [0, 2.1250000059604646, 0],
+    "halfWidth": 1.3024193511855218,
+    "halfHeight": 2.1935483809440366
+  },
+  "normals": true,
+  "debugData": {
+    "name": "lodShowcaseTreeCross (impostor)",
+    "description": "Written by the LOD tab's impostor Export (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+  }
+}

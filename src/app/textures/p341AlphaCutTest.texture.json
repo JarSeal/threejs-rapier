@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../.schemas/texture.schema.json",
+  "id": "p341AlphaCutTest",
+  "fileName": "./source/p341AlphaCut.png",
+  "texOpts": {
+    "colorSpace": "srgb"
+  },
+  "optimize": {
+    "slot": "baseColor",
+    "alphaCoverage": 0.5
+  },
+  "debugData": {
+    "name": "p341 alpha-cut test texture",
+    "description": "p341 Phase 3: a plain texture with alphaCoverage, thin alpha-cut features (twigs thinning to 1 px, a fence of 1-4 px posts and 1 px rails, grass blades tapering to 0.5 px). Its mip levels are built by the pipeline and keep level 0's coverage at the cut 0.5."
+  }
+}

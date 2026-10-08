@@ -1,4 +1,4 @@
-// The octahedral impostor's material nodes (docs/plans/p351_impostor-billboard-lod.md §2.2, Phase 3):
+// The octahedral impostor's material nodes (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.2, Phase 3):
 // a quad that faces the camera from each instance's centre, blending the three atlas frames baked
 // nearest to the direction it's seen from, shaded with the baked object-space normals.
 //
@@ -60,6 +60,7 @@ import {
   encodeOctahedralNode,
   getOctahedralFrameBasisNode,
 } from './Octahedral';
+import type { ImpostorAtlasVOrigin } from './ImpostorFormat';
 import type { OctahedralImpostorLayout } from './OctahedralImpostor';
 
 // --- THE INSTANCE MATRIX, BOUND A SECOND TIME ---
@@ -168,12 +169,15 @@ export type OctahedralImpostorNodes = {
 /**
  * The nodes that draw an octahedral impostor's atlases on its quad geometry (see
  * `generateOctahedralImpostor`): set them on a material as `positionNode`, `colorNode`,
- * `normalNode`, `depthNode` and `receivedShadowPositionNode`, with an `alphaTest`.
+ * `normalNode`, `depthNode` and `receivedShadowPositionNode`, with an `alphaTest`. `vOrigin` is the
+ * atlases' (both the same), fixed in the shader; the layout's cells are from the image's top left
+ * either way.
  */
 export const createOctahedralImpostorNodes = (
   layout: OctahedralImpostorLayout,
   albedo: THREE.Texture,
-  normalDepth: THREE.Texture
+  normalDepth: THREE.Texture,
+  vOrigin: ImpostorAtlasVOrigin = 'TOP'
 ): OctahedralImpostorNodes => {
   const { frames, hemi, frameSize, gutter, atlasSize, center, radius, extent } = layout;
   const cellSize = frameSize + 2 * gutter;
@@ -246,15 +250,18 @@ export const createOctahedralImpostorNodes = (
   const weights = [max(f.x, f.y).oneMinus(), abs(f.x.sub(f.y)), min(f.x, f.y)];
 
   /** The atlas uv of a point (relative to the centre) in frame `cell`'s image: from the cell's top
-   * left (v = 0 is the top), clamped to the frame (its edge is clear, and a neighbouring frame
-   * never shows through). */
+   * left, clamped to the frame (its edge is clear, and a neighbouring frame never shows through),
+   * then v flipped for an atlas stored v up. */
   const toAtlasUV = (cell: Vec2Node, point: Vec3Node, right: Vec3Node, up: Vec3Node) => {
     const coord = clamp(vec2(point.dot(right), point.dot(up)).div(extent), -1, 1);
-    return cell
+    const fromTop = cell
       .mul(cellSize)
       .add(gutter)
       .add(vec2(coord.x, coord.y.negate()).mul(0.5).add(0.5).mul(frameSize))
-      .div(atlasSize) as unknown as TextureUV;
+      .div(atlasSize);
+    return (vOrigin === 'TOP'
+      ? fromTop
+      : vec2(fromTop.x, fromTop.y.oneMinus())) as unknown as TextureUV;
   };
 
   /** A depth atlas alpha as the distance from the frame's image plane toward its camera (±radius),

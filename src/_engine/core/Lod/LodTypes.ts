@@ -89,7 +89,7 @@ export type LodData = {
  * instance (registered with `registerLodTarget`). The entity's `Transform` gives its position and
  * scale, in world space. The target owns its levels' assets: the component takes no refs on them.
  *
- * Cross-fades (docs/plans/p351_impostor-billboard-lod.md §2.4): a target with `setFade` fades. With
+ * Cross-fades (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.4): a target with `setFade` fades. With
  * `fade` true, `applyLevel` and `setCulled` keep drawing what the entity showed as the outgoing
  * copy, and the LOD system then drives `setFade` until it ends the fade with 1. A target without
  * `setFade` always switches at once (its `fade` is always false).

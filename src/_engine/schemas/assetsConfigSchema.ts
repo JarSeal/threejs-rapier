@@ -159,11 +159,52 @@ export const AssetOptimizeSchema = z
 
 export type AssetOptimize = z.infer<typeof AssetOptimizeSchema>;
 
-/** A `*.texture.json`'s `optimize`: it names its slot and has no geometry. */
-export const TextureOptimizeSchema = z
-  .union([z.literal(false), z.strictObject(OptimizeObjectShape).omit({ mesh: true })])
+/** Slots whose alpha isn't coverage (a normal map's, data packed into it): never scaled */
+export const NON_COVERAGE_SLOTS: readonly TextureSlot[] = ['normal', 'data'];
+
+/**
+ * p341: the alpha test's cut, so each mip level's alpha is scaled to keep level 0's coverage.
+ * Only for alpha that an `alphaTest` cuts (an albedo), set per asset (or atlas slot), since the
+ * cut is its material's.
+ */
+export const AlphaCoverageSchema = z
+  .number()
+  .gt(0)
+  .max(1)
   .describe(
-    'Asset optimization (p300): a profile, the slot and per-slot overrides, or false to keep the file as it is.'
+    "The material's alphaTest (0-1, eg. 0.5): each mip level's alpha is scaled so the share of it passing this cut stays level 0's, so thin alpha-cut features (leaves, trunks, an impostor's edges) don't thin out with distance. Needs an alpha channel and mipmaps; not for a normal or data slot, or normalMode (their alpha isn't coverage). Default: off."
+  );
+
+/** Refuses `alphaCoverage` on an optimize that names a slot whose alpha isn't coverage */
+export const refineAlphaCoverageSlot = (
+  optimize: { slot?: TextureSlot; alphaCoverage?: number },
+  ctx: z.RefinementCtx
+) => {
+  if (optimize.alphaCoverage === undefined || !optimize.slot) return;
+  if (NON_COVERAGE_SLOTS.includes(optimize.slot)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['alphaCoverage'],
+      message: `the slot "${optimize.slot}" has no coverage alpha (a normal map's or packed data): alphaCoverage would scale it`,
+    });
+  }
+};
+
+/**
+ * A `*.texture.json`'s `optimize`: it names its slot and has no geometry. `alphaCoverage` (p341)
+ * is the texture's own, like an atlas slot's: not in a profile or a rule.
+ */
+export const TextureOptimizeSchema = z
+  .union([
+    z.literal(false),
+    z
+      .strictObject(OptimizeObjectShape)
+      .omit({ mesh: true })
+      .extend({ alphaCoverage: AlphaCoverageSchema.optional() })
+      .superRefine(refineAlphaCoverageSlot),
+  ])
+  .describe(
+    'Asset optimization (p300): a profile, the slot, per-slot overrides and the alphaCoverage, or false to keep the file as it is.'
   );
 
 /**

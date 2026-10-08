@@ -1,0 +1,43 @@
+{
+  "$schema": "../../../.schemas/textureAtlas.schema.json",
+  "id": "largeWorldTreeCross",
+  "size": [252, 136],
+  "padding": 4,
+  "mipChain": "FULL",
+  "slots": {
+    "albedo": {
+      "texOpts": {
+        "colorSpace": "srgb"
+      },
+      "image": "./largeWorldTreeCross.albedo.png",
+      "optimize": {
+        "slot": "baseColor",
+        "alphaCoverage": 0.5
+      }
+    },
+    "normal": {
+      "image": "./largeWorldTreeCross.normal.png",
+      "optimize": {
+        "slot": "normal"
+      }
+    }
+  },
+  "cells": [
+    {
+      "id": "p0",
+      "rect": [0, 0, 84, 136]
+    },
+    {
+      "id": "p1",
+      "rect": [84, 0, 84, 136]
+    },
+    {
+      "id": "p2",
+      "rect": [168, 0, 84, 136]
+    }
+  ],
+  "debugData": {
+    "name": "largeWorldTreeCross (impostor atlas)",
+    "description": "Written by the LOD tab's impostor Export (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+  }
+}

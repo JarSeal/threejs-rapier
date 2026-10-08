@@ -282,7 +282,7 @@ const addLodComponent = (entityId: number, def: LodDef, world: ECSWorld) => {
  * to level 0 first). The definition is read, not copied: after changing its levels, set it again.
  *
  * Level changes and hiding / showing cross-fade with a dither over `fadeSeconds` (default
- * `AppConfig.lod.fadeSeconds`; docs/plans/p351_impostor-billboard-lod.md §2.4): the previous level
+ * `AppConfig.lod.fadeSeconds`; docs/plans/_DONE_p351_impostor-billboard-lod.md §2.4): the previous level
  * is drawn by a temporary copy of the mesh meanwhile. Unless `fadeSeconds` is 0, the levels'
  * materials get `enableLodDither` (shared with other meshes, those get it too).
  *

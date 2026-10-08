@@ -8,6 +8,9 @@ import {
 import { getECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { getConfig } from '../Config';
+import { getDevFilesStatus } from '../../debug/DevFiles';
+import { getImpostorRecords, type ImpostorRecord } from '../Lod/Impostors/ImpostorRegistry';
+import { doesTextureExist, getTexture } from '../Texture';
 import {
   getLodBias,
   getLodDebugOptions,
@@ -26,6 +29,13 @@ import {
   toggleLodEntityWindow,
 } from './Lod/_dbg__LodEntityWindow';
 import {
+  exportImpostorsAsync,
+  getImpostorExportState,
+  isImpostorExportRunning,
+  isImpostorKindExported,
+  type ImpostorExportState,
+} from './Lod/_dbg__ImpostorExport';
+import {
   isLodOverlayEnabled,
   LOD_OVERLAY_COLOR_NAMES,
   setLodOverlayEnabled,
@@ -33,10 +43,11 @@ import {
 
 // The LOD tab (docs/plans/_DONE_p348_ecs-lod-selection.md §6): counts per level, the last frame's
 // selections, applies and fades, the selection's runtime overrides, the fades' duration and time
-// scale (docs/plans/p351_impostor-billboard-lod.md Phase 2), the level overlay
-// (Lod/_dbg__LodOverlay.ts) and the per-entity LOD windows (Lod/_dbg__LodEntityWindow.ts).
-// Nothing is persisted: it's all for inspecting, and a reload starts from the app's values.
-// Default world only.
+// scale (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 2), the level overlay
+// (Lod/_dbg__LodOverlay.ts), the per-entity LOD windows (Lod/_dbg__LodEntityWindow.ts) and the
+// impostors generated in this session with their Export (p351 Phase 4,
+// Lod/_dbg__ImpostorExport.ts). Nothing is persisted: it's all for inspecting, and a reload starts
+// from the app's values. Default world only.
 
 const TAB_ID = 'lodControls';
 const formatInt = (v: number) => v.toFixed(0);
@@ -139,6 +150,65 @@ const formatCounts = (counts: LodCounts) => {
   ].join('\n');
 };
 
+const IMPOSTOR_KIND_NAMES: Record<ImpostorRecord['kind'], string> = {
+  OCTAHEDRAL: 'Octahedral',
+  CROSS_QUADS: 'Cross-quads',
+};
+
+const IMPOSTOR_EXPORT_STATE_NAMES: Record<ImpostorExportState, string> = {
+  NO_SOURCE: 'no source to export',
+  NOT_EXPORTED: 'not exported',
+  EXPORTED: 'export up to date',
+  STALE: 'export stale',
+  OTHER_FORMAT: 'export in another format',
+};
+
+/** Whether the impostor can be exported now: it has a source and its kind exports */
+const isImpostorExportable = (record: ImpostorRecord) =>
+  Boolean(record.source) && isImpostorKindExported(record.kind);
+
+/** An impostor's row text: its kind, where it came from and its export, its atlas and bake time */
+const formatImpostorRow = (record: ImpostorRecord) => {
+  const albedoId = `${record.id}.albedo`;
+  const albedo = doesTextureExist(albedoId) ? getTexture(albedoId) : undefined;
+  const image = albedo?.image as { width?: number; height?: number } | undefined;
+  const size = image?.width ? `${image.width}×${image.height}` : 'no atlas';
+  const origin = record.origin === 'BAKED' ? 'baked' : 'loaded from its export';
+  const exportState = isImpostorKindExported(record.kind)
+    ? IMPOSTOR_EXPORT_STATE_NAMES[getImpostorExportState(record)]
+    : 'no export yet';
+  const bake = record.bakeMs === null ? 'no bake' : `${record.bakeMs.toFixed(0)} ms bake`;
+  return `${IMPOSTOR_KIND_NAMES[record.kind]}, ${origin}\n${exportState}\n${size}, ${bake}`;
+};
+
+/** Characters a line of a readonly text shows in the drawer */
+const TEXT_COLUMNS = 24;
+const DEV_FILES_ROWS = 3;
+
+/** `text` wrapped at word boundaries into at most `rows` lines of TEXT_COLUMNS */
+const wrapText = (text: string, rows: number) => {
+  const lines: string[] = [];
+  for (const word of text.split(/\s+/)) {
+    const last = lines.length - 1;
+    if (last >= 0 && lines[last].length + 1 + word.length <= TEXT_COLUMNS) {
+      lines[last] += ` ${word}`;
+    } else {
+      lines.push(word);
+    }
+  }
+  if (lines.length > rows) {
+    lines.length = rows;
+    lines[rows - 1] = `${lines[rows - 1].slice(0, TEXT_COLUMNS - 1)}…`;
+  }
+  return lines.join('\n');
+};
+
+/** What the impostor rows were built for: a rebuild follows a change */
+const getImpostorsSignature = () =>
+  getImpostorRecords()
+    .map((record) => `${record.id}:${record.kind}:${record.origin}`)
+    .join('|');
+
 export const _createLodDebugGUI = () => {
   const world = getECSWorld();
 
@@ -168,6 +238,10 @@ export const _createLodDebugGUI = () => {
   /** Levels of the entity with the most, which the counts and the force options list. */
   let levelCount = 1;
   let builtLevelCount = 0;
+  /** The impostors the rows were built for (null: not built) */
+  let builtImpostors: string | null = null;
+  const impostorRows: Record<string, { text: string }> = {};
+  const devFilesState = { text: 'Checking…' };
 
   createDebuggerTab({
     id: TAB_ID,
@@ -200,15 +274,46 @@ export const _createLodDebugGUI = () => {
       countsState.text = formatCounts(counts);
       levelCount = counts.levels.length;
 
+      for (const record of getImpostorRecords()) {
+        const row = impostorRows[record.id];
+        if (row) row.text = formatImpostorRow(record);
+      }
+
       // Another level count (eg. a scene change): the force options and the counts' rows need
-      // a rebuild. Deferred, since this runs inside a refresh or a build.
-      if (builtLevelCount && levelCount !== builtLevelCount) {
+      // a rebuild, as do other impostors' rows. Deferred, since this runs inside a refresh or a
+      // build.
+      const isLevelCountChanged = builtLevelCount && levelCount !== builtLevelCount;
+      const isImpostorsChanged =
+        builtImpostors !== null && builtImpostors !== getImpostorsSignature();
+      if (isLevelCountChanged || isImpostorsChanged) {
         builtLevelCount = 0;
+        builtImpostors = null;
         queueMicrotask(() => updateDebuggerTab(TAB_ID, { rebuild: true }));
       }
     },
+    onOpen: () => {
+      let isOpen = true;
+      // Asked on every mount: the server can restart with other settings
+      getDevFilesStatus().then((status) => {
+        if (!isOpen) return;
+        devFilesState.text = wrapText(
+          status.available
+            ? 'Export writes the files into the repo.'
+            : `Export downloads the files: ${status.message}.`,
+          DEV_FILES_ROWS
+        );
+        updateDebuggerTab(TAB_ID);
+      });
+      return () => {
+        isOpen = false;
+      };
+    },
     content: () => {
       builtLevelCount = levelCount;
+      builtImpostors = getImpostorsSignature();
+      const records = getImpostorRecords();
+      for (const id of Object.keys(impostorRows)) delete impostorRows[id];
+      for (const record of records) impostorRows[record.id] = { text: formatImpostorRow(record) };
       // A forced level past every entity's last stays listed while it is set
       const forceOptionCount = Math.max(levelCount, controls.forceLevel + 1);
       // A cap the app set that isn't one of the choices is listed too
@@ -425,6 +530,66 @@ export const _createLodDebugGUI = () => {
                   readonly: true,
                   multiline: true,
                   rows: levelCount,
+                  interval: 0,
+                },
+              ],
+            },
+            {
+              type: 'folder',
+              title: 'Impostors',
+              content: [
+                {
+                  key: 'text',
+                  target: devFilesState,
+                  label: 'Dev files',
+                  readonly: true,
+                  multiline: true,
+                  rows: DEV_FILES_ROWS,
+                  interval: 0,
+                },
+                ...records.flatMap((record) => [
+                  { type: 'separator' as const },
+                  {
+                    key: 'text',
+                    target: impostorRows[record.id],
+                    label: record.id,
+                    readonly: true,
+                    multiline: true,
+                    rows: 3,
+                    interval: 0,
+                  },
+                  {
+                    type: 'button' as const,
+                    title:
+                      isImpostorKindExported(record.kind) &&
+                      getImpostorExportState(record) !== 'NOT_EXPORTED'
+                        ? 'Re-export'
+                        : 'Export',
+                    disabled: () => isImpostorExportRunning() || !isImpostorExportable(record),
+                    onClick: () => {
+                      exportImpostorsAsync([record.id]).then(() => updateDebuggerTab(TAB_ID));
+                      updateDebuggerTab(TAB_ID);
+                    },
+                  },
+                ]),
+                { type: 'separator' },
+                {
+                  type: 'button',
+                  title: 'Export all',
+                  hidden: () => !records.length,
+                  disabled: () => isImpostorExportRunning() || !records.some(isImpostorExportable),
+                  onClick: () => {
+                    const ids = records.filter(isImpostorExportable).map((record) => record.id);
+                    exportImpostorsAsync(ids).then(() => updateDebuggerTab(TAB_ID));
+                    updateDebuggerTab(TAB_ID);
+                  },
+                },
+                {
+                  key: 'text',
+                  target: { text: 'No impostors generated in this scene.' },
+                  label: '',
+                  readonly: true,
+                  hidden: () => records.length > 0,
                   interval: 0,
                 },
               ],

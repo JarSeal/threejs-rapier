@@ -5911,6 +5911,13 @@
         "additionalProperties": false
       }
     },
+    "impostors": {
+      "description": "Exported impostors (`*.impostor.json` ids): their atlases load with the scene's textures, and generateOctahedralImpostor / generateCrossQuads called with one's id builds from it instead of baking.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "id": {
       "type": "string"
     },
@@ -11858,6 +11865,13 @@
                   "id"
                 ],
                 "additionalProperties": false
+              }
+            },
+            "impostors": {
+              "description": "Exported impostors (`*.impostor.json` ids): their atlases load with the scene's textures, and generateOctahedralImpostor / generateCrossQuads called with one's id builds from it instead of baking.",
+              "type": "array",
+              "items": {
+                "type": "string"
               }
             }
           },

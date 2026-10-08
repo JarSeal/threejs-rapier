@@ -184,6 +184,64 @@ A texture JSON can build its image from several sources with `pack`, in place of
 
 With optimization off, a pack is still built and written as a PNG, since it has no single source file.
 
+## Alpha-cut textures
+
+A mip level averages alpha, so a material with `alphaTest` loses thin features with distance: a leaf card's edge or a trunk falls below the cut and breaks up. `alphaCoverage` fixes that at build time. Set it to the material's `alphaTest`, and each mip level's alpha is scaled so the same share of it passes the cut as at level 0:
+
+```jsonc
+// src/app/textures/leafCard.texture.json
+{
+  "$schema": "../../../.schemas/texture.schema.json",
+  "id": "leafCard",
+  "fileName": "./source/leafCard.png",
+  "texOpts": { "colorSpace": "srgb" },
+  "optimize": { "slot": "baseColor", "alphaCoverage": 0.5 },
+}
+```
+
+An atlas slot takes it the same way:
+
+```json
+"albedo": {
+  "image": "./tree.albedo.png",
+  "optimize": { "slot": "baseColor", "alphaCoverage": 0.5 }
+}
+```
+
+- **Where:** a `*.texture.json`'s `optimize` (a file or a `pack`) and an atlas slot's `optimize`. It belongs to the asset, so profiles and rules don't take it. Texture arrays don't either.
+- **Only for coverage alpha:** an albedo cut by `alphaTest`. A `normal` or `data` slot, or `normalMode`, is refused: their alpha is data. Without an alpha channel or mipmaps, or with `codec: "none"` (a PNG, whose mips the GPU makes), it does nothing (with a warning).
+- **The mips are the pipeline's:** a texture with `alphaCoverage` gets its levels from the pipeline's 2 × 2 box filter (area-filtered past an odd size) instead of `ktx`'s default (lanczos4), colour included. The target is the source's coverage before `maxSize`, so a resized level 0 is scaled too.
+- **Per cell:** an atlas keeps each cell's own coverage on the levels its padding keeps apart, and the whole image's on a full chain's levels past them.
+- **What it can't fix:** a level only a few texels across moves in coarse steps. Below that, UASTC's alpha error near the cut (up to about 18/255 on small levels) can still move the edge by a few percent.
+
+## Impostor atlases
+
+An impostor (a far LOD level drawn with a few textured quads) bakes its atlases at load, or is exported once and loaded from the repo. You don't write these files by hand: the LOD debug tab's Impostors folder writes them while `yarn dev` runs (or downloads them, with the paths to put them at). An export is four files, in `src/app/impostors/` by default (`AppConfig.lod.impostorExportDir`):
+
+```text
+rock.impostor.json        what the material needs: kind, layout, shading, alpha test, fingerprint
+rock.textureAtlas.json    the atlas: one image slot per atlas, one cell per frame
+rock.albedo.png           the baked albedo, alpha cut, transparent texels dilated
+rock.normalDepth.png      object-space normal + depth (octahedral; cross-quads: rock.normal.png)
+```
+
+The pipeline encodes the atlas's slots like any texture, into `src/public/aek-assets/`. A scene loads the impostor by listing it, `"impostors": ["rock"]` in its `*.scene.json`, and code calls the generator with the same `id` as before. Re-export after changing the source mesh: a debug build warns when the export's fingerprint no longer matches it.
+
+The atlas JSON uses two texture atlas keys that exist for exports like this:
+
+- **`slots.<name>.image`**: a ready-made image of the whole layout (the atlas's `size`), relative to the JSON. The slot isn't composed from its cells (no resize, no edge extension, no fill), so every cell needs a `rect` and has no `sources`. The image's size is checked by the gather and again by the encode.
+- **`mipChain: "FULL"`**: every mip level down to 1 × 1 (an exact 2 × 2 box, area-filtered past an odd size). The default, `"PROTECTED"`, stops the chain at the last level the padding keeps apart, so cells never mix. An impostor's neighbouring cells are neighbouring views of the same object, so mixing them is harmless, and a short chain would shimmer at distance.
+
+The codecs per slot, as an export writes them:
+
+| Slot                       | Contents                                                | Settings                                                                                             |
+| -------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `albedo`                   | sRGB colour, alpha cut                                  | `slot: "baseColor"` (UASTC λ 2), `alphaCoverage` set to the impostor's alpha test (see above)        |
+| `normalDepth` (octahedral) | Object-space normal in RGB, depth in alpha, linear      | `slot: "data"` with `{ "codec": "uastc", "rdo": 0 }`: depth error moves the parallax and the shadows |
+| `normal` (cross-quads)     | Normal in the plane's frame (as the bake camera saw it) | `slot: "normal"` (resized as unit vectors)                                                           |
+
+A 12 × 12 octahedral atlas (864²) is about 1 MB of GPU memory per slot as UASTC, against about 4 MB baked at load (RGBA8 with mips).
+
 ## Budgets
 
 A build fails when a shipped asset goes over its budget, so a texture that grew to 4K or slipped into `none` doesn't reach production unnoticed.

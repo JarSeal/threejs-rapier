@@ -495,7 +495,9 @@ const describePipelineFile = (
   const composedText = declared.__layers
     ? `a texture array of ${plural(declared.__layers.length, 'layer')}`
     : declared.__atlas
-      ? 'an atlas slot, composed from its cells'
+      ? declared.__atlas.fromImage
+        ? 'an atlas slot, from a ready-made image of its layout'
+        : 'an atlas slot, composed from its cells'
       : undefined;
   const loadedUrl = report?.sourceUrl;
   const isOutput = Boolean(loadedUrl && __url && loadedUrl === toAppUrl(__url));
@@ -668,10 +670,19 @@ const describeTextureAtlas = (texture: THREE.Texture) => {
       field('Atlas', info.id),
       field('Slot', info.slot),
       field('Loaded slots', loadedSlots.join(', ')),
-      field('Layout', `${layoutW} × ${layoutH} px, ${info.padding} px of padding (edge extended)`),
+      field(
+        'Layout',
+        `${layoutW} × ${layoutH} px, ${info.padding} px of padding (${info.fromImage ? 'a ready-made image' : 'edge extended'})`
+      ),
       field(
         'Levels kept apart',
         `${info.levels}, down to ${layoutW >> lastLevel} × ${layoutH >> lastLevel}`
+      ),
+      field(
+        'Mip chain',
+        info.mipChain === 'FULL'
+          ? 'full, down to 1 × 1: the levels past those kept apart mix neighbouring cells'
+          : 'stops at the last level kept apart'
       ),
       field(
         'File',

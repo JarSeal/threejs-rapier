@@ -171,6 +171,11 @@ export type AppConfig = {
      * own `fadeSeconds` says otherwise; 0 switches at once. The initial value:
      * setLodFadeSeconds() changes it at runtime. Default 0.25. */
     fadeSeconds?: number;
+    /** Where the LOD tab's impostor Export writes a new impostor's files (its `*.impostor.json`,
+     * `*.textureAtlas.json` and atlas PNGs), repo-relative: a dev files root (`src/app/`,
+     * `src/toolkit/` or `src/public/`). A re-export writes where the impostor's files already are.
+     * Default `src/app/impostors`. */
+    impostorExportDir?: string;
   };
   ecs?: {
     /** Build-time-selectable ECS component storage backend. Default 'MAP'. */
@@ -266,6 +271,7 @@ let config: AppConfig = {
     bias: 1,
     maxSelectionsPerFrame: Infinity,
     fadeSeconds: 0.25,
+    impostorExportDir: 'src/app/impostors',
   },
   ecs: {
     storageMode: 'MAP',

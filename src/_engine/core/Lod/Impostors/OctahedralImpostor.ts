@@ -1,4 +1,4 @@
-// Octahedral impostors (docs/plans/p351_impostor-billboard-lod.md §2.2, Phase 3): one camera-facing
+// Octahedral impostors (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.2, Phase 3): one camera-facing
 // quad per instance sampling an atlas of the object baked from N × N directions on an octahedral
 // map (Octahedral.ts), blending the frames nearest to the view direction. Correct from any angle,
 // including above, so it's meant for rocks, buildings and anything seen from the air.
@@ -33,6 +33,9 @@ import {
   type ImpostorBakePass,
   type ImpostorShading,
 } from './ImpostorBake';
+import { getImpostorExport, warnIfImpostorExportStale } from './ImpostorExports';
+import type { ImpostorAtlasVOrigin } from './ImpostorFormat';
+import { recordImpostor } from './ImpostorRegistry';
 import { getOctahedralFrameBasis, getOctahedralFrameDirection } from './Octahedral';
 import {
   createOctahedralImpostorNodes,
@@ -64,7 +67,7 @@ export type OctahedralImpostorOptions = {
    * depth from the shader turns off early depth tests (and a tile GPU's hidden-surface removal),
    * so false costs much less where impostors cover many pixels: 217 rock impostors from
    * largeWorld's overview camera took 0.34 ms of GPU time a frame with it, 0.09 ms without
-   * (docs/plans/p351_impostor-billboard-lod.md, Phase 3). Keep it on for objects sunk deep in
+   * (docs/plans/_DONE_p351_impostor-billboard-lod.md, Phase 3). Keep it on for objects sunk deep in
    * the ground: a flat quad through a buried centre is mostly underground. */
   surfaceDepth?: boolean;
 };
@@ -131,13 +134,48 @@ const getRegistered = (id: string): OctahedralImpostor | null => {
   return { id, layout, geometry, material, albedo, normalDepth };
 };
 
-/** Unregisters what's left of a bake under `id` that isn't complete (eg. a released atlas). */
-const deleteLeftovers = (id: string) => {
+/** Unregisters what's left of an impostor under `id` that isn't complete (eg. a released atlas):
+ * its geometry and material, and, unless `keepAtlases` (building from an export's loaded atlas
+ * slots, which have those ids), its atlases. A bake must clear them: saveTexture would return a
+ * texture already registered under the id instead of its new one. */
+const deleteLeftovers = (id: string, keepAtlases = false) => {
   if (doesMatExist(`${id}.mat`)) deleteMaterial(`${id}.mat`);
   if (doesGeoExist(id)) deleteGeometry(id);
+  if (keepAtlases) return;
   for (const texId of [`${id}.albedo`, `${id}.normalDepth`]) {
     if (doesTextureExist(texId)) deleteTexture(texId);
   }
+};
+
+/**
+ * The options a bake of `geometry` drawn with `material` uses: `opts` with their defaults, and the
+ * shading resolved (never `AUTO`). What an export writes, and its fingerprint covers
+ * (`getImpostorSourceHash`).
+ */
+export const resolveOctahedralImpostorOptions = (
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material | THREE.Material[],
+  opts: OctahedralImpostorOptions = {}
+) => {
+  const {
+    frames = 12,
+    hemi = false,
+    frameSize = 64,
+    gutter = 4,
+    alphaTest = 0.5,
+    shading = 'AUTO',
+    surfaceDepth = true,
+  } = opts;
+  return {
+    kind: 'OCTAHEDRAL' as const,
+    frames,
+    hemi,
+    frameSize,
+    gutter,
+    alphaTest,
+    surfaceDepth,
+    shading: getShadingProps(getDominantMaterial(geometry, material), shading),
+  };
 };
 
 /**
@@ -150,6 +188,13 @@ const deleteLeftovers = (id: string) => {
  * loading scene, released with it), and a later call with the same `id` returns them as they are,
  * without baking (or reading `opts`), while they're registered.
  *
+ * When the loading scene lists `id` in its JSON's `impostors` (an export: `*.impostor.json` and
+ * its atlas, written by the LOD tab's Impostors), the impostor is built from the export and its
+ * loaded atlas slots instead, with the export's layout, shading, `alphaTest` and `surfaceDepth`:
+ * nothing is baked, and the other `opts` only feed the staleness check below. In the debug env a source or options that
+ * changed since the export warn that it's stale (it's still used). An export that can't be used
+ * (another format, a slot that didn't load) warns and bakes.
+ *
  * Bakes synchronously with the renderer (after `InitEngine`), restoring its target and clear
  * state. Frames are in the object's local space, so they're used with its instance transforms.
  */
@@ -158,31 +203,157 @@ export const generateOctahedralImpostor = (
   material: THREE.Material | THREE.Material[],
   opts: OctahedralImpostorOptions = {}
 ): OctahedralImpostor => {
-  const {
-    frames = 12,
-    hemi = false,
-    frameSize = 64,
-    gutter = 4,
-    alphaTest = 0.5,
-    shading = 'AUTO',
-    surfaceDepth = true,
-  } = opts;
   const id =
     opts.id ?? `${(geometry.userData.id as string | undefined) ?? geometry.uuid}#octahedral`;
   const registered = getRegistered(id);
   if (registered) return registered;
-  deleteLeftovers(id);
-  if (!Number.isInteger(frames) || frames < 2 || frames > 32) {
-    throw new Error(`generateOctahedralImpostor: '${id}' frames must be an integer 2-32.`);
+  const settings = resolveOctahedralImpostorOptions(geometry, material, opts);
+  const source = { geometry, material, options: { ...opts, id } };
+
+  // Listed by the scene and loaded: built from the export, nothing baked
+  const exported = getImpostorExport(id, 'OCTAHEDRAL', 'generateOctahedralImpostor');
+  if (exported) {
+    const { def, slots } = exported;
+    warnIfImpostorExportStale(def, geometry, material, settings, 'generateOctahedralImpostor');
+    deleteLeftovers(id, true);
+    const impostor = buildOctahedralImpostor(
+      def.layout,
+      slots.albedo as THREE.Texture,
+      slots.normalDepth as THREE.Texture,
+      {
+        id,
+        alphaTest: def.alphaTest,
+        surfaceDepth: def.surfaceDepth,
+        shading: def.shading,
+        vOrigin: 'BOTTOM',
+      }
+    );
+    recordImpostor({ id, kind: 'OCTAHEDRAL', origin: 'EXPORTED', bakeMs: null, source });
+    return impostor;
   }
-  const renderer = getBakeRenderer('generateOctahedralImpostor');
+
+  const { frames, hemi, frameSize, gutter } = settings;
+  deleteLeftovers(id);
+  const bakeStart = performance.now();
+  const atlases = bakeOctahedralImpostorAtlases(
+    geometry,
+    material,
+    { frames, hemi, frameSize, gutter },
+    id
+  );
+  const impostor = buildOctahedralImpostor(
+    atlases.layout,
+    saveTexture(atlases.albedo.texture, `${id}.albedo`),
+    saveTexture(atlases.normalDepth.texture, `${id}.normalDepth`),
+    {
+      id,
+      alphaTest: settings.alphaTest,
+      surfaceDepth: settings.surfaceDepth,
+      shading: settings.shading,
+      vOrigin: 'TOP',
+    }
+  );
+  recordImpostor({
+    id,
+    kind: 'OCTAHEDRAL',
+    origin: 'BAKED',
+    bakeMs: performance.now() - bakeStart,
+    source,
+  });
+  return impostor;
+};
+
+/** What {@link buildOctahedralImpostor} needs besides the layout and the atlases: the resolved
+ * options of a bake, or an export's */
+export type OctahedralImpostorBuildOptions = {
+  /** Registers the quad under `id` and the material under `${id}.mat` */
+  id: string;
+  alphaTest: number;
+  surfaceDepth: boolean;
+  /** Resolved (never `AUTO`): `getShadingProps`' type and params (a colour may be a hex string) */
+  shading: { type: string; params: Record<string, unknown> };
+  /** The atlases' v origin: `TOP` for a bake's render targets, `BOTTOM` for loaded KTX2 slots */
+  vOrigin: ImpostorAtlasVOrigin;
+};
+
+/**
+ * Builds and registers an octahedral impostor's quad and material over registered atlases (a
+ * bake's, or an export's loaded slots), and stores `layout` on the albedo atlas, so a later
+ * `generateOctahedralImpostor` with the same id returns them. Both of its paths end here.
+ */
+export const buildOctahedralImpostor = (
+  layout: OctahedralImpostorLayout,
+  albedo: THREE.Texture,
+  normalDepth: THREE.Texture,
+  { id, alphaTest, surfaceDepth, shading, vOrigin }: OctahedralImpostorBuildOptions
+): OctahedralImpostor => {
+  albedo.userData[LAYOUT_KEY] = layout;
+
+  const quad = createOctahedralImpostorQuad(layout);
+  quad.name = id;
+  saveBufferGeometry(quad, { id });
+  const { type, params } = shading;
+  const impostorMaterial = createMaterial({
+    id: `${id}.mat`,
+    type,
+    params: { ...params, alphaTest, side: THREE.DoubleSide },
+  } as MatProps) as THREE.NodeMaterial & { normalMap: THREE.Texture | null };
+  impostorMaterial.name = id;
+  const nodes = createOctahedralImpostorNodes(layout, albedo, normalDepth, vOrigin);
+  impostorMaterial.positionNode = nodes.positionNode;
+  impostorMaterial.colorNode = nodes.colorNode;
+  if (surfaceDepth) impostorMaterial.depthNode = nodes.depthNode;
+  // An unlit impostor has no use for normals or received shadows
+  if (type !== 'BASICNODEMATERIAL') {
+    impostorMaterial.normalNode = nodes.normalNode;
+    impostorMaterial.normalMap = normalDepth;
+    if (surfaceDepth) {
+      impostorMaterial.receivedShadowPositionNode = nodes.receivedShadowPositionNode;
+    } else {
+      // Lit by every light as if unshadowed: in the material, not `receiveShadow: false` on the
+      // object, so it holds on any mesh (a pool's level meshes share one receiveShadow)
+      impostorMaterial.receivedShadowNode = () => float(1);
+    }
+  }
+  return { id, layout, geometry: quad, material: impostorMaterial, albedo, normalDepth };
+};
+
+/** What {@link bakeOctahedralImpostorAtlases} reads of the resolved options */
+export type OctahedralImpostorBakeSettings = Pick<
+  ReturnType<typeof resolveOctahedralImpostorOptions>,
+  'frames' | 'hemi' | 'frameSize' | 'gutter'
+>;
+
+/**
+ * Renders the atlases of an octahedral impostor of `geometry` drawn with `material` (see
+ * {@link generateOctahedralImpostor}) into two new atlas targets, named `${id}.albedo` and
+ * `${id}.normalDepth`, and returns them with their layout. Nothing is registered: the targets are
+ * the caller's to dispose (disposing a target's texture disposes the target). What
+ * `generateOctahedralImpostor` registers, and what an export reads back.
+ *
+ * Synchronous, with the renderer (after `InitEngine`), restoring its target and clear state.
+ */
+export const bakeOctahedralImpostorAtlases = (
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material | THREE.Material[],
+  { frames, hemi, frameSize, gutter }: OctahedralImpostorBakeSettings,
+  id: string
+): {
+  layout: OctahedralImpostorLayout;
+  albedo: THREE.RenderTarget;
+  normalDepth: THREE.RenderTarget;
+} => {
+  if (!Number.isInteger(frames) || frames < 2 || frames > 32) {
+    throw new Error(`bakeOctahedralImpostorAtlases: '${id}' frames must be an integer 2-32.`);
+  }
+  const renderer = getBakeRenderer('bakeOctahedralImpostorAtlases');
 
   // Every frame shows the bounding sphere, at one texel size
   if (!geometry.boundingSphere) geometry.computeBoundingSphere();
   const sphere = geometry.boundingSphere!;
   const radius = sphere.radius;
   if (!(radius > 0)) {
-    throw new Error(`generateOctahedralImpostor: '${id}' has no extent to bake.`);
+    throw new Error(`bakeOctahedralImpostorAtlases: '${id}' has no extent to bake.`);
   }
   const extent = (radius * frameSize) / (frameSize - 2 * FRAME_MARGIN);
   const cellSize = frameSize + 2 * gutter;
@@ -274,36 +445,5 @@ export const generateOctahedralImpostor = (
     frame.dispose();
   }
 
-  const albedo = saveTexture(atlases.ALBEDO.texture, `${id}.albedo`);
-  albedo.userData[LAYOUT_KEY] = layout;
-  const normalDepth = saveTexture(atlases.NORMAL_DEPTH.texture, `${id}.normalDepth`);
-
-  const quad = createOctahedralImpostorQuad(layout);
-  quad.name = id;
-  saveBufferGeometry(quad, { id });
-  const { type, params } = getShadingProps(getDominantMaterial(geometry, material), shading);
-  const impostorMaterial = createMaterial({
-    id: `${id}.mat`,
-    type,
-    params: { ...params, alphaTest, side: THREE.DoubleSide },
-  } as MatProps) as THREE.NodeMaterial & { normalMap: THREE.Texture | null };
-  impostorMaterial.name = id;
-  const nodes = createOctahedralImpostorNodes(layout, albedo, normalDepth);
-  impostorMaterial.positionNode = nodes.positionNode;
-  impostorMaterial.colorNode = nodes.colorNode;
-  if (surfaceDepth) impostorMaterial.depthNode = nodes.depthNode;
-  // An unlit impostor has no use for normals or received shadows
-  if (type !== 'BASICNODEMATERIAL') {
-    impostorMaterial.normalNode = nodes.normalNode;
-    impostorMaterial.normalMap = normalDepth;
-    if (surfaceDepth) {
-      impostorMaterial.receivedShadowPositionNode = nodes.receivedShadowPositionNode;
-    } else {
-      // Lit by every light as if unshadowed: in the material, not `receiveShadow: false` on the
-      // object, so it holds on any mesh (a pool's level meshes share one receiveShadow)
-      impostorMaterial.receivedShadowNode = () => float(1);
-    }
-  }
-
-  return { id, layout, geometry: quad, material: impostorMaterial, albedo, normalDepth };
+  return { layout, albedo: atlases.ALBEDO, normalDepth: atlases.NORMAL_DEPTH };
 };

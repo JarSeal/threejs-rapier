@@ -40,7 +40,7 @@ export const registerLodDebugGUI = async () => {
 // instance: its bounds are level 0 over all its instances (Lod/LodBounds.ts), not one instance.
 
 //
-// Cross-fades (docs/plans/p351_impostor-billboard-lod.md §2.4): a level change, or hiding and
+// Cross-fades (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.4): a level change, or hiding and
 // showing, dissolves over `fadeSeconds` (LodFade.ts). The entity gets TAG_LOD_TRANSITIONING and
 // `_fade` (its progress) and lodFadeSystem drives it; a change while a fade runs finishes that fade
 // first. The first apply after the LOD is added never fades (the load), nor does removing the LOD;

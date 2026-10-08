@@ -3,7 +3,7 @@ Category: Assets, Textures, Texture atlas
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 0)
 Blocked by: p302_material-and-texture-system-refactor.md (soft: only Phase 5's JSON binding)
 Blocks: p303_texture-sets-and-terrain-texture-library.md (D4 layer arrays build on D1), p309_terrain-decals.md (D1 decal atlases build on D3), p374_multi-material-merging.md
-Related: \_DONE_p300_asset-optimization-pipeline-plan.md (the pipeline this extends), p351_impostor-billboard-lod.md (its exported atlases use D3's cell table), p308_terrain-scatter.md (leaf-card atlases), \_DONE_p345_gpu-memory-and-draw-call-debugger.md
+Related: \_DONE_p300_asset-optimization-pipeline-plan.md (the pipeline this extends), \_DONE_p351_impostor-billboard-lod.md (its exported atlases use D3's cell table), p308_terrain-scatter.md (leaf-card atlases), \_DONE_p345_gpu-memory-and-draw-call-debugger.md
 
 # Texture Arrays & Atlases
 
@@ -133,7 +133,20 @@ One layout, one output per map slot:
   `devTools/buildDecalAtlas.ts` are replaced by a `*.textureAtlas.json` with the `albedoAlpha` /
   `normalRough` slots and extra per-cell data (`physicalSize`, `tileAlong`, `opacitySource`) in
   a free-form `data` field the gatherer passes through.
-- p351's exported impostor atlases (its Phase 4) use the same cell table format.
+- p351's exported impostor atlases (its Phase 4) use the same cell table format. p351 Phase 4
+  section 1 adds two things to this format for them, implemented there:
+  - **A whole-image slot source** (`slots.<name>.image`): a ready-made image of the layout's
+    `size` (a bake that already composed and dilated its cells). That slot skips composition (no
+    resize, no edge extension, no fill); every cell then needs a `rect`, and a cell needs no
+    `sources` when every slot has an `image`.
+  - **`mipChain: "FULL"`** on the atlas (default `"PROTECTED"`, the Phase 3 rule): every level
+    down to 1 × 1 with the exact 2 × 2 box, past the levels the padding protects, so cells mix at
+    the smallest levels. For content whose neighbouring cells are near-identical (an impostor's
+    neighbouring views), where a short chain would shimmer at distance.
+  - Both implemented (p351 Phase 4 section 1, its notes have the details): a cell needs no
+    `sources` once one slot has an `image`; past an odd size the full chain is area-filtered;
+    `__atlas` gets `mipChain: "FULL"` and `fromImage: true` (`levels` stays the levels kept
+    apart). Test asset `p299TestAtlasImage`, drawn in the `textureAtlases` scene.
 
 ### D4 — Helpers
 

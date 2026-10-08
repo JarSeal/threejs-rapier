@@ -45,10 +45,15 @@ const getAssetLabel = (asset: PipelineAsset) => {
     asset.source.kind === 'array'
       ? count(asset.source.layers.length, 'layer')
       : asset.source.kind === 'atlas'
-        ? count(asset.source.cells.filter((cell) => cell.source).length, 'cell')
+        ? asset.source.image
+          ? `${count(asset.source.cells.length, 'cell')} in an image`
+          : count(asset.source.cells.filter((cell) => cell.source).length, 'cell')
         : '';
+  const fullChain = asset.source.kind === 'atlas' && asset.source.mipChain ? ', full chain' : '';
+  const cut = asset.source.kind === 'atlas' ? asset.source.alphaCoverage : asset.alphaCoverage;
+  const alphaCoverage = cut !== undefined ? `, alpha coverage ${cut}` : '';
   const colorSpace = asset.type !== 'importedAsset' && asset.isSrgb ? ', sRGB' : '';
-  return `${asset.id} ${DIM}(${source}${parts}${colorSpace})${RESET}`;
+  return `${asset.id} ${DIM}(${source}${parts}${fullChain}${alphaCoverage}${colorSpace})${RESET}`;
 };
 
 const STATUS_LABELS: Record<PipelineRunResult['status'], string> = {

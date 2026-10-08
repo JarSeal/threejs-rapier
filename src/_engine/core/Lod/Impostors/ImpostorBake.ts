@@ -1,4 +1,4 @@
-// Impostor bakes (docs/plans/p351_impostor-billboard-lod.md §2): the shared parts of rendering an
+// Impostor bakes (docs/plans/_DONE_p351_impostor-billboard-lod.md §2): the shared parts of rendering an
 // object into atlas frames. A bake renders the object with unlit bake materials into a frame
 // target, then copies the frame into its atlas cell with a dilation pass. Atlases hold albedo and
 // normals, never lighting (§2.3): the impostor material shades with the scene's lights at runtime.

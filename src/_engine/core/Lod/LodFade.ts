@@ -1,4 +1,4 @@
-// Dithered LOD cross-fades (docs/plans/p351_impostor-billboard-lod.md §2.4, Phase 2): while an entity
+// Dithered LOD cross-fades (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.4, Phase 2): while an entity
 // changes level, both levels are drawn and dissolve into each other through a screen-space dither,
 // so nothing pops and everything stays opaque (no sorting, shadows and post effects unchanged).
 //

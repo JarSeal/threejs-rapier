@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../.schemas/impostor.schema.json",
+  "id": "largeWorldTreeCross",
+  "kind": "CROSS_QUADS",
+  "atlas": "largeWorldTreeCross",
+  "formatVersion": 1,
+  "sourceHash": "d926cf62b35cba4b",
+  "alphaTest": 0.5,
+  "shading": {
+    "type": "PHONGNODEMATERIAL",
+    "params": {
+      "shininess": 30,
+      "specular": "#111111"
+    }
+  },
+  "layout": {
+    "planes": 3,
+    "frameWidth": 76,
+    "frameHeight": 128,
+    "gutter": 4,
+    "atlasSize": [252, 136],
+    "center": [0, 1.6749999523162842, 0.0859423279762268],
+    "halfWidth": 1.0266128740003033,
+    "halfHeight": 1.729032208842616
+  },
+  "normals": true,
+  "debugData": {
+    "name": "largeWorldTreeCross (impostor)",
+    "description": "Written by the LOD tab's impostor Export (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+  }
+}

@@ -126,6 +126,24 @@ const readTile = (
 };
 
 /**
+ * Reads an RGBA8 render target's level 0 back as it is stored (sRGB stays encoded), top row
+ * first on both backends: WebGPU pads its rows to 256 bytes, WebGL reads them bottom-up.
+ */
+export const readRenderTargetImageAsync = async (target: THREE.RenderTarget) => {
+  const renderer = getBakeRenderer('readRenderTargetImageAsync');
+  if (
+    target.texture.type !== THREE.UnsignedByteType ||
+    target.texture.format !== THREE.RGBAFormat
+  ) {
+    throw new Error(`readRenderTargetImageAsync: '${target.texture.name}' isn't an RGBA8 target.`);
+  }
+  const { width, height } = target;
+  const isBottomUp = Boolean((renderer.backend as { isWebGLBackend?: boolean }).isWebGLBackend);
+  const data = await renderer.readRenderTargetPixelsAsync(target, 0, 0, width, height);
+  return readTile(data as ArrayLike<number>, width, 0, width, height, isBottomUp);
+};
+
+/**
  * Renders `source` at one mip level on the GPU and reads it back, one tile per layer.
  * @param source any registered or loaded texture (it is uploaded if it isn't yet)
  * @param opts {@link TexturePreviewOpts}

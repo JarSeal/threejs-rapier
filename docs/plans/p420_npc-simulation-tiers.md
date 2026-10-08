@@ -1,6 +1,6 @@
 Status: stub — not-implemented
 Category: Characters, AI
-Related: p350_lod-system-research.md (§6 physics simulation tiers, §8 roadmap), \_DONE_p352_physics-simulation-tiers.md (generic rigid bodies; it refuses tier changes on characters and leaves them to this plan), p353_macro-streaming-grid.md (cells around the player), p351_impostor-billboard-lod.md (`CROWD` rendering), p102_physics-world-bounds.md
+Related: p350_lod-system-research.md (§6 physics simulation tiers, §8 roadmap), \_DONE_p352_physics-simulation-tiers.md (generic rigid bodies; it refuses tier changes on characters and leaves them to this plan), p353_macro-streaming-grid.md (cells around the player), \_DONE_p351_impostor-billboard-lod.md (`CROWD` rendering), p102_physics-world-bounds.md
 
 # NPC Simulation Tiers — Stub
 
@@ -24,12 +24,12 @@ AI writes the character's intent (`CharacterIntent`: `moveX`/`moveZ`, `moveForwa
 `jump`, ...) whichever body is attached. Because `CharacterObject.controller` is pluggable, a
 cheaper mover can be another controller that reads the same intent.
 
-| Tier | Where (rough) | Representation | Physics |
-| --- | --- | --- | --- |
-| `FULL` | near, ~0–50 m | `DynamicCharacter`: full controller, animation, later IK and ragdoll | dynamic body with 4 colliders |
-| `REDUCED` | mid range | follows a navmesh and snaps to its height, ticks every N sub-steps, simpler animation, crowd avoidance instead of contacts | none, or a kinematic proxy |
-| `CROWD` | far, visible | instanced mesh with vertex animation textures or impostors, moves along the navmesh or splines | none |
-| `ABSTRACT` | off-screen or unloaded | data only: schedule, task and a node on a coarse world graph; the position is worked out from the time when the NPC is promoted | none |
+| Tier       | Where (rough)          | Representation                                                                                                                  | Physics                       |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `FULL`     | near, ~0–50 m          | `DynamicCharacter`: full controller, animation, later IK and ragdoll                                                            | dynamic body with 4 colliders |
+| `REDUCED`  | mid range              | follows a navmesh and snaps to its height, ticks every N sub-steps, simpler animation, crowd avoidance instead of contacts      | none, or a kinematic proxy    |
+| `CROWD`    | far, visible           | instanced mesh with vertex animation textures or impostors, moves along the navmesh or splines                                  | none                          |
+| `ABSTRACT` | off-screen or unloaded | data only: schedule, task and a node on a coarse world graph; the position is worked out from the time when the NPC is promoted | none                          |
 
 Each tier needs:
 
