@@ -9,7 +9,7 @@
 ### Install and run
 
 ```bash
-git clone https://github.com/JarSeal/threerapier.git my-game
+git clone https://github.com/JarSeal/aekasha-js.git my-game
 cd my-game
 yarn
 yarn dev
