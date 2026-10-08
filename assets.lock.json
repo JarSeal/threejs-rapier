@@ -257,6 +257,29 @@
       ],
       "ktxVersion": "4.4.2"
     },
+    "e1f647946295c32304bfb5c6f022eb40c9afa2fc094c58c76a306d61dd684aec": {
+      "source": "src/app/textures/source/p341AlphaCut.png",
+      "url": "/aek-assets/app/textures/source/p341AlphaCut.55dda072.ktx2",
+      "bytes": 17011,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 17011,
+          "source": {
+            "width": 256,
+            "height": 256,
+            "bytes": 8347
+          },
+          "codec": "uastc",
+          "width": 256,
+          "height": 256,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
     "fb41ebc4f545e25b21e99e93613ea2bafc9bd59f0e32a20a15709d51c885ad24": {
       "source": "src/app/impostors/largeWorldRockImpostor.textureAtlas.json",
       "url": "/aek-assets/app/impostors/largeWorldRockImpostor.atlas.normalDepth.644af352.ktx2",

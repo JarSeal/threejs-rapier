@@ -6632,6 +6632,34 @@
     }
   },
   "textures": {
+    "p341AlphaCutTest": {
+      "id": "p341AlphaCutTest",
+      "fileName": "./source/p341AlphaCut.png",
+      "texOpts": {
+        "colorSpace": "srgb"
+      },
+      "debugData": {
+        "name": "p341 alpha-cut test texture",
+        "description": "p341 Phase 3: a plain texture with alphaCoverage, thin alpha-cut features (twigs thinning to 1 px, a fence of 1-4 px posts and 1 px rails, grass blades tapering to 0.5 px). Its mip levels are built by the pipeline and keep level 0's coverage at the cut 0.5."
+      },
+      "optimize": {
+        "slot": "baseColor",
+        "alphaCoverage": 0.5
+      },
+      "__sourcePath": "src/app/textures/p341AlphaCutTest.texture.json",
+      "__fileSize": 8347,
+      "__sourceUrl": "/app/textures/source/p341AlphaCut.png",
+      "__url": "/aek-assets/app/textures/source/p341AlphaCut.55dda072.ktx2",
+      "__bytes": {
+        "in": 8347,
+        "out": 17011
+      },
+      "__vramBytes": {
+        "in": 349524,
+        "out": 87408
+      },
+      "__codec": "uastc"
+    },
     "testTexture": {
       "id": "testTexture",
       "fileName": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
