@@ -1,0 +1,94 @@
+// Page content: headings, code, tables, callouts
+.hubContent {
+  h1,
+  h2,
+  h3,
+  h4 {
+    line-height: 1.25;
+    scroll-margin-top: 1rem;
+  }
+
+  code {
+    font-family: var(--hub-font-mono);
+    font-size: 0.9em;
+  }
+
+  pre {
+    overflow-x: auto;
+    padding: 1rem;
+    background: var(--hub-code-bg);
+    border: 1px solid var(--hub-border);
+    border-radius: 6px;
+  }
+
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+.hubAnchor {
+  margin-left: 0.25em;
+  color: var(--hub-text-muted);
+  text-decoration: none;
+  opacity: 0;
+
+  :is(h1, h2, h3, h4, h5, h6):hover > &,
+  &:focus {
+    opacity: 1;
+  }
+}
+
+.hubTable {
+  overflow-x: auto;
+
+  table {
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--hub-border);
+    text-align: left;
+  }
+}
+
+.hubCallout {
+  margin: 1.5rem 0;
+  padding: 0.75rem 1rem;
+  background: var(--hub-panel);
+  border-left: 3px solid var(--hub-accent);
+  border-radius: 4px;
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+.hubCalloutTitle {
+  margin-top: 0;
+  font-weight: 700;
+}
+
+.hubCallout_warning {
+  border-left-color: #f2c13f;
+}
+
+.hubCallout_danger {
+  border-left-color: #f2603f;
+}
+
+.hubButton {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--hub-border);
+  border-radius: 6px;
+  color: var(--hub-text);
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--hub-accent);
+  }
+}

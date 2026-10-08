@@ -1,0 +1,141 @@
+// Page frame: header, main column, aside, footer (p551 Phase 3 gives it the design)
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--hub-bg);
+  color: var(--hub-text);
+  font: 16px/1.6 var(--hub-font);
+}
+
+a {
+  color: var(--hub-accent);
+}
+
+.hubSkipLink {
+  position: absolute;
+  left: -9999px;
+
+  &:focus {
+    left: 1rem;
+    top: 1rem;
+  }
+}
+
+.hubHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 2rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--hub-border);
+}
+
+.hubBrand {
+  color: var(--hub-text);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-decoration: none;
+}
+
+.hubNavList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hubNavItem > a {
+  color: var(--hub-text-muted);
+  text-decoration: none;
+}
+
+.hubNavItem_active > a,
+.hubNavItem > a[aria-current='page'] {
+  color: var(--hub-text);
+  border-bottom: 2px solid var(--hub-accent);
+}
+
+// Phase 3 opens these on hover and focus
+.hubNavDropdown {
+  display: none;
+}
+
+.hubLayout {
+  display: flex;
+  gap: 2rem;
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.hubMain {
+  flex: 1;
+  min-width: 0;
+  max-width: var(--hub-content-width);
+}
+
+.hubAside {
+  width: 14rem;
+  flex-shrink: 0;
+
+  @media (max-width: 1199px) {
+    display: none;
+  }
+}
+
+.hubBreadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--hub-text-muted);
+  font-size: 0.875rem;
+
+  li + li::before {
+    content: '/';
+    margin-right: 0.5rem;
+  }
+}
+
+.hubToc {
+  position: sticky;
+  top: 1rem;
+  font-size: 0.875rem;
+
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .hubTocItem_h3 {
+    padding-left: 1rem;
+  }
+}
+
+.hubTocTitle {
+  margin: 0 0 0.5rem;
+  color: var(--hub-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.hubFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.5rem 1rem;
+  border-top: 1px solid var(--hub-border);
+  color: var(--hub-text-muted);
+  font-size: 0.875rem;
+}

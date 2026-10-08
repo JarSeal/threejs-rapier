@@ -1,0 +1,11 @@
+{
+  // The Hub's browser TS (hub/_assets/ts/): `tsc -p hub`. The generator in devTools/ is checked by
+  // the root tsconfig.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "typeRoots": [],
+    "types": []
+  },
+  "include": ["**/*.ts"]
+}

@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Dev tooling, Hub
 Epic: p550_aekasha-hub-epic.md
 Blocks: p552_hub-code-blocks-and-search.md, p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
@@ -160,7 +160,7 @@ build. In `dev` mode the page that failed renders an error page (§2.3).
 
 ## 3. Phases
 
-### Phase 1 — Generator core and `dist-hub`
+### Phase 1 — Generator core and `dist-hub` — done
 
 §2.1, §2.2 (without the shell's final markup) and §2.4 without the dev plugin: the metadata module,
 pages, Markdown with its plugins, assets, `hub-data.js`, `yarn hub:build`, favicons, `_headers`,
@@ -170,6 +170,36 @@ pages, Markdown with its plugins, assets, `hub-data.js`, `yarn hub:build`, favic
 Served from a static server at `/` and copied under `/hub/`, every link works in both. A dead `hub:`
 link and an `.md` without a slot each fail the build with the file and line. `yarn build` still
 passes and produces `dist-hub/`. `AEK_HUB=false yarn build` doesn't.
+
+As built:
+
+- `hub.config.ts` has `title`, `description` and `githubUrl` only. The menu (label, order, icon)
+  comes from each page's `aek:` meta alone, so there's one source for it. p555 adds the featured
+  lists.
+- The generator imports `hub.config.ts` statically (`devTools/hub/build.ts`): Node 22.13 can't
+  import a `.ts` at runtime inside Vite's process. So in Phase 2 a change to it restarts the dev
+  server (Vite watches its config's dependencies), and the next `/hub` request rebuilds.
+- The 404 page resolves its links against a static `<base href="/">` (`buildHub`'s `basePath`).
+  `rebaseNotFoundPage` rewrites it for `dist/hub/` (`/hub/`) and `hub:preview --base`; Phase 2's
+  plugin passes `/hub/`. A script-set `<base>` was tried first: Chrome's preload scanner fetched
+  the assets against the 404's own URL before it ran.
+- `hub:preview` is `devTools/hubPreview.ts` (`--base /hub/`, `--port`, `--dir`), not
+  `vite preview`, whose SPA fallback serves the homepage for a missing path.
+- ESLint ignores `dist-hub/` (it would lint the built JS). The Stop hook runs on changes in
+  `src/`, `hub/`, `devTools/` and `vite.config.ts`, and runs `tsc -p hub` after the root `tsc`.
+- `tsc -p hub` runs in `build` / `build:test` even with `AEK_HUB=false`, so `hub/` keeps
+  compiling; only `hub:build` is skipped.
+- TS entries are every `hub/_assets/ts/*.ts` not starting with `_` (`hub.ts` so far; p552 adds
+  `search.ts`). Shared chunks get hashed names (`_assets/chunks/<name>-<hash>.js`).
+- Heading slugs never take an id the page's markup has: a `quick-start` slot with a
+  "Quick start" heading gives the heading `quick-start-2`, and `hub:examples#quick-start` reaches
+  the slot.
+- `hub:` links also work in a page's `index.html` body (`href="hub:…"`, `src="hub:…"`), as does
+  `{{root}}`.
+- Only Markdown images are processed (not raw `<img>`), and they must be inside the page's folder.
+  They get `?v=<hash>` like the other assets.
+- The Phase 1 shell and SCSS are minimal (no icons, fonts or light theme); Phase 3 replaces them.
+- `markdown-it` 14.3.1 (the version TypeDoc already brought in) and `@types/markdown-it` 14.1.2.
 
 ### Phase 2 — Dev plugin
 

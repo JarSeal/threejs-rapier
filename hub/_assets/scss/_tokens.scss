@@ -1,0 +1,16 @@
+// The Hub's colour and type tokens (p550 §3.7). Phase 3 of p551 adds the light theme.
+:root {
+  --hub-bg: #070b14;
+  --hub-panel: #0d1424;
+  --hub-border: #1e2a3d;
+  --hub-text: #e6ebf2;
+  --hub-text-muted: #9aa6b8;
+  --hub-accent: #3fd8f2;
+  --hub-code-bg: #0a101d;
+
+  --hub-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --hub-font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --hub-content-width: 46rem;
+
+  color-scheme: dark;
+}

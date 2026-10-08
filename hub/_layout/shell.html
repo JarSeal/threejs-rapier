@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    {{head}}
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{title}}</title>
+    <meta name="description" content="{{description}}" />
+    <link rel="icon" href="{{root}}favicon.ico" sizes="any" />
+    <link rel="icon" href="{{root}}favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="{{root}}apple-touch-icon.png" />
+    <link rel="stylesheet" href="{{css}}" />
+    <script defer src="{{dataJs}}"></script>
+    <script type="module" src="{{js}}"></script>
+  </head>
+  <body class="{{bodyClass}}" data-hub-page="{{pagePath}}">
+    <a class="hubSkipLink" href="#hubMain">Skip to content</a>
+    <header class="hubHeader">
+      <a class="hubBrand" href="{{root}}" aria-label="{{siteTitle}}: home">
+        <span class="hubBrandMark" aria-hidden="true">Æ</span>
+        <span class="hubBrandWordmark">ÆKASHA</span>
+      </a>
+      <nav class="hubNav" aria-label="Main">{{nav}}</nav>
+    </header>
+    <div class="hubLayout">
+      <main id="hubMain" class="hubMain">
+        {{breadcrumbs}}
+        <article class="hubContent">{{body}}</article>
+      </main>
+      <aside class="hubAside">{{toc}}</aside>
+    </div>
+    <footer class="hubFooter">
+      <span>{{siteTitle}} / {{engineVersion}}</span>
+      <a href="{{githubUrl}}">GitHub</a>
+      <span>Powered by Three.js + Rapier</span>
+    </footer>
+  </body>
+</html>
