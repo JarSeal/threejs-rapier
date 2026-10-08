@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phases 1-2 implemented
 Category: Instructions, Examples, Scene
 Epic: p550_aekasha-hub-epic.md
 Blocks: p555_hub-features-and-homepage-content.md (its example links and cards)
@@ -150,7 +150,8 @@ A debug-only, scene-scoped "Hub" tab for the example scenes (`app/examples/_dbg_
 created by each example scene in the debug env) with **Save Hub image**:
 
 - renders the active camera's view into a render target at a fixed size (1600×1000 for cards,
-  2880×1080 for `exampleHubHero`), with PostFX;
+  2880×1080 for `exampleHubHero`), with PostFX (the engine's snapshots, `core/Snapshot.ts`,
+  added in Phase 2: thumbnails need the same);
 - writes `<sceneId>.hub.png` beside the scene through `writeDevFiles` + `encodePNG`.
 - follows the impostor export (`core/Debug/Lod/_dbg__ImpostorExport.ts`) where the dev files
   can't write: it downloads the PNG and names the path to put it at.
@@ -172,9 +173,18 @@ A `::: scene <sceneId>` directive (p551's directive registry):
 
 ## 3. Phases
 
-### Phase 1 — `?startScene` (engine)
+### Phase 1 — `?startScene` (engine) — done
 
 §2.1.
+
+As built:
+
+- An id counts as known only with both its scene data and its scene file (`sceneFileObjects`).
+- The unknown-id toast goes through `addDebugToastWhenReady` (`debug/DebuggerGUI.ts`): the first
+  load runs before the toaster exists, so it queues, and `InitEngine` shows the queue with
+  `flushQueuedDebugToasts` right after creating the toaster.
+- The debugger's scene loader (`useDebuggerSceneLoader`) still applies only while the Debug tools'
+  start scene is on, also when `?startScene` picked the scene.
 
 **Exit:**
 
@@ -184,9 +194,39 @@ A `::: scene <sceneId>` directive (p551's directive registry):
 - An unknown id warns and loads the usual start scene.
 - A `yarn build` production page ignores the param.
 
-### Phase 2 — Scene links and Hub images
+### Phase 2 — Scene links and Hub images — done
 
 §2.4 (the tab and the generator's image references) and §2.5.
+
+As built:
+
+- The image path is `src/app/<sceneFile's folder>/<sceneId>.hub.png` (the generated data has the
+  scene file, not the scene JSON's path), so it works for app scenes only. The app side is
+  `getHubImagePath` in `app/examples/_dbg__exampleHub.ts`, the Hub side `loadAppScenes` in
+  `devTools/hub/scenes.ts`: the same rule in two places.
+- The render is an engine feature, snapshots (`core/Snapshot.ts`, `takeSnapshotAsync`; CLAUDE.md
+  "Snapshots"), not app code: material and model thumbnails need it too. Engine minor (§4). It
+  renders off screen (a HalfFloat target, then `renderOutput()` into RGBA8) for any scene and
+  camera; only the root scene's PostFX path resizes the renderer for the render and redraws the
+  canvas in the same task (`renderFrameNow`, `MainLoop.ts`). Both start a new node frame first,
+  or three reuses the frame's `pass()` at the canvas's size and aspect. The texture preview's
+  readback now uses its `readRenderTargetRGBA8Async`.
+- `createExampleHubTab(sceneId, size?)` (`'CARD'` 1600×1000 default, `'HERO'` 2880×1080) and
+  `saveHubImageAsync`: a snapshot with the defaults (what the canvas shows, PostFX, no viewports
+  or debug helpers), `encodePNG`, written through the dev files. An unchanged PNG is reported, not
+  written. A PNG isn't a gathered file, so a save doesn't reload the app.
+- `::: scene <sceneId>` … `:::` (`devTools/hub/scenes.ts`) is a panel: the scene's Hub image (webp
+  at 800 and 1600 wide, `srcset`), the directive's content, then the dev buttons (`bug` and a new
+  `play` icon) or the public note (with a `hub:examples#quick-start` link). The scene ids come
+  from `generatedAppData.json` (`yarn build` gathers the development data again before
+  `hub:build`, so it has every scene). An unknown id is an error in both modes; a missing image is
+  a warning, and in `dev` the panel says how to save it.
+- `aek:image` (`scene:<sceneId>` or a path from the repo root) is parsed and checked
+  (`resolvePageImage`) into `HubPage.imageFile`; nothing renders it until p555's cards.
+- The env gets a per-build `HubRenderContext` (`mode`, `icons`, `apiLinks`, `getAppScenes`), and
+  `HubImageJob` an optional `width` (sharp resizes). Image jobs are de-duplicated by output path
+  across pages. A scene's data file and image (also before it exists) go into the build's watched
+  files, so saving the image rebuilds the dev Hub by itself.
 
 **Exit:**
 
@@ -230,7 +270,8 @@ set-up: Node from `.nvmrc` (22.13.0, `nvm use`), yarn 1, `yarn`, `yarn dev`, ope
 
 ## 4. Versioning
 
-- **Engine minor:** `?startScene` and `getStartSceneQueryParam`, a new public behaviour.
+- **Engine minor:** `?startScene` and `getStartSceneQueryParam`, a new public behaviour; snapshots
+  (`core/Snapshot.ts`).
 - **Toolkit minor:** the Æ symbol model and its asset JSON.
 - **App minor:** the example scenes and their Hub tab.
 - **Project:** the model's build script, the Hub's directive and images.

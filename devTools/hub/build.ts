@@ -32,8 +32,10 @@ import {
   resolveHubLink,
   type HubImageJob,
   type HubMarkdownEnv,
+  type HubRenderContext,
 } from './markdown';
 import { discoverPages, relativeRoot, type HubPageTree } from './pages';
+import { loadAppScenes, resolvePageImage, type HubAppScenes } from './scenes';
 import {
   FAVICON_FILES,
   HUB_NOT_FOUND_FILE,
@@ -257,14 +259,19 @@ const writeImages = async (
   mode: HubBuildMode,
   diag: HubDiagnostics
 ) => {
+  // Pages that show the same image (a scene's) share its outputs
+  const byOutPath = new Map(jobs.map((job) => [job.outPath, job]));
   await Promise.all(
-    jobs.map(async ({ source, outPath, isConverted }) => {
+    [...byOutPath.values()].map(async ({ source, outPath, isConverted, width }) => {
       const out = path.join(outDir, outPath);
       if (mode === 'dev' && isUpToDate(source, out)) return;
       fs.mkdirSync(path.dirname(out), { recursive: true });
       try {
-        if (isConverted) await sharp(source).webp({ quality: 85 }).toFile(out);
-        else fs.copyFileSync(source, out);
+        if (isConverted) {
+          const image = sharp(source);
+          if (width) image.resize({ width, withoutEnlargement: true });
+          await image.webp({ quality: 85 }).toFile(out);
+        } else fs.copyFileSync(source, out);
       } catch (err) {
         diag.error(source, undefined, `The image could not be written: ${(err as Error).message}`);
       }
@@ -381,8 +388,19 @@ export const buildHub = async ({
     highlighter: await loadHubHighlighter(),
     icons,
   });
+  let appScenes: HubAppScenes | null = null;
+  const context: HubRenderContext = {
+    mode,
+    icons,
+    apiLinks: api.links,
+    getAppScenes: () => (appScenes ??= loadAppScenes()),
+  };
+  const pageImageFiles: string[] = [];
   for (const page of tree?.pages ?? []) {
-    const env = createMarkdownEnv(page, relativeRoot(page.path), diag, api.links);
+    const image = resolvePageImage(page, context, diag);
+    page.imageFile = image.file;
+    pageImageFiles.push(...image.dependencies);
+    const env = createMarkdownEnv(page, relativeRoot(page.path), diag, context);
     rendered.push({ page, env, body: renderPageBody(page, env, md, helpers, generators) });
   }
   if (tree) checkLinks(rendered, tree, diag);
@@ -562,8 +580,10 @@ export const buildHub = async ({
       ...sectionFiles,
       ...FAVICON_FILES,
       ...rendered.flatMap(({ env }) => env.images.map((job) => job.source)),
-      // Snippet includes (p552): an edit to one rebuilds, and reloads the pages that show it
+      // Snippet includes (p552) and scenes (p554): an edit to one rebuilds, and reloads the
+      // pages that show it
       ...rendered.flatMap(({ env }) => env.includes),
+      ...pageImageFiles,
     ]),
   ];
   if (mode === 'public' && diag.errors.length) {

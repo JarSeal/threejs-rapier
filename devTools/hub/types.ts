@@ -58,6 +58,13 @@ export type HubPage = {
   /** `aek:featured` */
   isFeatured: boolean;
   /**
+   * `aek:image` as written: `scene:<sceneId>` (the scene's Hub image) or a path from the repo
+   * root. The build checks it and sets `imageFile` (p555's cards show it).
+   */
+  image: string;
+  /** The image `aek:image` points to, null without one (or when it isn't there) */
+  imageFile: string | null;
+  /**
    * A generated section's child page (an issue): it has no `index.html`, `dir` and `file` are its
    * source's (`docs/issues/<name>.md`)
    */

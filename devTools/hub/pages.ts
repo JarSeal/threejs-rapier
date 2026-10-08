@@ -23,6 +23,7 @@ const META_NAMES = [
   'aek:description',
   'aek:icon',
   'aek:featured',
+  'aek:image',
 ];
 
 /** An empty element with an `id`: `<div id="setup"></div>` (whitespace inside is fine) */
@@ -115,6 +116,8 @@ const parsePage = (dir: string, diag: HubDiagnostics): HubPage | null => {
     description: meta['aek:description'] ?? '',
     icon: meta['aek:icon'] ?? '',
     isFeatured: meta['aek:featured'] === 'true',
+    image: meta['aek:image'] ?? '',
+    imageFile: null,
     isGenerated: false,
     isInMenu: true,
     isSearchable: true,
@@ -220,6 +223,8 @@ const attachSection = (
       description: generated.description,
       icon: '',
       isFeatured: false,
+      image: '',
+      imageFile: null,
       isGenerated: true,
       isInMenu: generated.isInMenu,
       isSearchable: generated.isSearchable ?? true,

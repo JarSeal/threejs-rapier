@@ -6,8 +6,10 @@ import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
 import type Token from 'markdown-it/lib/token.mjs';
 import type { HubDiagnostics } from './diagnostics';
 import { hashContent } from './hash';
+import type { HubIcons } from './icons';
 import { PAGE_IMAGES_URL_DIR } from './paths';
-import type { HubHeading, HubPage } from './types';
+import type { HubAppScenes } from './scenes';
+import type { HubBuildMode, HubHeading, HubPage } from './types';
 
 /**
  * The Hub's Markdown: markdown-it with its plugins (p551 §2.2):
@@ -39,6 +41,8 @@ export type HubImageJob = {
   /** From the site root */
   outPath: string;
   isConverted: boolean;
+  /** Converted at this width (never wider than the source), else at the source's */
+  width?: number;
 };
 
 /**
@@ -50,8 +54,18 @@ export type HubApiLinkResult = { pagePath: string; anchor: string } | { error: s
 /** Resolves an `api:` link's name (`loadScene`, `SceneLoader.loadScene`) */
 export type HubApiLinkResolver = (ref: string) => HubApiLinkResult;
 
+/** What every page's render shares in one build */
+export type HubRenderContext = {
+  mode: HubBuildMode;
+  icons: HubIcons;
+  /** The API section's (p553), null when the API docs didn't build */
+  apiLinks: HubApiLinkResolver | null;
+  /** The app's scenes (p554, `scenes.ts`), read on the build's first use */
+  getAppScenes: () => HubAppScenes;
+};
+
 /** One page's render state, shared by its slots */
-export type HubMarkdownEnv = {
+export type HubMarkdownEnv = HubRenderContext & {
   page: HubPage;
   /** The `.md` being rendered now */
   file: string;
@@ -65,18 +79,20 @@ export type HubMarkdownEnv = {
   ids: Set<string>;
   links: HubLinkRef[];
   images: HubImageJob[];
-  /** The files its snippet includes read (`<<<`, `code.ts`): the dev plugin watches them */
+  /**
+   * The files outside the page it read, which the dev plugin watches: its snippet includes
+   * (`<<<`, `code.ts`), and a `::: scene`'s app data and Hub image (`scenes.ts`)
+   */
   includes: string[];
-  /** The API section's (p553), null when the API docs didn't build */
-  apiLinks: HubApiLinkResolver | null;
 };
 
 export const createMarkdownEnv = (
   page: HubPage,
   root: string,
   diag: HubDiagnostics,
-  apiLinks: HubApiLinkResolver | null = null
+  context: HubRenderContext
 ): HubMarkdownEnv => ({
+  ...context,
   page,
   file: page.file,
   headingOffset: 0,
@@ -88,8 +104,12 @@ export const createMarkdownEnv = (
   links: [],
   images: [],
   includes: [],
-  apiLinks,
 });
+
+/** Adds an image to write, once per output path */
+export const addImageJob = (env: HubMarkdownEnv, job: HubImageJob) => {
+  if (!env.images.some(({ outPath }) => outPath === job.outPath)) env.images.push(job);
+};
 
 // --- Directives ---
 
@@ -306,9 +326,7 @@ const resolveImage = (src: string, env: HubMarkdownEnv, line: number) => {
   const isConverted = CONVERTED_IMAGE_EXTENSIONS.includes(ext);
   const outRelative = isConverted ? `${relative.slice(0, -ext.length)}.webp` : relative;
   const outPath = `${PAGE_IMAGES_URL_DIR}${env.page.path}${outRelative}`;
-  if (!env.images.some((job) => job.outPath === outPath)) {
-    env.images.push({ source, outPath, isConverted });
-  }
+  addImageJob(env, { source, outPath, isConverted });
   return `${env.root}${outPath}?v=${hashContent(fs.readFileSync(source))}`;
 };
 

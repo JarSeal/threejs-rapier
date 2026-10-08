@@ -1,0 +1,47 @@
+// `::: scene <sceneId>` (p554 §2.5): an app scene's Hub image, the directive's content, and how
+// to open it (the dev Hub's buttons, the public Hub's note)
+.hubScene {
+  margin: 1.5rem 0 2rem;
+  overflow: hidden;
+  background: var(--hub-panel);
+  border: 1px solid var(--hub-border);
+  border-radius: var(--hub-radius);
+}
+
+.hubContent .hubSceneImage {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-bottom: 1px solid var(--hub-border);
+  border-radius: 0;
+}
+
+.hubSceneBody {
+  padding: 1rem 1.25rem;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+.hubSceneLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.hubSceneNote,
+.hubSceneNoImage {
+  color: var(--hub-text-muted);
+  font-size: 0.9375rem;
+}
+
+.hubSceneNoImage {
+  margin: 0;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px dashed var(--hub-border-strong);
+}

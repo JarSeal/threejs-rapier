@@ -51,5 +51,11 @@ export const FAVICON_FILES = ['favicon.ico', 'favicon.svg', 'apple-touch-icon.pn
 /** The output folder for a page's Markdown images: `_assets/images/pages/<page path>` */
 export const PAGE_IMAGES_URL_DIR = '_assets/images/pages/';
 
+/** The app's scenes (p554): the generated data lists them, a scene file's path is from `src/app/` */
+export const APP_DATA_FILE = path.join(ROOT, 'src', '_engine', 'generatedAppData.json');
+export const APP_SRC_DIR = path.join(ROOT, 'src', 'app');
+/** The output folder for the scenes' Hub images: `_assets/images/scenes/<sceneId>-<width>.webp` */
+export const SCENE_IMAGES_URL_DIR = '_assets/images/scenes/';
+
 /** A path from the repo root with forward slashes, for messages */
 export const toRepoPath = (file: string) => path.relative(ROOT, file).split(path.sep).join('/');

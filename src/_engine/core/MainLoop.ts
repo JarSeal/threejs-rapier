@@ -565,6 +565,14 @@ export const renderFrameWhileMasterPaused = () => {
   renderScene();
 };
 
+/** Renders the current view's frame now, outside the loop, when something cleared the canvas
+ * (a snapshot resizes the renderer, `core/Snapshot.ts`): in the same task, the browser never
+ * shows the cleared canvas. Not for per-frame use; a no-op before the loop has started. */
+export const renderFrameNow = () => {
+  if (!mainLoopInitiated) return;
+  renderScene();
+};
+
 /**
  * Returns the read-only loop state object
  * @returns ({@link LoopState}) copy of LoopState
