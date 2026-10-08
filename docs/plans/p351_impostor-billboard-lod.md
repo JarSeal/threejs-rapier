@@ -684,7 +684,43 @@ Sections, each reviewed before the next:
    without `AEK_DEV_FILES_LAN`, prodTest), the button downloads the four files with the paths to
    put them at. The LOD tab's Impostors folder (decision 7). Checked by exporting largeWorld's rock:
    four files written, the gather encodes both slots (`assets.lock.json`), the Assets tab shows the
-   cells; a second export is `unchanged`.
+   cells; a second export is `unchanged`. — done: `core/Debug/Lod/_dbg__ImpostorExport.ts`
+   (`exportImpostorsAsync(ids)`, `getImpostorExportState(record)`). Every export bakes again from
+   the record's source, into fresh targets: the atlas bake is split out of
+   `generateOctahedralImpostor` as `bakeOctahedralImpostorAtlases(geometry, material, settings,
+id)` (unregistered targets, the caller disposes them), so a first export and a re-export are
+   the same path and the PNGs are what the written fingerprint describes. The readback is
+   `readRenderTargetImageAsync` (`_dbg__TexturePreview.ts`, the previews' row reader: WebGPU pads
+   rows to 256 bytes, WebGL reads them bottom-up). Files: `<dir>/<id>.impostor.json`,
+   `<dir>/<id>.textureAtlas.json` and `<dir>/<id>.albedo.png` / `<id>.normalDepth.png` beside the
+   atlas JSON (`image: "./…"`), cells `f<i>_<j>` with their rects; the JSONs carry an explicit `id`
+   and a `debugData` saying "re-export, don't edit". The atlas id is the impostor's, so its slot
+   textures are `${id}.albedo` / `${id}.normalDepth`, the ids the runtime bake registers: section 4
+   relies on that, and must stop `getRegistered` / `deleteLeftovers` from taking the loaded slots
+   (they have no layout in `userData`) for a bake's leftovers. A re-export writes wherever the
+   gathered impostor and its atlas are (their `__sourcePath`), so moved files stay where they are;
+   `impostorExportDir` (default `src/app/impostors`) is for new ones. A cell size that isn't a
+   multiple of 4 is refused before baking (block compression). "Export all" is one batch, so one
+   gather and one reload. The gather's note (written and encoded, an atlas slot's asset error, or
+   a failed gather) is a toast, kept in `sessionStorage` over the reload and shown again once the
+   debug toaster exists. Found in the code: the LOD tab loads in the debug env only, so prodTest
+   never gets there; the fallback covers a LAN device, `AEK_DEV_FILES=false` and a debug build
+   without the dev server. The Impostors folder: the dev files' state, then per impostor its
+   kind, origin (baked / loaded from its export), export state (not exported / up to date / stale
+   / another format / no source), atlas size and bake time, with Export (Re-export once exported);
+   cross-quads are listed with Export disabled until section 6. Checked on WebGL2 (SwiftShader,
+   WSL2) against the running dev server: largeWorld's rock exported, four files written, both
+   slots encoded (UASTC, 10 levels down to 1 × 1, 3.98 → 1.00 MB of GPU memory each; albedo
+   81 KB, normalDepth 768 KB on disk), `assets.lock.json` and the dev data's cell table (144
+   cells) updated, the page reloaded with the note; after the reload the rock reads "export up to
+   date" (the fingerprint is the same in a new session) and a second export is `unchanged` (no
+   gather). Orientation, checked apart from the reader: each frame's mean object-space normal
+   over the texels it covers points along its own bake direction (mean dot 0.97, least 0.90; the
+   rows read flipped: 0.34, least -1). With the status route answering `enabled: false`, the
+   button downloaded the four files (the PNGs byte-identical to the written ones) and listed
+   their paths in a toast and the console. Not checked here: WebGPU (no headless WebGPU on WSL2),
+   and the Assets tab's cells (no scene loads the atlas before section 5). An export on
+   SwiftShader takes 26 s (the bake and two 864² PNG encodes in software).
 4. **Load path:** the material and quad build split from the bake in `OctahedralImpostor.ts`
    (one `buildOctahedralImpostor(layout, albedo, normalDepth, opts)` both paths call). A loaded
    KTX2 atlas is stored v-up (p299: three's UVs), a render target has v = 0 at the top, so the

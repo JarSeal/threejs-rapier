@@ -197,18 +197,92 @@ export const generateOctahedralImpostor = (
   const { frames, hemi, frameSize, gutter, alphaTest, surfaceDepth, shading } =
     resolveOctahedralImpostorOptions(geometry, material, opts);
   deleteLeftovers(id);
-  if (!Number.isInteger(frames) || frames < 2 || frames > 32) {
-    throw new Error(`generateOctahedralImpostor: '${id}' frames must be an integer 2-32.`);
-  }
-  const renderer = getBakeRenderer('generateOctahedralImpostor');
   const bakeStart = performance.now();
+  const atlases = bakeOctahedralImpostorAtlases(
+    geometry,
+    material,
+    { frames, hemi, frameSize, gutter },
+    id
+  );
+  const { layout } = atlases;
+
+  const albedo = saveTexture(atlases.albedo.texture, `${id}.albedo`);
+  albedo.userData[LAYOUT_KEY] = layout;
+  const normalDepth = saveTexture(atlases.normalDepth.texture, `${id}.normalDepth`);
+
+  const quad = createOctahedralImpostorQuad(layout);
+  quad.name = id;
+  saveBufferGeometry(quad, { id });
+  const { type, params } = shading;
+  const impostorMaterial = createMaterial({
+    id: `${id}.mat`,
+    type,
+    params: { ...params, alphaTest, side: THREE.DoubleSide },
+  } as MatProps) as THREE.NodeMaterial & { normalMap: THREE.Texture | null };
+  impostorMaterial.name = id;
+  const nodes = createOctahedralImpostorNodes(layout, albedo, normalDepth);
+  impostorMaterial.positionNode = nodes.positionNode;
+  impostorMaterial.colorNode = nodes.colorNode;
+  if (surfaceDepth) impostorMaterial.depthNode = nodes.depthNode;
+  // An unlit impostor has no use for normals or received shadows
+  if (type !== 'BASICNODEMATERIAL') {
+    impostorMaterial.normalNode = nodes.normalNode;
+    impostorMaterial.normalMap = normalDepth;
+    if (surfaceDepth) {
+      impostorMaterial.receivedShadowPositionNode = nodes.receivedShadowPositionNode;
+    } else {
+      // Lit by every light as if unshadowed: in the material, not `receiveShadow: false` on the
+      // object, so it holds on any mesh (a pool's level meshes share one receiveShadow)
+      impostorMaterial.receivedShadowNode = () => float(1);
+    }
+  }
+
+  recordImpostor({
+    id,
+    kind: 'OCTAHEDRAL',
+    origin: 'BAKED',
+    bakeMs: performance.now() - bakeStart,
+    source: { geometry, material, options: { ...opts, id } },
+  });
+  return { id, layout, geometry: quad, material: impostorMaterial, albedo, normalDepth };
+};
+
+/** What {@link bakeOctahedralImpostorAtlases} reads of the resolved options */
+export type OctahedralImpostorBakeSettings = Pick<
+  ReturnType<typeof resolveOctahedralImpostorOptions>,
+  'frames' | 'hemi' | 'frameSize' | 'gutter'
+>;
+
+/**
+ * Renders the atlases of an octahedral impostor of `geometry` drawn with `material` (see
+ * {@link generateOctahedralImpostor}) into two new atlas targets, named `${id}.albedo` and
+ * `${id}.normalDepth`, and returns them with their layout. Nothing is registered: the targets are
+ * the caller's to dispose (disposing a target's texture disposes the target). What
+ * `generateOctahedralImpostor` registers, and what an export reads back.
+ *
+ * Synchronous, with the renderer (after `InitEngine`), restoring its target and clear state.
+ */
+export const bakeOctahedralImpostorAtlases = (
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material | THREE.Material[],
+  { frames, hemi, frameSize, gutter }: OctahedralImpostorBakeSettings,
+  id: string
+): {
+  layout: OctahedralImpostorLayout;
+  albedo: THREE.RenderTarget;
+  normalDepth: THREE.RenderTarget;
+} => {
+  if (!Number.isInteger(frames) || frames < 2 || frames > 32) {
+    throw new Error(`bakeOctahedralImpostorAtlases: '${id}' frames must be an integer 2-32.`);
+  }
+  const renderer = getBakeRenderer('bakeOctahedralImpostorAtlases');
 
   // Every frame shows the bounding sphere, at one texel size
   if (!geometry.boundingSphere) geometry.computeBoundingSphere();
   const sphere = geometry.boundingSphere!;
   const radius = sphere.radius;
   if (!(radius > 0)) {
-    throw new Error(`generateOctahedralImpostor: '${id}' has no extent to bake.`);
+    throw new Error(`bakeOctahedralImpostorAtlases: '${id}' has no extent to bake.`);
   }
   const extent = (radius * frameSize) / (frameSize - 2 * FRAME_MARGIN);
   const cellSize = frameSize + 2 * gutter;
@@ -300,43 +374,5 @@ export const generateOctahedralImpostor = (
     frame.dispose();
   }
 
-  const albedo = saveTexture(atlases.ALBEDO.texture, `${id}.albedo`);
-  albedo.userData[LAYOUT_KEY] = layout;
-  const normalDepth = saveTexture(atlases.NORMAL_DEPTH.texture, `${id}.normalDepth`);
-
-  const quad = createOctahedralImpostorQuad(layout);
-  quad.name = id;
-  saveBufferGeometry(quad, { id });
-  const { type, params } = shading;
-  const impostorMaterial = createMaterial({
-    id: `${id}.mat`,
-    type,
-    params: { ...params, alphaTest, side: THREE.DoubleSide },
-  } as MatProps) as THREE.NodeMaterial & { normalMap: THREE.Texture | null };
-  impostorMaterial.name = id;
-  const nodes = createOctahedralImpostorNodes(layout, albedo, normalDepth);
-  impostorMaterial.positionNode = nodes.positionNode;
-  impostorMaterial.colorNode = nodes.colorNode;
-  if (surfaceDepth) impostorMaterial.depthNode = nodes.depthNode;
-  // An unlit impostor has no use for normals or received shadows
-  if (type !== 'BASICNODEMATERIAL') {
-    impostorMaterial.normalNode = nodes.normalNode;
-    impostorMaterial.normalMap = normalDepth;
-    if (surfaceDepth) {
-      impostorMaterial.receivedShadowPositionNode = nodes.receivedShadowPositionNode;
-    } else {
-      // Lit by every light as if unshadowed: in the material, not `receiveShadow: false` on the
-      // object, so it holds on any mesh (a pool's level meshes share one receiveShadow)
-      impostorMaterial.receivedShadowNode = () => float(1);
-    }
-  }
-
-  recordImpostor({
-    id,
-    kind: 'OCTAHEDRAL',
-    origin: 'BAKED',
-    bakeMs: performance.now() - bakeStart,
-    source: { geometry, material, options: { ...opts, id } },
-  });
-  return { id, layout, geometry: quad, material: impostorMaterial, albedo, normalDepth };
+  return { layout, albedo: atlases.ALBEDO, normalDepth: atlases.NORMAL_DEPTH };
 };
