@@ -1,7 +1,7 @@
 Status: draft | not-implemented
 Category: World, Streaming, Assets
 Epic: p350_lod-system-research.md (Tier 2.1)
-Related: p372_mesh-merge-groups.md (merge groups stay inside a cell), p376_hlod-merged-cluster-proxies.md (FAR proxies), \_DONE_p346_spatial-domains.md (the cell maths, and the `MANUAL` domain for this plan's Phase 4), \_DONE_p352_physics-simulation-tiers.md (Phase 4 here drives its tiers per cell; it took over p352's Phase 5), \_DONE_p343_deterministic-physics-tier-policy.md (deciding on fixed steps, §6), \_DONE_p348_ecs-lod-selection.md and p351_impostor-billboard-lod.md (what a `FAR` cell shows), p306_terrain-blocks-and-procedural-terrain-meshes.md (blocks are natural cell content; their sizes line up), \_DONE_p345_gpu-memory-and-draw-call-debugger.md (per-cell memory), p420_npc-simulation-tiers.md (NPCs need the cells around the player loaded)
+Related: p372_mesh-merge-groups.md (merge groups stay inside a cell), p376_hlod-merged-cluster-proxies.md (FAR proxies), \_DONE_p346_spatial-domains.md (the cell maths, and the `MANUAL` domain for this plan's Phase 4), \_DONE_p352_physics-simulation-tiers.md (Phase 4 here drives its tiers per cell; it took over p352's Phase 5), \_DONE_p343_deterministic-physics-tier-policy.md (deciding on fixed steps, §6), \_DONE_p348_ecs-lod-selection.md and \_DONE_p351_impostor-billboard-lod.md (what a `FAR` cell shows), p306_terrain-blocks-and-procedural-terrain-meshes.md (blocks are natural cell content; their sizes line up), \_DONE_p345_gpu-memory-and-draw-call-debugger.md (per-cell memory), p420_npc-simulation-tiers.md (NPCs need the cells around the player loaded)
 
 # Macro Streaming Grid
 

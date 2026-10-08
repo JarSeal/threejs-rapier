@@ -1,4 +1,4 @@
-// Octahedral maps (docs/plans/p351_impostor-billboard-lod.md §2.2): directions on a sphere (full) or
+// Octahedral maps (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.2): directions on a sphere (full) or
 // the upper hemisphere (hemi) folded onto the square [-1, 1]². An octahedral impostor bakes one frame
 // per point of an N × N grid on that square, and its material picks the frames nearest to the view
 // direction the same way, so the bake and the material must agree exactly: the material's TSL

@@ -1,4 +1,4 @@
-// The octahedral impostor's material nodes (docs/plans/p351_impostor-billboard-lod.md §2.2, Phase 3):
+// The octahedral impostor's material nodes (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.2, Phase 3):
 // a quad that faces the camera from each instance's centre, blending the three atlas frames baked
 // nearest to the direction it's seen from, shaded with the baked object-space normals.
 //

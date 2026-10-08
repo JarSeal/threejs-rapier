@@ -1,4 +1,4 @@
-// Cross-quads (docs/plans/p351_impostor-billboard-lod.md §2.1): the cheapest impostor, two or three
+// Cross-quads (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.1): the cheapest impostor, two or three
 // intersecting alpha-cut planes through an object's vertical axis, each with the object's silhouette
 // baked on it. Reads as volumetric from most ground-level angles, so it's meant for vegetation's
 // farthest LOD level: `createInstancedLodPool`'s levels take its geometry and material as is.

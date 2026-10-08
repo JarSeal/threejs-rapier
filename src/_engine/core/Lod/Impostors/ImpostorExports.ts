@@ -1,4 +1,4 @@
-// Exported impostors at runtime (docs/plans/p351_impostor-billboard-lod.md Phase 4, decision 5): a
+// Exported impostors at runtime (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 4, decision 5): a
 // scene lists them in its JSON's `impostors`, the gatherer puts their definitions on the scene's
 // generated data and their atlas slots into its `textures`, and the loader loads those before the
 // scene file runs. A generator called with a listed id then builds from the definition and the

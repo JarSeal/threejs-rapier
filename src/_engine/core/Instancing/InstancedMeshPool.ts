@@ -166,7 +166,7 @@ ECSWorld.registerComponentHooks(ComponentType.INSTANCED_MESH_SLOT, {
 // (docs/plans/_DONE_p348_ecs-lod-selection.md §4.2). Its slot keeps pointing at the applied level's
 // mesh while it's LOD culled (index -1, in no mesh), so it knows where to come back to.
 //
-// A LOD cross-fade (docs/plans/p351_impostor-billboard-lod.md §2.4) keeps the instance's old copy
+// A LOD cross-fade (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.4) keeps the instance's old copy
 // drawn as its outgoing copy (`_fadeOutMesh`/`_fadeOutIndex`) while the new one fades in, each
 // with its own per-instance fade (LodFade.ts). A fade to culled has only the outgoing copy, a fade
 // from culled only the incoming one. The LOD system ends a running fade before the next change.
@@ -473,7 +473,7 @@ export interface InstancedLodPool {
  * the new one). A LOD-culled instance is in no mesh. One draw call per non-empty level.
  *
  * Level changes and LOD culling cross-fade (`lod.fadeSeconds`, default `AppConfig.lod.fadeSeconds`;
- * docs/plans/p351_impostor-billboard-lod.md §2.4): during a fade the instance is in both levels'
+ * docs/plans/_DONE_p351_impostor-billboard-lod.md §2.4): during a fade the instance is in both levels'
  * meshes, dithered by a per-instance fade. The pool calls `enableLodDither` on its level materials.
  *
  * Every level mesh gets the bounds of every placement, at spawn: instances moving between levels

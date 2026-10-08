@@ -61,7 +61,7 @@ export const getShowcaseStartCamera = () => startCamera;
 export const addShowcaseEnterListener = (fn: () => void) => enterListeners.push(fn);
 
 /**
- * The LOD showcase (docs/plans/p351_impostor-billboard-lod.md Phase 5): the LOD system lane by lane,
+ * The LOD showcase (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 5): the LOD system lane by lane,
  * side by side along x, each lane running away from the start camera along -z with an object in
  * every level band (lodShowcase/layout.ts), so every level of every lane is on screen at once. The
  * camera and the `dayNight` sky box (which owns the lights) come from `lodShowcase.scene.json`. In

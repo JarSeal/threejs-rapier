@@ -1,4 +1,4 @@
-// Octahedral impostors (docs/plans/p351_impostor-billboard-lod.md §2.2, Phase 3): one camera-facing
+// Octahedral impostors (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.2, Phase 3): one camera-facing
 // quad per instance sampling an atlas of the object baked from N × N directions on an octahedral
 // map (Octahedral.ts), blending the frames nearest to the view direction. Correct from any angle,
 // including above, so it's meant for rocks, buildings and anything seen from the air.
@@ -67,7 +67,7 @@ export type OctahedralImpostorOptions = {
    * depth from the shader turns off early depth tests (and a tile GPU's hidden-surface removal),
    * so false costs much less where impostors cover many pixels: 217 rock impostors from
    * largeWorld's overview camera took 0.34 ms of GPU time a frame with it, 0.09 ms without
-   * (docs/plans/p351_impostor-billboard-lod.md, Phase 3). Keep it on for objects sunk deep in
+   * (docs/plans/_DONE_p351_impostor-billboard-lod.md, Phase 3). Keep it on for objects sunk deep in
    * the ground: a flat quad through a buried centre is mostly underground. */
   surfaceDepth?: boolean;
 };

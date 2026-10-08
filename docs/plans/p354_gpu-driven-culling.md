@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Rendering, LOD, GPU
 Epic: p350_lod-system-research.md (Tier 3)
-Related: \_DONE_p346_spatial-domains.md, p351_impostor-billboard-lod.md (impostor levels are bins too), p240_client-device-capability-sniffer.md (whether the GPU path is worth enabling on a device)
+Related: \_DONE_p346_spatial-domains.md, \_DONE_p351_impostor-billboard-lod.md (impostor levels are bins too), p240_client-device-capability-sniffer.md (whether the GPU path is worth enabling on a device)
 
 # GPU-Driven Culling & Per-Instance LOD — Stub
 

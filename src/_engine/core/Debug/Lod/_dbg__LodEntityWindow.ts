@@ -24,7 +24,7 @@ import {
 // The LOD window (docs/plans/_DONE_p348_ecs-lod-selection.md §6, per mesh): one `LOD` entity's live
 // screen size, what it shows and why, and each level's threshold as the distance it switches at
 // with the current camera (FOV and zoom), both biases and the hysteresis included, and its running
-// cross-fade (docs/plans/p351_impostor-billboard-lod.md Phase 2). Default world only. Entity ids
+// cross-fade (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 2). Default world only. Entity ids
 // don't outlive a scene, so the window closes on a scene change and isn't saved.
 
 const LOD_WIN_KIND = 'lodEntityWindow';

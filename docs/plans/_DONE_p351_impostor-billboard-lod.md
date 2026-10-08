@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-4 implemented
+Status: implemented (Phases 1-5)
 Category: Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 2.2)
 Related: \_DONE_p341_alpha-coverage-mips.md (Phase 4's exported albedo atlases keep level 0's alpha coverage, which Phase 5's cross-quad lane needed), \_DONE_p342_dev-file-server.md (Phase 4's export writes through it), p299_texture-arrays-and-atlases.md (Phase 4's exported atlases; Phase 4 section 1 extends its format), \_DONE_p300_asset-optimization-pipeline-plan.md (Phase 4's KTX2 encode), p354_gpu-driven-culling.md / p375_batched-mesh-batches.md (later lanes of Phase 5's showcase), p376_hlod-merged-cluster-proxies.md (merged groups' far levels), \_DONE_p347_lod-chain-generation.md (impostors are the level after the last chain level), p353_macro-streaming-grid.md (`FAR` cells show impostors), p308_terrain-scatter.md (leaf-litter cards), p420_npc-simulation-tiers.md (its `CROWD` tier may reuse octahedral impostors), the procedural sky box (p112/p113, implemented: day-night lighting, see §2.3)
@@ -922,7 +922,7 @@ As built:
 - p299 gained `slots.<name>.image` and `mipChain: "FULL"` (section 1), which p299 Phase 6's docs
   should fold into its atlas section.
 
-### Phase 5 — LOD showcase scene
+### Phase 5 — LOD showcase scene — done
 
 A demo scene for the LOD system as it stands after Phase 4, built so that later plans add to it:
 p376 (HLOD proxies), p353 (streaming cells), p354 (GPU culling), p375 (batched meshes), p308
@@ -1136,7 +1136,48 @@ Sections, each reviewed before the next:
 
 5. **Close the phase:** the exit measured (the dolly with Phase 2's recorder, the load, lane 4's
    payoff, both backends), As built, `readme.md`'s LOD highlight, CLAUDE.md, versions (an app
-   minor: a new scene) and CHANGELOG; mark the plan done.
+   minor: a new scene) and CHANGELOG; mark the plan done. — done: app 1.7.1 → 1.8.0 (the new
+   scene; engine and toolkit unchanged by Phase 5, the engine's 4.13.0 is Phase 4's), the branch's
+   CHANGELOG entry gets the scene, its tab and its exports. `readme.md`'s LOD selection feature and
+   its LOD example point at the scene; CLAUDE.md's Impostors section gets a paragraph on the scene
+   (the lane contract, the layout, the tab, the `InstancedMesh` entity's `Transform`).
+
+**Exit:** met (below), with one finding about very slow frames.
+
+As built:
+
+- Every lane in view from the start camera, every level of every LOD lane on screen (sections
+  1-3's harness, WebGPU and WebGL2: all 30 LOD objects show their band's level).
+- The dolly with Phase 2's recorder (each frame, every LOD entity of the lanes whose applied level
+  or LOD culling changed since the last frame must have TAG_LOD_TRANSITIONING; WebGPU, Apple GPU,
+  1200×800): the full run, 240 m down the lanes and back at 15 m/s (32 s, 1,921 frames), 200
+  changes, 0 pops, up to 5 entities fading at once. The control, the same run with the global
+  `fadeSeconds` 0: the same 200 changes, 176 pops (every lane but lane 1, whose JSON keeps its own
+  0.4 s).
+- WebGL2 (SwiftShader): the same run at 3-4 fps (105 frames in 30 s) shows 46 of 175 changes as
+  pops. A frame there (0.28 s) is longer than a fade (0.25 s), and `lodFadeSystem` advances a fade
+  by the frame's dt in the frame it starts, so the fade ends before it is drawn once: a real pop,
+  but only below about 4 fps (at 30 fps a fade spans 7-8 frames). With the LOD tab's fade time scale
+  at 0.1 (a fade over about 9 of those frames): 198 changes, 0 pops, up to 21 fading. Seen, not
+  changed: drawing a fade's first frame at least once would need `lodFadeSystem` to skip the start
+  frame's dt; noted for a later LOD plan.
+- No bake at load but lane 5's baked half: the records of `lodShowcaseTreeCross`,
+  `lodShowcaseKnotImpostor` and `largeWorldRockImpostor` are `EXPORTED` (`bakeMs` null), only
+  `lodShowcaseRockBaked` is `BAKED` (38-43 ms), on both backends, with no stale warning. The scene
+  loads in 1.27-1.50 s on WebGPU.
+- Lane 4's payoff (section 3): drawing 400 knots at the impostor band's distances, the flat
+  impostor adds 0.07-0.08 ms of GPU time against 0.12-0.13 ms for the chain's last level (982
+  triangles) and 2.3 ms for the 16,384-triangle mesh; the default (surface depth) impostor adds
+  0.43-0.45 ms, so lane 4 uses the flat one and lane 5 shows the surface depth.
+- WebGPU and WebGL2: every check above on both, except the payoff (WebGPU only: SwiftShader's
+  timings say nothing about a GPU).
+- `readme.md`'s LOD highlight points at the scene.
+- What later plans build on: a lane is a `ShowcaseLane` module in `src/app/lodShowcase/lanes/` and
+  an entry with a slot in `lodShowcase.ts`'s lane list (slots 0-5 are taken: a seventh lane widens
+  the layout); `layout.ts`'s `getSlots` / `placeAt` / `getSwitchDistances` place a lane's objects by
+  its `LodDef`; the tab picks up a new lane's switch stops and its row by itself. The dolly and the
+  recorder's functions (`startShowcaseDolly`, `isShowcaseDollyRunning`, `setShowcaseCameraStop`)
+  are the no-pop check for a later plan's representation switch.
 
 ## 4. Versioning
 

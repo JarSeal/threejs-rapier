@@ -1,4 +1,4 @@
-// The impostors generated in this session (docs/plans/p351_impostor-billboard-lod.md Phase 4), by
+// The impostors generated in this session (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 4), by
 // id: what the LOD tab's Impostors folder lists and exports. A record goes with its impostor's
 // assets: when its geometry (registered under the impostor's id) is deleted, eg. by the scene's
 // asset release.

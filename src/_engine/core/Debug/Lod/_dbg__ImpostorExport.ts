@@ -28,7 +28,7 @@ import { bakeCrossQuadsAtlases, resolveCrossQuadsOptions } from '../../Lod/Impos
 import { getGeneratedAppData } from '../../Scene';
 import { readRenderTargetImageAsync } from '../_dbg__TexturePreview';
 
-// The impostor export (docs/plans/p351_impostor-billboard-lod.md Phase 4 section 3): bakes an
+// The impostor export (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 4 section 3): bakes an
 // impostor again from the source its generator got (the registry keeps it), reads the atlases
 // back and writes them into the repo through the dev files (_DONE_p342): one PNG per atlas slot,
 // a `*.textureAtlas.json` (p299, `image` slots, `mipChain: "FULL"`) and the `*.impostor.json`.
@@ -142,7 +142,7 @@ const getExportPaths = (id: string) => {
 };
 
 const DEBUG_DESCRIPTION =
-  "Written by the LOD tab's impostor Export (docs/plans/p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file.";
+  "Written by the LOD tab's impostor Export (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file.";
 
 /** One impostor's files, ready to write */
 type ImpostorExportFiles = {

@@ -22,7 +22,13 @@ Earlier releases are only recorded in the git history.
 - Debug: the LOD tab's Impostors folder lists the impostors generated in the scene (kind, baked or loaded from its export, export state: not exported, up to date, stale or another format; atlas size, bake time) with Export / Re-export and Export all. An export bakes again from the impostor's source, reads the atlases back and writes the `*.impostor.json`, the `*.textureAtlas.json` and the PNGs in one dev files batch, and the gather's result is shown as a toast after the reload. The albedo slot gets `alphaCoverage` at the impostor's `alphaTest`. Without the dev files (a LAN device, `AEK_DEV_FILES=false`, no dev server) it downloads the files and lists the paths to put them at.
 - The Assets tab's atlas slot info shows the mip chain and whether the slot is a ready-made image.
 
-### App 1.7.1 (Preschooler)
+### App 1.8.0 (Preschooler)
+
+**Added**
+
+- The `lodShowcase` scene: the LOD system lane by lane, each lane running away from the start camera with an object in every level band (placed from the levels' screen sizes, `lodShowcase/layout.ts`), so every level of every lane is on screen at once, under the `dayNight` sky box held at 15:00. Left to right: an instanced tree pool ending in exported cross-quads and a cull fade; hand-made levels in a `*.mesh.json` (sphere geometries in `*.geometry.json`, the mesh's `lod` and `fadeSeconds`); a 16k-triangle torus knot with an `AUTO` lod, its chain simplified at load; the same knot as an instanced pool, its chain's levels then an exported flat octahedral impostor (cheaper than the chain's 982-triangle last level); largeWorld's rock as a baked and an exported impostor beside the mesh; and static instance cells (one `InstancedMesh` entity per cell) that swap and fade as a whole. A later LOD plan adds a lane with a module and a list entry.
+- The scene's "LOD demo" debug tab: camera stops (the start view, overhead, and both sides of every lane's level switches and cull), a dolly down the lanes and back, the time of day, each lane's entities per level and triangles, and buttons to the LOD tab and the profiler. Only the camera stop is saved.
+- Exported impostors for the scene: `lodShowcaseTreeCross` and `lodShowcaseKnotImpostor` (`src/app/impostors/`).
 
 **Changed**
 

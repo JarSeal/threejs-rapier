@@ -1,4 +1,4 @@
-// An exported impostor's source fingerprint (docs/plans/p351_impostor-billboard-lod.md Phase 4,
+// An exported impostor's source fingerprint (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 4,
 // decision 4): written into the `*.impostor.json` by the export, and compared in the debug env when
 // a generator uses the export, so a source that changed since (eg. a procedural rock's seed) warns
 // "stale, re-export" instead of keeping its old impostor. Synchronous (a generator is) and not
