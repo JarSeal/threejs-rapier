@@ -36,10 +36,11 @@ export type ShowcaseLaneContext = {
   /** Where on the lane's line an object's centre at height `y` is `distance` from the start camera
    * (as near as the lane can be when it's closer). */
   placeAt: (distance: number, y: number) => LanePosition;
-  /** The distances to put objects at so every level band of `def` holds `perBand` of them (and
-   * one past the cull distance, when it hides), for a level 0 radius of `radius` (world units, at
-   * the object's scale). Bands outside the lane are left out, warned. */
-  getSlots: (radius: number, def: LodDef, perBand?: number) => LaneSlot[];
+  /** The distances to put objects at so every level band of `def` holds `perBand` of them (a
+   * number, or one per level), and one past the cull distance when it hides, for a level 0 radius
+   * of `radius` (world units, at the object's scale). Bands outside the lane are left out,
+   * warned. */
+  getSlots: (radius: number, def: LodDef, perBand?: number | number[]) => LaneSlot[];
   /** The start camera's distances where `def`'s levels switch, coming closer (the finer level's
    * threshold), and where it hides, if it does. */
   getSwitchDistances: (radius: number, def: LodDef) => number[];
@@ -47,10 +48,10 @@ export type ShowcaseLaneContext = {
 
 /** What a lane hands back: the demo tab reads it. */
 export type ShowcaseLaneState = {
-  /** Its LOD entities (a pool's instances). A function: a JSON mesh only exists after the scene
-   * file has run. */
+  /** Its entities (a pool's instances), most with a LOD. A function: a JSON mesh only exists
+   * after the scene file has run. */
   getEntityIds: () => number[];
-  /** Level 0's radius at scale 1. */
+  /** Level 0's radius at scale 1 (0 for a lane without a LOD). */
   radius: number;
   /** The start camera's distances where its levels switch (and it hides). */
   switchDistances: number[];
@@ -143,7 +144,7 @@ export const createLaneContext = (
     return distances;
   };
 
-  const getSlots = (radius: number, def: LodDef, perBand = 1) => {
+  const getSlots = (radius: number, def: LodDef, perBand: number | number[] = 1) => {
     const h = def.hysteresis ?? DEFAULT_LOD_HYSTERESIS;
     const levels = def.levels;
     const cull = def.cullScreenSize ?? 0;
@@ -173,7 +174,8 @@ export const createLaneContext = (
         continue;
       }
       // Spread evenly in log distance, the way screen size falls off
-      const count = band.level < 0 ? 1 : perBand;
+      const count =
+        band.level < 0 ? 1 : typeof perBand === 'number' ? perBand : perBand[band.level];
       for (let j = 0; j < count; j++) {
         slots.push({ level: band.level, distance: near * (far / near) ** ((j + 0.5) / count) });
       }

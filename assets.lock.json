@@ -183,6 +183,30 @@
       ],
       "ktxVersion": "4.4.2"
     },
+    "8fedcde3c7d9f81117cee12c663314630573fe2efae5ac3b2ba5899bdb9a5327": {
+      "source": "src/app/impostors/lodShowcaseKnotImpostor.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/lodShowcaseKnotImpostor.atlas.normalDepth.5bf8f162.ktx2",
+      "bytes": 796877,
+      "textures": [
+        {
+          "slot": "data",
+          "bytes": 796877,
+          "source": {
+            "width": 864,
+            "height": 864,
+            "bytes": 1465828
+          },
+          "codec": "uastc",
+          "width": 864,
+          "height": 864,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 10
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
     "9442fd32164cc23d52fef0976d43336dcfa4f2d708ff7273f0008fabbab37d21": {
       "source": "src/app/textures/p299TestArray.textureArray.json",
       "url": "/aek-assets/app/textures/p299TestArray.array.5c60d088.ktx2",
@@ -301,6 +325,30 @@
           "mipmaps": true,
           "normalMode": false,
           "levels": 5
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "da95241cac37797d508d4f10a829fecf63ec29a34025006c1cee38651f1b96cb": {
+      "source": "src/app/impostors/lodShowcaseKnotImpostor.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/lodShowcaseKnotImpostor.atlas.albedo.0d91eb26.ktx2",
+      "bytes": 101012,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 101012,
+          "source": {
+            "width": 864,
+            "height": 864,
+            "bytes": 52199
+          },
+          "codec": "uastc",
+          "width": 864,
+          "height": 864,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 10
         }
       ],
       "ktxVersion": "4.4.2"

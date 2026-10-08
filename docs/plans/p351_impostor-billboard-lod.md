@@ -1063,10 +1063,77 @@ Sections, each reviewed before the next:
 3. **Lanes 4 and 5:** the torus knot as a pool (its chain's levels, then an exported octahedral
    impostor); the rock baked and exported side by side, held at the impostor level. Checked: no
    bake at load but lane 5's baked half, lane 4's GPU time with the impostor against its chain's
-   last level.
+   last level. — done: `lanes/knotImpostor.ts` (slot 3, x 4) and `lanes/rockImpostors.ts` (slot 4,
+   x 12); `getSlots`' `perBand` takes a count per level, and `getShowcaseKnotMaterial()` is the
+   material lanes 2 and 4 share.
+
+   - Lane 4: a pool of lane 2's knot through its chain's four levels (awaiting the chain lane 2
+     started), then the hemi octahedral impostor `lodShowcaseKnotImpostor`; screen sizes 0.2 /
+     0.12 / 0.065 / 0.04 / 0 (switches at 27, 44, 82 and 133 m), one knot per mesh band and four in
+     the impostor's (more on the lane's line hid each other and lane 5), turned up to ±0.6 rad.
+     Exported like lane 3 (864² atlases, UASTC: 101 KB and 797 KB) and listed in the scene.
+   - Lane 5: largeWorld's rock (seed, shape and material as there), in rows at 33, 55 and 95 m:
+     its impostor baked at load (`lodShowcaseRockBaked`), the mesh, and largeWorld's export
+     (`largeWorldRockImpostor`, which the scene lists too), 3 m apart. The impostors are drawn as
+     plain meshes with no LOD, so they stay impostors at any distance. Their options match
+     largeWorld's call (`hemi`), so the export's fingerprint matches: no stale warning. A lane's
+     state allows entities without a LOD (radius 0, no switch distances).
+   - Found by measuring (WebGPU, Apple GPU, 1200×800, main loop paused, every mesh but the measured
+     ones hidden, 150 renders timed through the queue, median of three): the default impostor
+     doesn't pay off against the chain's last level. 400 knots spread over the impostor band's
+     distances (150-290 m), GPU time over the frame without them (0.52-0.53 ms): level 0 (16,384
+     triangles) +2.32-2.37 ms, level 1 (8,192) +0.79, level 2 (3,276) +0.31-0.32, level 3 (982)
+     +0.12-0.13, the impostor with surface depth +0.43-0.45, flat (`surfaceDepth: false`)
+     +0.07-0.08. Phase 3's cause again: writing depth from the shader turns off the tile GPU's
+     hidden-surface removal. The knots stand on the ground, which the flat quad suits (Phase 3
+     section 5), so lane 4's impostor is flat (re-exported: the same atlases, `surfaceDepth: false`
+     in its JSON), and lane 5's rocks show the surface depth. The lane itself from the start camera
+     (eight knots): +0.09 ms as selected (mostly the near knots' mesh levels), forced to level 3
+     +0.01, to the impostor +0.02 (forced, the nearest knot's impostor covers a fifth of the view).
+
+   Checked (WebGPU and WebGL2): all 30 LOD objects of the five LOD lanes show their band's level,
+   also after a visit to skyShowcase and back; the records are `EXPORTED` (`bakeMs` null) for the
+   tree's cross-quads, the knot's impostor and largeWorld's rock, `BAKED` only for lane 5's baked
+   rock (38-43 ms; 1.6 s on SwiftShader), no stale warning (the knot's showed once, as it should,
+   between the switch to flat and its re-export). The scene loads in 1.27-1.45 s (4.1 s on WebGL2;
+   it was 1.1-1.2 s before lanes 4 and 5: the baked rock and two more pairs of 864² atlases). Up
+   close (10 m), lane 5's baked and exported impostors look alike and like the mesh between them,
+   on both backends; lane 4's knot forced to its impostor at 10 m reads as the knot, softer, torn a
+   little where its tubes cross (64-texel frames at a fifth of the distance they're used from).
+
 4. **Demo tab:** "LOD demo" (`_dbg__lodShowcase.ts`): camera stops, the dolly (a scene looper), the
    time of day, per lane its instances per level and triangles, buttons to the LOD tab and the
-   profiler; the camera stop persisted.
+   profiler; the camera stop persisted. — done: `src/app/_dbg__lodShowcase.ts`
+   (`createLodShowcaseTab`, a scene tab created by the scene file in the debug env, like the space
+   demo's). `lodShowcase.ts` now also keeps the start camera (`getShowcaseStartCamera`) and runs
+   listeners on enter (`addShowcaseEnterListener`, as a scene has one enter callback).
+
+   - Camera: a stop (start view, overhead, and every switch of every lane by its distance from the
+     start camera, labelled "Hand-made levels: level 1 → 2 (86 m)" or "…: hides (214 m)") and a
+     side: just inside (0.95 × the switch distance) shows the finer level, just past (1.15 ×, past
+     the 10 % hysteresis) the coarser one. A switch stop stands on the line from the start camera to
+     the lane's first object past the switch, at that distance from it, looking at it, so the rest
+     of the lane stands behind it; toggling the side shows that object's cross-fade (slow it down
+     with the LOD tab's fade time scale). The camera moves through its `Transform`
+     (`cameraLookAtPoint`). The stop and side are the tab's only persisted state
+     (`AEK_debugLodShowcase`), applied again on the scene's enter; the clear-LS button goes back to
+     the start view.
+   - Dolly: a scene app looper (so the app pause stops it) that runs the camera from the start view
+     240 m down the lanes and back, keeping its height and direction, at a set speed (default 15
+     m/s), then stops at the start view: the same path every run. `startShowcaseDolly`,
+     `stopShowcaseDolly`, `isShowcaseDollyRunning` and `setShowcaseCameraStop` /
+     `getShowcaseCameraStops` are exported for section 5's recorder.
+   - Time of day (`setTimeOfDay`), play and pause, whether it's playing; the LOD system's fading
+     count; buttons to the LOD tab (`lodControls`) and the profiler window.
+   - Lanes, left to right: per lane its entities per level shown (`L0 4 · L1 3 · L2 3 · culled 1
+· fading 2`, `no LOD` for lane 5's), its switch distances and the triangles of the levels shown
+     (the main pass, before frustum culling, a fading entity's outgoing copy not counted).
+
+   Checked (WebGPU and WebGL2, a harness driving the exported functions): every switch stop of the
+   five LOD lanes on both sides (32 stops) shows the expected level on the object it looks at; the
+   stop set last comes back after a page reload (the camera at the same position); the dolly runs
+   at its speed, and the tab renders its folders and the six lane rows.
+
 5. **Close the phase:** the exit measured (the dolly with Phase 2's recorder, the load, lane 4's
    payoff, both backends), As built, `readme.md`'s LOD highlight, CLAUDE.md, versions (an app
    minor: a new scene) and CHANGELOG; mark the plan done.

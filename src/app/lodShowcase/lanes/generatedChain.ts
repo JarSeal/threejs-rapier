@@ -24,6 +24,14 @@ export const SHOWCASE_KNOT_CHAIN: LodChainOptions = { ratios: [0.5, 0.2, 0.06] }
  * and level 1 within 14 m, nearer than the lane starts. */
 const KNOT_LOD: LodAutoDef = { auto: true, maxPixelError: 0.25 };
 
+/** The knot's material, which lanes 2 and 4 share. */
+export const getShowcaseKnotMaterial = () =>
+  createMaterial({
+    id: 'lodShowcaseKnotMat',
+    type: 'STANDARD',
+    params: { color: '#5f8fb4', roughness: 0.35, metalness: 0.3 },
+  });
+
 /** Registers the torus knot (or returns the registered one) and starts its LOD chain. */
 export const getShowcaseKnot = () => {
   const knot = new THREE.TorusKnotGeometry(1.2, 0.38, 256, 32);
@@ -54,11 +62,7 @@ export const generatedChainLane: ShowcaseLane = {
     'A 16k-triangle torus knot with lod { auto: true, maxPixelError: 0.25 }, its LOD chain simplified at load.',
   create: async (ctx) => {
     const { geometry } = getShowcaseKnot();
-    const material = createMaterial({
-      id: 'lodShowcaseKnotMat',
-      type: 'STANDARD',
-      params: { color: '#5f8fb4', roughness: 0.35, metalness: 0.3 },
-    });
+    const material = getShowcaseKnotMaterial();
     const radius = getConservativeGeometryRadius(geometry);
     // Standing on the ground (the knot lies in its xy plane, facing the camera)
     const y = -geometry.boundingBox!.min.y;
