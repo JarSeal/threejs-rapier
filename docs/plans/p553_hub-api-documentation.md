@@ -1,7 +1,7 @@
 Status: draft | not-implemented
 Category: Dev tooling, Hub, Documentation
 Epic: p550_aekasha-hub-epic.md
-Blocked by: p551_hub-site-generator-and-dev-server.md, p552_hub-code-blocks-and-search.md (signature highlighting and search entries)
+Blocked by: p552_hub-code-blocks-and-search.md (signature highlighting and search entries)
 Blocks: p555_hub-features-and-homepage-content.md (its `api:` links)
 
 # Hub API Documentation

@@ -4,6 +4,29 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-08 — aekasha-hub
+
+### Project
+
+**Added**
+
+- The Ækasha Hub: the engine's instructions, examples and documentation as a static site, with its sources in `hub/` and its generator in `devTools/hub/`. This first version is the site itself; the code blocks and search, the API documentation, the example scenes and the feature pages come in later branches.
+  - Pages: a folder under `hub/pages/` per URL, with an `index.html` (the title and the `aek:` menu metadata in its `<head>`, the page's markup in its `<body>`) and a Markdown file for each of its slots. The nav is built from the pages' metadata, at build time.
+  - Markdown (markdown-it): heading anchors and an "On this page" table of contents, `hub:` links between pages that are checked at build time (a dead link or `#hash` fails the build with its file and line), `::: tip|note|warning|danger` callouts and a directive registry for later ones, and images converted to WebP.
+  - The design shell: a top nav with dropdowns, breadcrumbs, a footer, a dark and a light theme (saved, else the system's), a mobile menu, keyboard navigation, self-hosted Inter and Lucide icons, and a homepage with a hero and the slots for its later content.
+  - Generated sections: Issues (a page per `docs/issues/*.md`, listed by status) and Version (the engine, toolkit, app and project versions and the build, then the whole `CHANGELOG.md` with an anchor per entry).
+- `yarn dev` serves the Hub at `/hub/` (`devTools/hubPlugin.ts`, dev server only; `AEK_HUB=false` turns it off). It builds on the first request, rebuilds on every save under `hub/` and in its other sources, and refreshes only the open Hub tabs whose page changed (a stylesheet change without a reload). It never reloads the app's tabs. A page with an error is served as an error page with the file and line, and comes back by itself when it's fixed.
+- `yarn hub:build [--out <dir>]` builds the public site into `dist-hub/`: relative links (it works at a domain root and under `/hub/`), a `404.html`, a Netlify `_headers` file, and `?v=<content hash>` on every asset. An error fails it. `yarn hub:preview [--base /hub/]` serves the build as a static host would.
+- `docs/techniques/hub-authoring.md`: how to write Hub pages.
+- CLAUDE.md: the Hub's section, the issue-file convention (`**Title:**` on line 1, then `Key: value` lines with `Status:` first), and the rule that a change to an engine or toolkit feature or public API updates its Hub content in the same branch.
+
+**Changed**
+
+- `yarn build` and `yarn build:test` also type-check `hub/` (`tsc -p hub`) and build the Hub into `dist-hub/` at the end. `AEK_HUB=false` skips the Hub build, and `AEK_HUB_IN_DIST=true` also copies it into `dist/hub/` (off by default).
+- The project metadata (versions, codenames, packages, build commit and time) is built by `devTools/projectMetadata.ts`, shared by `vite.config.ts` and the Hub. `__PROJECT_METADATA__` and `index.html`'s placeholders are unchanged.
+- The Stop hook runs on changes in `hub/`, `devTools/` and `vite.config.ts` too, and type-checks `hub/`. ESLint ignores `dist-hub/`.
+- New dev dependencies: `markdown-it` 14.3.1 and `@types/markdown-it` 14.1.2.
+
 ## 2026-10-07 — dev-server-implementation
 
 ### Engine 4.12.0 (Afternoon)

@@ -1,7 +1,7 @@
 Status: draft | not-implemented
 Category: Instructions, Examples, Scene
 Epic: p550_aekasha-hub-epic.md
-Blocked by: p551_hub-site-generator-and-dev-server.md, p552_hub-code-blocks-and-search.md (snippet includes; Phase 1 needs neither)
+Blocked by: p552_hub-code-blocks-and-search.md (snippet includes; Phase 1 doesn't need it)
 Blocks: p555_hub-features-and-homepage-content.md (its example links and cards)
 Related: \_DONE_p342_dev-file-server.md (the Hub images are written through `writeDevFiles`), \_DONE_p300_asset-optimization-pipeline-plan.md (the Æ symbol GLB), p450 "Toolkit and asset housekeeping" (`docs/templates/todo-plan-prompts.txt`; the toolkit's public asset folder)
 

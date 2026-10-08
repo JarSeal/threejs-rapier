@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-4 implemented
+Status: implemented (Phases 1-6)
 Category: Dev tooling, Hub
 Epic: p550_aekasha-hub-epic.md
 Blocks: p552_hub-code-blocks-and-search.md, p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
@@ -379,7 +379,7 @@ As built:
   `hub:` link in it shows the error page on that issue's page only, and removing the file makes
   its page 404; no horizontal scroll at 375 px; no console errors.
 
-### Phase 5 — Docs
+### Phase 5 — Docs — done
 
 1. CLAUDE.md:
    - Commands: `hub:build`, `hub:preview`, `AEK_HUB`, `AEK_HUB_IN_DIST`.
@@ -393,7 +393,18 @@ As built:
 3. `readme.md`: Commands (`hub:build`, `hub:preview`), Documentation (the Hub next to
    `yarn docs`), Project structure (`hub/`).
 
-### Phase 6 — Versioning and marking the plan done
+As built:
+
+- **The issue-file convention in CLAUDE.md is Phase 4's**, not §2.5's: `**Title:**` on line 1, then
+  a block of `Key: value` lines from line 3 with `Status:` first (`| detail` after the badge text),
+  then the issue. `generated/issues.ts`'s warning points at it.
+- **CLAUDE.md** also got: the Stop hook line (when it runs, `tsc -p hub`), "run `yarn hub:build`
+  after a Hub change" in the Workflow rule (it catches dead `hub:` links), and the About dialog's
+  build info now named as `getProjectMetadata` (`devTools/projectMetadata.ts`, Phase 1).
+- **`readme.md`** also lists `docs/issues/` in the project structure (the Issues section's source).
+  No Features entry yet: the Hub gets one with its content (p555).
+
+### Phase 6 — Versioning and marking the plan done — done
 
 `CHANGELOG.md` Project entry (§4). No part changes, so `yarn checkVersions --against main` passes
 without a bump.

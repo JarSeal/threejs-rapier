@@ -1,6 +1,6 @@
 Status: draft | epic — not-implemented
 Category: Instructions, Examples, Dev tooling
-Blocks: p551_hub-site-generator-and-dev-server.md, p552_hub-code-blocks-and-search.md, p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
+Blocks: \_DONE_p551_hub-site-generator-and-dev-server.md, p552_hub-code-blocks-and-search.md, p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
 Related: \_DONE_p342_dev-file-server.md (the dev-only Vite plugin pattern; the example scenes' Hub images are written through it), \_DONE_p300_asset-optimization-pipeline-plan.md (what `yarn assets` makes of the Æ symbol's Draco GLB), `docs/templates/todo-plan-prompts.txt` (the original prompt, "Instruction/example pages and example scenes")
 
 # Ækasha Hub — Epic
@@ -210,11 +210,11 @@ the existing `readme.md` rule.
 
 | Plan | What | Blocked by |
 | --- | --- | --- |
-| p551_hub-site-generator-and-dev-server.md | The generator, the dev plugin, `dist-hub/`, the design shell, the Issues and Version pages, the CLAUDE.md rule | — |
-| p552_hub-code-blocks-and-search.md | Code blocks (highlighting, line numbers and highlights, copy, groups, snippet includes) and search | p551 |
-| p553_hub-api-documentation.md | Documentation: the API from TypeDoc's JSON, in the Hub's style | p551 (p552 for its search entries) |
-| p554_hub-examples-start-scene-and-example-scenes.md | `?startScene=`, the example scenes, the Æ symbol model, the example pages, the hero image | p551 (p552 for snippets) |
-| p555_hub-features-and-homepage-content.md | The feature pages and the homepage's final content | p551, p553, p554 |
+| \_DONE_p551_hub-site-generator-and-dev-server.md (implemented) | The generator, the dev plugin, `dist-hub/`, the design shell, the Issues and Version pages, the CLAUDE.md rule | — |
+| p552_hub-code-blocks-and-search.md | Code blocks (highlighting, line numbers and highlights, copy, groups, snippet includes) and search | — |
+| p553_hub-api-documentation.md | Documentation: the API from TypeDoc's JSON, in the Hub's style | p552 (its search entries) |
+| p554_hub-examples-start-scene-and-example-scenes.md | `?startScene=`, the example scenes, the Æ symbol model, the example pages, the hero image | p552 (snippets) |
+| p555_hub-features-and-homepage-content.md | The feature pages and the homepage's final content | p553, p554 |
 
 Order: p551, then p552, then p553 and p554 in either order, then p555. p554's Phase 1
 (`?startScene`) is engine-only and can land at any time.

@@ -123,6 +123,8 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 | `yarn build:test`                     | Production build with `VITE_APP_ENV=test`.                                                                                                          |
 | `yarn lint`                           | ESLint with Prettier.                                                                                                                               |
 | `yarn docs`                           | TypeDoc API docs for the engine and toolkit, written to `docs-api/`.                                                                                |
+| `yarn hub:build`                      | Builds the Ækasha Hub (guides, examples, issues, changelog) into `dist-hub/`, a static site. `yarn build` runs it too.                              |
+| `yarn hub:preview [--base /hub/]`     | Serves `dist-hub/` locally (port 8090) the way a static host would.                                                                                 |
 | `yarn gatherAppData`                  | Runs the JSON → generated data pipeline by hand.                                                                                                    |
 | `yarn setupAssetTools [--force]`      | Downloads the KTX2 texture encoder into `.tools/` (Linux, WSL2, macOS).                                                                             |
 | `yarn assets [--only <id\|glob>]`     | Optimizes the asset JSONs' textures and models (KTX2, meshopt), with a cache.                                                                       |
@@ -159,10 +161,13 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 │   ├── index.ts            # App entry: renderer, scene loader, first scene
 │   ├── public/aek-assets/  # Optimized asset outputs (generated, committed)
 │   └── index.html
-├── devTools/               # Data gatherer, asset pipeline, version checks, release tagging
+├── hub/                    # The Ækasha Hub's sources: pages (HTML + Markdown), shell, styles
+├── devTools/               # Data gatherer, asset pipeline, Hub generator, version checks,
+│                           # release tagging
 ├── docs/
+│   ├── issues/             # Known issues and their workarounds (also on the Hub)
 │   ├── plans/              # Feature plans and specs (priority-ordered)
-│   └── techniques/         # How-to guides (eg. asset optimization)
+│   └── techniques/         # How-to guides (eg. asset optimization, writing Hub pages)
 ├── .schemas/               # Generated JSON Schemas for editor autocomplete
 ├── assets.config.json      # Asset optimization defaults, profiles and rules
 ├── assets.lock.json        # Asset pipeline cache index (generated, committed)
@@ -371,6 +376,7 @@ The engine, toolkit and example app each have their own semantic version and cod
 
 ## Documentation
 
+- **Ækasha Hub**: run `yarn dev` and open `http://localhost:8080/hub/` for the getting-started guide, examples, known issues and the changelog, or build it as a static site with `yarn hub:build`. To add or edit its pages, see [writing Hub pages](docs/techniques/hub-authoring.md).
 - **API reference**: run `yarn docs` and open `docs-api/index.html` (covers the engine and the toolkit).
 - **Guides**: [`docs/techniques/`](docs/techniques/), eg. [asset optimization](docs/techniques/asset-optimization.md).
 - **Design docs**: [`docs/plans/`](docs/plans/). Files prefixed `_DONE_` describe features that are already implemented.
