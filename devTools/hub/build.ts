@@ -479,6 +479,8 @@ export const buildHub = async ({
       ...sectionFiles,
       ...FAVICON_FILES,
       ...rendered.flatMap(({ env }) => env.images.map((job) => job.source)),
+      // Snippet includes (p552): an edit to one rebuilds, and reloads the pages that show it
+      ...rendered.flatMap(({ env }) => env.includes),
     ]),
   ];
   if (mode === 'public' && diag.errors.length) {

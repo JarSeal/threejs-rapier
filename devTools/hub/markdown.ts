@@ -54,6 +54,8 @@ export type HubMarkdownEnv = {
   ids: Set<string>;
   links: HubLinkRef[];
   images: HubImageJob[];
+  /** The files its snippet includes read (`<<<`, `code.ts`): the dev plugin watches them */
+  includes: string[];
 };
 
 export const createMarkdownEnv = (
@@ -71,6 +73,7 @@ export const createMarkdownEnv = (
   ids: new Set([...page.body.matchAll(/\sid=["']([^"']+)["']/g)].map((match) => match[1])),
   links: [],
   images: [],
+  includes: [],
 });
 
 // --- Directives ---

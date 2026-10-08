@@ -8,6 +8,7 @@ import {
   transformerRemoveNotationEscape,
 } from '@shikijs/transformers';
 import type MarkdownIt from 'markdown-it';
+import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
 import type Token from 'markdown-it/lib/token.mjs';
 import { createHighlighter, type Highlighter, type ShikiTransformer } from 'shiki';
@@ -15,13 +16,15 @@ import { HUB_CODE_THEME_DARK, HUB_CODE_THEME_LIGHT } from './codeThemes';
 import { escapeHtml } from './html';
 import type { HubIcons } from './icons';
 import { registerHubDirective, uniqueId, type HubMarkdownEnv } from './markdown';
+import { parseSnippetSpec, readSnippet } from './snippets';
 
 /**
  * The Hub's code blocks (p552 §2.1, §2.2): fences highlighted by shiki at build time, so a page
  * carries highlighted HTML and no highlighter. Both themes go into the HTML as CSS variables
  * (`_code.scss` picks one). The fence's meta (` ```ts title="space.ts" {3,5-7} wrap `) and
  * shiki's notation comments (`// [!code ++]`) add the rest, and `hub.ts` adds copy, collapse
- * and the code group tabs. Inline code with a language (`` `fn()`{ts} ``) is highlighted too.
+ * and the code group tabs. Inline code with a language (`` `fn()`{ts} ``) is highlighted too,
+ * and `<<< path#region` includes a file's region as a code block (§2.3, `snippets.ts`).
  */
 
 /** The languages a page can use; `sh`, `shell`, `yml`, … are shiki's aliases of these */
@@ -262,8 +265,51 @@ const inlineLanguageRule = (state: StateCore) => {
   }
 };
 
+// --- Snippet includes ---
+
+/**
+ * `<<< path/from/repo/root.ts#region {meta}` on a line of its own: a fence token with the file's
+ * region (`snippets.ts`), so it's an ordinary code block (in a `::: code-group` too). Its title
+ * defaults to the path, and a line range is numbered as in the file. A failed include is an error
+ * at the page's line; the file is still recorded, so creating or fixing it rebuilds the page.
+ */
+const snippetRule = (state: StateBlock, startLine: number, _endLine: number, silent: boolean) => {
+  const pos = state.bMarks[startLine] + state.tShift[startLine];
+  const max = state.eMarks[startLine];
+  if (state.sCount[startLine] - state.blkIndent >= 4) return false; // Indented code
+  if (!state.src.startsWith('<<<', pos) || state.src.charAt(pos + 3) === '<') return false;
+  if (silent) return true;
+
+  const env = state.env as HubMarkdownEnv;
+  const spec = parseSnippetSpec(state.src.slice(pos + 3, max));
+  const result = readSnippet(spec);
+  if (result.file && !env.includes.includes(result.file)) env.includes.push(result.file);
+  state.line = startLine + 1;
+  if (!result.isOk) {
+    env.diag.error(env.file, startLine + 1, result.message);
+    return true;
+  }
+
+  const meta = [
+    /\btitle=/.test(spec.meta) ? '' : `title="${spec.path}"`,
+    result.startLine !== null && !/\bstartLine=/.test(spec.meta)
+      ? `startLine=${result.startLine}`
+      : '',
+    spec.meta,
+  ];
+  const token = state.push('fence', 'code', 0);
+  token.info = [result.lang, ...meta].filter(Boolean).join(' ');
+  token.content = `${result.code}\n`;
+  token.markup = '<<<';
+  token.map = [startLine, startLine + 1];
+  return true;
+};
+
 /** Adds the code blocks to the Hub's markdown-it (`md.use(hubCodePlugin, { highlighter, icons })`) */
 export const hubCodePlugin = (md: MarkdownIt, options: HubCodeOptions) => {
+  md.block.ruler.before('fence', 'hub_snippet', snippetRule, {
+    alt: ['paragraph', 'reference', 'blockquote', 'list'],
+  });
   md.core.ruler.after('inline', 'hub_inline_code_lang', inlineLanguageRule);
 
   md.renderer.rules['fence'] = (tokens, idx, _opts, env: HubMarkdownEnv) =>

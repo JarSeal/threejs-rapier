@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Dev tooling, Hub
 Epic: p550_aekasha-hub-epic.md
 Blocks: p553_hub-api-documentation.md (its search entries), p554_hub-examples-start-scene-and-example-scenes.md (its snippets)
@@ -123,13 +123,35 @@ As built:
   `HubBuildResult.files` is watched through `server.watcher`, and a change rebuilds the whole Hub
   and reloads only the pages whose HTML changed. An included file only needs to go into `files`.
 
-### Phase 2 — Snippet includes
+### Phase 2 — Snippet includes — done
 
 §2.3.
 
 **Exit:** a page includes a region of a file under `src/` during `yarn dev`. Editing that region
 refreshes the page. Editing another `src/` file doesn't rebuild the Hub. A missing region fails
 `yarn hub:build`.
+
+As built:
+
+- `devTools/hub/snippets.ts` reads a snippet (`parseSnippetSpec`, `readSnippet`: the path, the
+  region or line range, dedent), and `code.ts`'s block rule `hub_snippet` turns `<<<` into an
+  ordinary `fence` token. So an include has every Phase 1 feature and works in `::: code-group`.
+  The fence meta goes after the path. The title defaults to the path (a `title=` replaces it).
+- Markers in any comment style (`//`, `/* */`, `<!-- -->`, `#`). The first word after
+  `#region` is the name, and text after it is a note (`// #region dynamic-box (shown in the
+  Hub: …)`). A bare `#endregion` closes the innermost region. Nested markers are dropped. A
+  region name used twice in a file, an unclosed region, an empty one and `#name` on a `.json`
+  file (`.jsonc` has comments) are errors.
+- `#L10-L24` (or `#L10`) works on any file. It is numbered as in the file (`startLine`, unless
+  the meta sets one or a dropped marker line would shift the numbers); a region is numbered from 1.
+- Allowed: paths from the repo root, inside it after symlinks, with a text extension (the
+  table in `snippets.ts`, which also picks the language).
+- `HubMarkdownEnv.includes` records every included file, even a missing one, and `buildHub` adds
+  them to `files`. The dev plugin needed no change. Checked on `yarn dev`: an edit in the region
+  updates the page, an edit to another `src/` file doesn't rebuild the Hub, and a missing region
+  fails `yarn hub:build` with the page and line.
+- The first region: `dynamic-box` in `src/app/physicsTest.ts` (comment only), included in the
+  "Snippet includes" section of `hub/pages/documentation/code-blocks/`.
 
 ### Phase 3 — Search
 

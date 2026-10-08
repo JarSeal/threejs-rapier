@@ -48,6 +48,7 @@ export const scene = async () => {
   };
 
   /** A dynamic colored box, half-extents (hx, hy, hz) default 0.4. */
+  // #region dynamic-box (shown in the Hub: hub/pages/documentation/code-blocks/)
   const createDynamicBox = async (
     id: string,
     position: PhysVector,
@@ -74,6 +75,7 @@ export const scene = async () => {
     );
     return rigidBodyIdOf(entityId, id);
   };
+  // #endregion dynamic-box
 
   /** A dynamic colored ball, radius default 0.4. */
   const createDynamicBall = async (

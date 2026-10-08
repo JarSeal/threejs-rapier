@@ -132,6 +132,46 @@ yarn dev:production
 Inline code with a language after it is highlighted too: `` `createMeshEntity(props)`{ts} ``
 renders as `createMeshEntity(props)`{ts}.
 
+## Snippet includes
+
+Show the real code instead of a copy of it: `<<<` on a line of its own includes a file, or a part
+of it, as a code block. The page can't drift from the code, and while `yarn dev` runs, an edit to
+the file refreshes the page.
+
+| Include | What it shows |
+| --- | --- |
+| `<<< path/from/repo/root.ts` | The whole file |
+| `<<< path/from/repo/root.ts#name` | The region `name` |
+| `<<< path/from/repo/root.json#L10-L24` | Lines 10 to 24, numbered as in the file |
+
+The path is from the repo root and stays inside it, and the file is a text file. The language
+comes from its extension and the title is its path. After the path, the fence meta works as on
+a fence (`<<< src/app/space.ts#asteroids {3-5} title="space.ts" wrap`).
+
+Mark a region in the source with a comment. Text after the name is a note, and the marker lines
+(those of regions nested in it too) are left out of the page:
+
+```ts
+// #region dynamic-box (shown in the Hub: hub/pages/documentation/code-blocks/)
+const createDynamicBox = async (id: string, position: PhysVector, color: number) => {
+  // …
+};
+// #endregion dynamic-box
+```
+
+Use the language's own comment: `/* #region name */` in CSS, `<!-- #region name -->` in HTML and
+Markdown, `# #region name` in bash and YAML. JSON has no comments, so a JSON file is included
+whole or by lines.
+
+::: warning A region is part of a page
+A missing file, region or line fails `yarn hub:build` with the page and line, so renaming or
+removing a region that a page includes breaks the page. Say so in the marker's note.
+:::
+
+`<<< src/app/physicsTest.ts#dynamic-box {20-24}` shows:
+
+<<< src/app/physicsTest.ts#dynamic-box {20-24}
+
 ## All together
 
 One block with a title, line highlights, a diff, a focus, an error and a warning, wrapped lines,
