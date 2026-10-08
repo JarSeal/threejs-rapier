@@ -4,6 +4,37 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-08 — finalize-impostor-billboard-lod
+
+### Engine 4.13.0 (Afternoon)
+
+**Added**
+
+- Exported impostors: an impostor can be baked once in the debug build, written into the repo, and loaded by a scene instead of baked at load. Both kinds export (octahedral and cross-quads).
+  - The `*.impostor.json` asset type (`schemas/impostorSchema.ts`, `kind: "OCTAHEDRAL" | "CROSS_QUADS"`): the atlas id, the layout the bake used, `alphaTest`, the resolved shading, `surfaceDepth` (octahedral) or `normals` (cross-quads), a format version and a fingerprint of the source. Written by the export, not by hand.
+  - A scene JSON's `impostors: [id]` loads the listed impostors' atlas slots with the scene's textures. `generateOctahedralImpostor` / `generateCrossQuads` called with a listed `id` then build from the export: no bake, and the export's layout, shading and flags win over the call's options. An impostor that isn't listed, or whose export is of another format version or didn't load, bakes as before (with a warning when it's listed).
+  - Stale exports: in the debug env, using an export hashes the call's geometry, material and resolved options (`getImpostorSourceHash`) and warns when they no longer match the export's fingerprint. The export is used anyway; re-exporting it is the fix. Production skips the hash.
+  - The bake and the build are split: `bakeOctahedralImpostorAtlases` / `bakeCrossQuadsAtlases` bake into unregistered targets, and `buildOctahedralImpostor` / `buildCrossQuads` build the quad (or planes) and the material from a layout and two atlases, with `vOrigin: 'TOP' | 'BOTTOM'` (a bake's render target against a loaded KTX2's v-up atlas).
+  - `IMPOSTOR_EXPORT_FORMAT_VERSION`, the kinds and their atlas slots (`getImpostorDefSlots`) in `core/Lod/Impostors/ImpostorFormat.ts`; the impostor registry (`getImpostorRecord`, `getImpostorRecords`: every impostor generated this session, baked or loaded, with its bake time).
+  - `AppConfig.lod.impostorExportDir` (default `src/app/impostors`): where a new export is written. A re-export writes where the impostor's files already are.
+- Texture atlases: `slots.<name>.image`, a ready-made image of the whole layout (the slot isn't composed from its cells; every cell needs a `rect`), and `mipChain: "FULL"`, every mip level down to 1 × 1 instead of stopping where cells would mix. `TextureAtlasSlotInfo` gets `mipChain` and `fromImage`.
+- Debug: the LOD tab's Impostors folder lists the impostors generated in the scene (kind, baked or loaded from its export, export state: not exported, up to date, stale or another format; atlas size, bake time) with Export / Re-export and Export all. An export bakes again from the impostor's source, reads the atlases back and writes the `*.impostor.json`, the `*.textureAtlas.json` and the PNGs in one dev files batch, and the gather's result is shown as a toast after the reload. Without the dev files (a LAN device, `AEK_DEV_FILES=false`, no dev server) it downloads the files and lists the paths to put them at.
+- The Assets tab's atlas slot info shows the mip chain and whether the slot is a ready-made image.
+
+### App 1.7.1 (Preschooler)
+
+**Changed**
+
+- largeWorld loads its rock and tree impostors from their exports (`src/app/impostors/`, listed in `largeWorld.scene.json`'s `impostors`): no bake at load (the scene loads in about 1,385 ms against 1,450 ms), and the atlases take about a quarter of the GPU memory (UASTC KTX2: 1.0 MB against 4.0 MB per rock atlas).
+- The `textureAtlases` scene gets a third test atlas, `p299TestAtlasImage`: a ready-made two-slot image with a full mip chain, each slot and cell drawn at every level.
+
+### Project
+
+**Added**
+
+- The asset pipeline builds atlas `image` slots (the image's size checked, no composition) and `mipChain: "FULL"` chains (exact 2 × 2 box, then area-filtered past an odd size). The cache key changes only for atlases that set them. A run labels such a slot "N cells in an image, full chain".
+- The gatherer validates `*.impostor.json` files (their atlas must exist, have the slots the kind reads and be the layout's size) and expands a scene's `impostors` into the definitions on its generated data and the slots into its `textures`. An impostor of another format version is left out with a warning.
+
 ## 2026-10-07 — dev-server-implementation
 
 ### Engine 4.12.0 (Afternoon)

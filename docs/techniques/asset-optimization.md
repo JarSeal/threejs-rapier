@@ -184,6 +184,34 @@ A texture JSON can build its image from several sources with `pack`, in place of
 
 With optimization off, a pack is still built and written as a PNG, since it has no single source file.
 
+## Impostor atlases
+
+An impostor (a far LOD level drawn with a few textured quads) bakes its atlases at load, or is exported once and loaded from the repo. You don't write these files by hand: the LOD debug tab's Impostors folder writes them while `yarn dev` runs (or downloads them, with the paths to put them at). An export is four files, in `src/app/impostors/` by default (`AppConfig.lod.impostorExportDir`):
+
+```text
+rock.impostor.json        what the material needs: kind, layout, shading, alpha test, fingerprint
+rock.textureAtlas.json    the atlas: one image slot per atlas, one cell per frame
+rock.albedo.png           the baked albedo, alpha cut, transparent texels dilated
+rock.normalDepth.png      object-space normal + depth (octahedral; cross-quads: rock.normal.png)
+```
+
+The pipeline encodes the atlas's slots like any texture, into `src/public/aek-assets/`. A scene loads the impostor by listing it, `"impostors": ["rock"]` in its `*.scene.json`, and code calls the generator with the same `id` as before. Re-export after changing the source mesh: a debug build warns when the export's fingerprint no longer matches it.
+
+The atlas JSON uses two texture atlas keys that exist for exports like this:
+
+- **`slots.<name>.image`**: a ready-made image of the whole layout (the atlas's `size`), relative to the JSON. The slot isn't composed from its cells (no resize, no edge extension, no fill), so every cell needs a `rect` and has no `sources`. The image's size is checked by the gather and again by the encode.
+- **`mipChain: "FULL"`**: every mip level down to 1 × 1 (an exact 2 × 2 box, area-filtered past an odd size). The default, `"PROTECTED"`, stops the chain at the last level the padding keeps apart, so cells never mix. An impostor's neighbouring cells are neighbouring views of the same object, so mixing them is harmless, and a short chain would shimmer at distance.
+
+The codecs per slot, as an export writes them:
+
+| Slot                       | Contents                                                | Settings                                                                                             |
+| -------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `albedo`                   | sRGB colour, alpha cut                                  | `slot: "baseColor"` (UASTC λ 2)                                                                      |
+| `normalDepth` (octahedral) | Object-space normal in RGB, depth in alpha, linear      | `slot: "data"` with `{ "codec": "uastc", "rdo": 0 }`: depth error moves the parallax and the shadows |
+| `normal` (cross-quads)     | Normal in the plane's frame (as the bake camera saw it) | `slot: "normal"` (resized as unit vectors)                                                           |
+
+A 12 × 12 octahedral atlas (864²) is about 1 MB of GPU memory per slot as UASTC, against about 4 MB baked at load (RGBA8 with mips).
+
 ## Budgets
 
 A build fails when a shipped asset goes over its budget, so a texture that grew to 4K or slipped into `none` doesn't reach production unnoticed.

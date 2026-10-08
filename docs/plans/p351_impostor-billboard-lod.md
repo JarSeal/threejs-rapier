@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: in progress | Phases 1-4 implemented
 Category: Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 2.2)
 Blocked by: p341_alpha-coverage-mips.md (Phase 5 only: its cross-quad lane, see Phase 4 section 6)
@@ -546,7 +546,7 @@ gutter = 4, alphaTest = 0.5, shading = 'AUTO', surfaceDepth = true })` in
 - Open question 1 is settled (§5). Left as seen: the blend is softer than one frame up close, and
   a hemi impostor from well below the horizon is drawn as flat cards.
 
-### Phase 4 — Exported atlases
+### Phase 4 — Exported atlases — done
 
 A debug "Export" button writes an impostor's atlases into the repo through the dev file server
 (`_DONE_p342`); p300 encodes them as KTX2, and a scene that lists the impostor loads it instead of
@@ -873,7 +873,19 @@ vOrigin })`, which rebuilds the planes with uvs for the v origin and flips the p
 7. **Close the phase:** As built, the exit measured, CLAUDE.md (the data pipeline's suffix list,
    the Impostors section: export, the scene's `impostors`, the v origin), `readme.md` (the new asset
    JSON type; the Roadmap's exported atlases into Features), `docs/techniques/asset-optimization.md`
-   (impostor atlases: `image` slots, `mipChain`, the slot codecs), versions and CHANGELOG.
+   (impostor atlases: `image` slots, `mipChain`, the slot codecs), versions and CHANGELOG. — done:
+   engine 4.12.0 → 4.13.0 (the asset type, p299's extensions, the export and load paths), app
+   1.7.0 → 1.7.1 (largeWorld's adoption, the exports, p299's test atlas), toolkit unchanged; the
+   branch's CHANGELOG entry has a Project section for the gatherer and the asset pipeline.
+   Found in the code: `asset-optimization.md` has no texture atlas section yet (p299 Phase 6's), so
+   its new "Impostor atlases" section explains `image` slots and `mipChain` on their own and points
+   at p299's schema for the rest. CLAUDE.md's suffix list lacked `*.textureArray.json`,
+   `*.textureAtlas.json` and `*.postFx.json` too; added with `*.impostor.json`. Exit re-checked at
+   the branch's tip (macOS, Chrome, `?isDebug=true`, `sceneTestECS` → largeWorld through the app's
+   own `loadScene`): both records `EXPORTED`, `bakeMs: null`, sources kept; no warning or error
+   during the load; 1,411 ms on WebGPU, 2,132 ms on WebGL2 (SwiftShader). The download fallback is
+   kind-agnostic in the code (it downloads whatever files the kind built), so section 3's run on
+   the rock covers the tree; not run again.
 
 **Exit:** largeWorld's rocks and trees load from their exports, with no bake at load (the scene
 load is faster by the rock's 40-115 ms and the tree's 12 ms); they look like the runtime bake
@@ -881,6 +893,35 @@ load is faster by the rock's 40-115 ms and the tree's 12 ms); they look like the
 extra self-shadowing acne); WebGPU and WebGL2 agree; the GPU memory tab shows about 1 MB per
 atlas; a stale export warns in the debug env; with `getDevFilesStatus()` unavailable the button
 downloads the files.
+
+As built:
+
+- Exit, met for the rocks, met with one accepted gap for the trees (sections 5-7's measurements,
+  WebGPU on an Apple GPU unless named):
+  - No bake at load: both records `EXPORTED` (section 7, both backends). Load: rock about 45 ms
+    faster (its bake was 32-34 ms here, under Phase 3's 40-115 ms range: a faster machine), tree
+    about 15 ms; largeWorld about 1,385 ms against about 1,450 ms with both baked.
+  - Looks like the bake: the rock at the switch distance, exported 6.0-8.6 against level 0, the
+    bake 5.6-8.0; per view 0.0-1.2 above the bake (so at most 0.6 over the bake's own range),
+    exported against baked 2.1-3.0. No extra self-shadowing acne (decision 3's codecs kept). The
+    trees: exported against level 1 IoU 0.59-0.81 against the bake's 0.70-0.89, outside the bake's
+    figures. Its thin trunks break up at mip levels 3-4 under the exact box chain, where three's
+    bilinear GPU mips keep them. Accepted after review; p341_alpha-coverage-mips.md fixes it before
+    Phase 5.
+  - WebGPU and WebGL2 agree: within 0.5 (rock) and 0.4 (tree) of each other.
+  - GPU memory: 995,712 B per rock atlas (against 3,980,317 B baked), 46,112 B per tree atlas
+    (against 182,738 B).
+  - Stale warns once, for both kinds, and the scene draws from the export.
+  - Download fallback: section 3 (the rock); the same code for the tree (section 7).
+- What a later phase builds on: `*.impostor.json` (`schemas/impostorSchema.ts`, both kinds,
+  `IMPOSTOR_EXPORT_FORMAT_VERSION` 1 in `ImpostorFormat.ts`), the scene's `impostors`, the
+  generators' split into a bake (`bakeOctahedralImpostorAtlases`, `bakeCrossQuadsAtlases`) and a
+  build (`buildOctahedralImpostor`, `buildCrossQuads`, with `vOrigin`), `getImpostorExport` /
+  `warnIfImpostorExportStale` (`ImpostorExports.ts`), the registry (`ImpostorRegistry.ts`), the
+  fingerprint (`ImpostorSourceHash.ts`: integer arrays hashed as their 32-bit upload) and the
+  LOD tab's Impostors folder (`_dbg__ImpostorExport.ts`). Phase 5's lanes 3-5 export through it.
+- p299 gained `slots.<name>.image` and `mipChain: "FULL"` (section 1), which p299 Phase 6's docs
+  should fold into its atlas section.
 
 ### Phase 5 — LOD showcase scene
 
