@@ -184,6 +184,22 @@ A texture JSON can build its image from several sources with `pack`, in place of
 
 With optimization off, a pack is still built and written as a PNG, since it has no single source file.
 
+## Alpha-cut textures
+
+A mip level averages alpha, so a material with `alphaTest` loses thin features with distance: a leaf card's edge or a trunk falls below the cut and breaks up. `alphaCoverage` fixes that at build time. Set it to the material's `alphaTest`, and each mip level's alpha is scaled so the same share of it passes the cut as at level 0:
+
+```json
+"albedo": {
+  "image": "./tree.albedo.png",
+  "optimize": { "slot": "baseColor", "alphaCoverage": 0.5 }
+}
+```
+
+- **Where:** an atlas slot's `optimize`. Plain `*.texture.json` files don't take it yet.
+- **Only for coverage alpha:** an albedo cut by `alphaTest`. A `normal` or `data` slot, or `normalMode`, is refused: their alpha is data. Without an alpha channel or mipmaps it does nothing (with a warning).
+- **Per cell:** an atlas keeps each cell's own coverage on the levels its padding keeps apart, and the whole image's on a full chain's levels past them.
+- **What it can't fix:** a level only a few texels across moves in coarse steps. Below that, UASTC's alpha error near the cut (up to about 18/255 on small levels) can still move the edge by a few percent.
+
 ## Impostor atlases
 
 An impostor (a far LOD level drawn with a few textured quads) bakes its atlases at load, or is exported once and loaded from the repo. You don't write these files by hand: the LOD debug tab's Impostors folder writes them while `yarn dev` runs (or downloads them, with the paths to put them at). An export is four files, in `src/app/impostors/` by default (`AppConfig.lod.impostorExportDir`):

@@ -663,10 +663,16 @@
                 },
                 "additionalProperties": false,
                 "description": "Per-asset limits. Set in an asset JSON's own optimize, it also replaces the per-texture ceiling (each texture's VRAM must fit its slot's maxSize and codec as set without the asset JSON's overrides)."
+              },
+              "alphaCoverage": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "description": "The material's alphaTest (0-1, eg. 0.5): each mip level's alpha is scaled so the share of it passing this cut stays level 0's, so thin alpha-cut features (leaves, trunks, an impostor's edges) don't thin out with distance. Needs an alpha channel and mipmaps; not for a normal or data slot, or normalMode (their alpha isn't coverage). Default: off."
               }
             },
             "additionalProperties": false,
-            "description": "Asset optimization (p300): a profile, the slot and per-slot overrides, applied to every layer. The codec can't be none: an array is a KTX2 file."
+            "description": "Asset optimization (p300): a profile, the slot and per-slot overrides, and the slot's alphaCoverage. The codec can't be none: an atlas slot is a KTX2 file."
           },
           "userData": {
             "type": "object",

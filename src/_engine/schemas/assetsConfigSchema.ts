@@ -181,6 +181,37 @@ export const TextureArrayOptimizeSchema = z
     "Asset optimization (p300): a profile, the slot and per-slot overrides, applied to every layer. The codec can't be none: an array is a KTX2 file."
   );
 
+/** Slots whose alpha isn't coverage (a normal map's, data packed into it): never scaled */
+export const NON_COVERAGE_SLOTS: readonly TextureSlot[] = ['normal', 'data'];
+
+/**
+ * p341: the alpha test's cut, so each mip level's alpha is scaled to keep level 0's coverage.
+ * Only for alpha that an `alphaTest` cuts (an albedo), set per asset (or atlas slot), since the
+ * cut is its material's.
+ */
+export const AlphaCoverageSchema = z
+  .number()
+  .gt(0)
+  .max(1)
+  .describe(
+    "The material's alphaTest (0-1, eg. 0.5): each mip level's alpha is scaled so the share of it passing this cut stays level 0's, so thin alpha-cut features (leaves, trunks, an impostor's edges) don't thin out with distance. Needs an alpha channel and mipmaps; not for a normal or data slot, or normalMode (their alpha isn't coverage). Default: off."
+  );
+
+/** Refuses `alphaCoverage` on an optimize that names a slot whose alpha isn't coverage */
+export const refineAlphaCoverageSlot = (
+  optimize: { slot?: TextureSlot; alphaCoverage?: number },
+  ctx: z.RefinementCtx
+) => {
+  if (optimize.alphaCoverage === undefined || !optimize.slot) return;
+  if (NON_COVERAGE_SLOTS.includes(optimize.slot)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['alphaCoverage'],
+      message: `the slot "${optimize.slot}" has no coverage alpha (a normal map's or packed data): alphaCoverage would scale it`,
+    });
+  }
+};
+
 /** A `*.importedAsset.json`'s `optimize`: its textures are classified by their material slot. */
 export const ImportedAssetOptimizeSchema = z
   .union([z.literal(false), z.strictObject(OptimizeObjectShape).omit({ slot: true })])

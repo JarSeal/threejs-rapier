@@ -206,7 +206,10 @@ const collectTextureAtlas = (
       type: 'textureAtlas',
       id: getAtlasSlotTextureId(id, slot),
       jsonFile: toRepoPath(jsonFile),
-      source: createAtlasSlotSource(jsonFile, id, layout, slot, fill),
+      source: createAtlasSlotSource(jsonFile, id, layout, slot, {
+        fill,
+        alphaCoverage: optimize?.alphaCoverage,
+      }),
       ...(optimize !== undefined ? { optimize } : {}),
       isSrgb: texOpts?.colorSpace === 'srgb',
     },

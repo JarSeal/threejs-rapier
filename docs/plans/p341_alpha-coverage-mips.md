@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Assets, Textures
 Blocks: p351_impostor-billboard-lod.md (Phase 5: its cross-quad lane and no-pop dolly)
 Related: p299_texture-arrays-and-atlases.md (the atlas mip chain this extends), \_DONE_p300_asset-optimization-pipeline-plan.md (the pipeline), p308_terrain-scatter.md (leaf cards)
@@ -59,11 +59,38 @@ target is level 0's coverage, not the bake's.
 
 ## 3. Phases
 
-### Phase 1 — Atlases
+### Phase 1 — Atlases — done
 
 The schema option on atlas slots, the per-level scale in `textureAtlases.ts`, the per-cell rule,
 the cache key, the run's label ("alpha coverage 0.5"). Checked on p299's `p299TestAtlasImage`
 (alpha-cut discs): each level's coverage within 1 % of level 0's, against the unscaled chain's drop.
+
+As built:
+
+- The maths is `devTools/assetPipeline/alphaCoverage.ts` (`measureAlphaCoverage`,
+  `scaleAlphaForCoverage`), for Phase 3 to reuse. Coverage is measured on the alpha **quantized to
+  8 bits**, as `encodePng` stores it: the search puts texels right at the cut, and measuring the
+  floats lost those that round below it (level 2 0.995, level 3 0.984 before the fix).
+- The option is `TextureAtlasSlotOptimizeSchema` (the array's `optimize` plus `alphaCoverage`, so
+  `*.textureArray.json` doesn't get it), with `AlphaCoverageSchema` and `refineAlphaCoverageSlot`
+  in `assetsConfigSchema.ts` for Phase 3. It travels on `AtlasSlotSource.alphaCoverage`, not the
+  resolved settings: the cut is the asset's (its material's), not a profile's or a rule's. The
+  encode refuses (throws) a slot that resolves to `normal` / `data` or `normalMode` through a rule
+  or profile, which the schema can't see, and warns and skips without alpha or mipmaps.
+- The cache key gets `alphaCoverage: { cut, version: ALPHA_COVERAGE_VERSION }` only when set: bump
+  the version when what the scale writes changes.
+- The search: closest coverage to the target, the bracket doubling from 1 (up to 256) or [0, 1],
+  then 12 bisection steps; ties keep the scale nearest 1, so empty and opaque cells stay as they are.
+- Measured (decoded KTX2 against level 0's coverage, cut 0.5; unscaled box chain in brackets):
+  levels 1-2 per cell 1.000 / 1.002 (1.001 / 0.984); level 3 whole 0.969 (0.964), its 8-bit input
+  1.005; level 4 0.922 (0.838); levels 5-7 0 (0). The 1 % holds on the levels the layout keeps
+  apart. Level 3 is UASTC: up to 18/255 of alpha error on the disc edges (75 and 189 against the
+  cut's 127.5), the same with `rdo: 0` and with `level: 4` (open question 1). Levels 4 and down are
+  granularity: the 9 identical discs at a few texels each move in steps of several percent, and at
+  6 × 6 no scale gets nearer than 0 (they jump from none passing to most). The tree's atlas
+  (`alphaTest` 0.5, levels 0 protected, so whole image from 1) does better, its 8-bit input
+  against the unscaled chain: levels 1-4 1.000 (0.998-0.837), 7 × 4 1.006 (0.254), 3 × 2 0.939
+  (0), 1 × 1 0 (0); Phase 2 measures the decoded export.
 
 ### Phase 2 — Impostor exports
 

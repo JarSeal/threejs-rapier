@@ -10,6 +10,30 @@
         "out": 33824
       }
     },
+    "2ced78e3ded0f2209b768d8fc54b85cc6fb45994c5da07ea739f3b9c8bbca0a3": {
+      "source": "src/app/textures/p299TestAtlasImage.textureAtlas.json",
+      "url": "/aek-assets/app/textures/p299TestAtlasImage.atlas.albedo.26184dd3.ktx2",
+      "bytes": 4202,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 4202,
+          "source": {
+            "width": 192,
+            "height": 192,
+            "bytes": 2322
+          },
+          "codec": "uastc",
+          "width": 192,
+          "height": 192,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
     "78b08805112a161e01fd696e77f8d22c160f3fcc6166b5a5bf01b359bbfafd51": {
       "source": "src/app/textures/p299TestAtlas.textureAtlas.json",
       "url": "/aek-assets/app/textures/p299TestAtlas.atlas.mask.91a3bdbd.ktx2",
@@ -201,30 +225,6 @@
           "codec": "uastc",
           "width": 252,
           "height": 136,
-          "hasAlpha": true,
-          "mipmaps": true,
-          "normalMode": false,
-          "levels": 8
-        }
-      ],
-      "ktxVersion": "4.4.2"
-    },
-    "cb28af28b93099b6941a5e45da89557a49cae347ba7645d77b12549032bf6453": {
-      "source": "src/app/textures/p299TestAtlasImage.textureAtlas.json",
-      "url": "/aek-assets/app/textures/p299TestAtlasImage.atlas.albedo.19a35ea8.ktx2",
-      "bytes": 4089,
-      "textures": [
-        {
-          "slot": "baseColor",
-          "bytes": 4089,
-          "source": {
-            "width": 192,
-            "height": 192,
-            "bytes": 2322
-          },
-          "codec": "uastc",
-          "width": 192,
-          "height": 192,
           "hasAlpha": true,
           "mipmaps": true,
           "normalMode": false,

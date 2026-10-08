@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import type { TextureSlot } from '../../src/_engine/schemas/assetsConfigSchema';
+import { NON_COVERAGE_SLOTS, type TextureSlot } from '../../src/_engine/schemas/assetsConfigSchema';
 import {
   DEFAULT_ATLAS_PADDING,
   getFullMipLevelCount,
@@ -9,6 +9,12 @@ import {
   type TextureAtlasCellInfo,
   type TextureAtlasSlot,
 } from '../../src/_engine/schemas/textureAtlasSchema';
+import {
+  ALPHA_COVERAGE_VERSION,
+  measureAlphaCoverage,
+  scaleAlphaForCoverage,
+  type CoverageRegion,
+} from './alphaCoverage';
 import { createImage, flipY, halve, resizeImage, toChannels, type Img } from './images';
 import { encodeKtx2Levels, type KtxProvider, type KtxSettings } from './ktxEncode';
 import { getAtlasLogicalPath, writeOutput, type PipelineOutput } from './outputs';
@@ -395,6 +401,8 @@ export type AtlasSlotSource = {
   fill?: TextureAtlasSlot['fill'];
   /** The slot's ready-made image of the whole layout: then no cell has a `source` */
   image?: TextureArrayLayer;
+  /** The slot's `optimize.alphaCoverage` (p341): the cut each level's coverage is kept at */
+  alphaCoverage?: number;
   /** In the JSON's order; `source` unset: the slot's fill (or its image) */
   cells: { id: string; rect: AtlasRect; content: AtlasRect; source?: TextureArrayLayer }[];
 };
@@ -404,9 +412,10 @@ export const createAtlasSlotSource = (
   atlasId: string,
   layout: TextureAtlasLayout,
   slot: string,
-  fill?: TextureAtlasSlot['fill']
+  opts: { fill?: TextureAtlasSlot['fill']; alphaCoverage?: number } = {}
 ): AtlasSlotSource => {
   const file = path.resolve(jsonFile);
+  const { fill, alphaCoverage } = opts;
   return {
     kind: 'atlas',
     jsonFile: file,
@@ -419,6 +428,7 @@ export const createAtlasSlotSource = (
     ...(layout.mipChain === 'FULL' ? { mipChain: 'FULL' as const } : {}),
     ...(fill ? { fill } : {}),
     ...(layout.images[slot] ? { image: layout.images[slot] } : {}),
+    ...(alphaCoverage !== undefined ? { alphaCoverage } : {}),
     cells: layout.cells.map(({ id, rect, content, sources }) => ({
       id,
       rect,
@@ -440,14 +450,18 @@ export const listTextureAtlasFiles = (source: AtlasSlotSource) =>
 /**
  * The cache key's inputs (besides the files, the settings and the colour space): the layout as
  * this slot draws it (each cell's rects and what its source is, a file, a pack's recipe or the
- * fill), the fill, the image, the full chain and the output's name. The last two only when set,
- * so the keys of the atlases without them didn't change.
+ * fill), the fill, the image, the full chain, the alpha coverage (with its maths' version) and
+ * the output's name. The full chain, the image and the alpha coverage only when set, so the keys
+ * of the atlases without them didn't change.
  */
 export const getTextureAtlasKeyParams = (source: AtlasSlotSource) => ({
   size: source.size,
   padding: source.padding,
   levels: source.levels,
   ...(source.mipChain ? { mipChain: source.mipChain } : {}),
+  ...(source.alphaCoverage !== undefined
+    ? { alphaCoverage: { cut: source.alphaCoverage, version: ALPHA_COVERAGE_VERSION } }
+    : {}),
   ...(source.image ? { image: getTextureSourceKeyParam(source.image) } : {}),
   fill: source.fill ?? null,
   cells: source.cells.map(({ rect, content, source: cellSource }) => ({
@@ -482,12 +496,47 @@ const drawCell = (atlas: Img, img: Img, rect: AtlasRect, content: AtlasRect) => 
 };
 
 /**
+ * The cut a slot's levels keep their coverage at (p341), or undefined. Checked against what the
+ * slot resolves to, which the schema only sees when the JSON names it: throws for a slot whose
+ * alpha isn't coverage (a normal map's, data, `normalMode`'s Y), and warns that it does nothing
+ * without alpha or mipmaps.
+ */
+const getCoverageCut = (
+  source: AtlasSlotSource,
+  slot: TextureSlot,
+  settings: KtxSettings,
+  hasAlpha: boolean,
+  warn: (message: string) => void
+) => {
+  const cut = source.alphaCoverage;
+  if (cut === undefined) return undefined;
+  const label = `slots.${source.slot}.optimize.alphaCoverage`;
+  if (NON_COVERAGE_SLOTS.includes(slot) || settings.normalMode) {
+    const what = settings.normalMode ? 'normalMode, whose alpha is Y' : `the slot "${slot}"`;
+    throw new Error(
+      `${label}: the slot resolves to ${what}: its alpha isn't coverage, and scaling it would change its data`
+    );
+  }
+  if (!hasAlpha) {
+    warn(`${label}: the slot has no alpha channel, so there is no coverage to keep`);
+    return undefined;
+  }
+  if (!settings.mipmaps) {
+    warn(`${label}: mipmaps are off, so there are no levels to scale`);
+    return undefined;
+  }
+  return cut;
+};
+
+/**
  * Encodes an atlas slot (p299 D3): the layout filled with the slot's `fill` (RGB(A), linear;
  * default transparent black, an RGB fill is opaque), each cell's source resized into its content
  * rect and edge-extended over its padding (or the slot's ready-made `image`, as it is), then
  * box-filtered levels (exact 2×2 halving, as `images.ts` does) down to the last one the layout
  * keeps apart, or with the full chain down to 1×1 (an odd size area-filtered), as one KTX2 with
  * `ktx create --levels`. A source with alpha, or a fill with alpha below 1, makes the slot RGBA.
+ * With `alphaCoverage` (p341) each stored level past 0 has its alpha scaled to level 0's coverage
+ * at that cut: cell by cell while the layout keeps them apart, the whole image past that.
  * `maxSize` drops the top levels until one fits (the cells stay aligned), with a warning. Warns
  * for a source that is upscaled or stretched into its cell. Throws, naming the cell, for a source
  * that can't be read, for an image that isn't the layout's size, and when `maxSize` leaves none of
@@ -553,6 +602,7 @@ export const encodeTextureAtlasSlot = async (
     ? imageProbe.hasAlpha
     : probes.some((probe) => probe?.hasAlpha) || (fill?.length === 4 && fill[3] < 1);
   const channels = hasAlpha ? 4 : 3;
+  const coverageCut = getCoverageCut(source, slot, settings, hasAlpha, opts.warn);
 
   // The levels stored: from the first that fits maxSize to the last the layout keeps apart (or
   // to 1×1 with the full chain)
@@ -616,19 +666,40 @@ export const encodeTextureAtlasSlot = async (
     return atlas;
   };
 
+  // p341: level 0's coverage, per cell for the levels the layout keeps apart and of the whole
+  // image for a full chain's levels past them (which mix the cells)
+  const getCellRegions = (levelIndex: number) =>
+    source.cells.map(({ rect }) => rect.map((px) => px >> levelIndex) as CoverageRegion);
+  let coverageTargets: { cells: number[]; whole: number | null } | null = null;
+  const measureCoverageTargets = (level0: Img, cut: number) => ({
+    cells: getCellRegions(0).map((region) => measureAlphaCoverage(level0, cut, region)),
+    whole: last >= source.levels ? measureAlphaCoverage(level0, cut) : null,
+  });
+  // A scaled copy: the next level is halved from the unscaled one, so the scales don't compound
+  const scaleCoverage = (img: Img, levelIndex: number) => {
+    if (coverageCut === undefined || !coverageTargets || levelIndex === 0) return img;
+    const { cells, whole } = coverageTargets;
+    return levelIndex < source.levels
+      ? scaleAlphaForCoverage(img, coverageCut, cells, getCellRegions(levelIndex)).image
+      : scaleAlphaForCoverage(img, coverageCut, [whole!]).image;
+  };
+
   // One level in memory at a time (and the one it is halved from)
   let level: Img | null = null;
   const bytes = await encodeKtx2Levels(
     levelCount,
-    async () => {
+    async (index) => {
       if (!level) {
         level = await composeLevel0();
+        if (coverageCut !== undefined) {
+          coverageTargets = measureCoverageTargets(level, coverageCut);
+        }
         for (let i = 0; i < first; i++) level = nextLevel(level);
       } else {
         level = nextLevel(level);
       }
       // Flipped as stored, like a texture's KTX2
-      return flipY(level);
+      return flipY(scaleCoverage(level, first + index));
     },
     settings,
     { channels, isSrgb: opts.isSrgb, isNormal, getKtx: opts.getKtx }

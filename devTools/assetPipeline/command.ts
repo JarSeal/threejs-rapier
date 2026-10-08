@@ -50,8 +50,12 @@ const getAssetLabel = (asset: PipelineAsset) => {
           : count(asset.source.cells.filter((cell) => cell.source).length, 'cell')
         : '';
   const fullChain = asset.source.kind === 'atlas' && asset.source.mipChain ? ', full chain' : '';
+  const alphaCoverage =
+    asset.source.kind === 'atlas' && asset.source.alphaCoverage !== undefined
+      ? `, alpha coverage ${asset.source.alphaCoverage}`
+      : '';
   const colorSpace = asset.type !== 'importedAsset' && asset.isSrgb ? ', sRGB' : '';
-  return `${asset.id} ${DIM}(${source}${parts}${fullChain}${colorSpace})${RESET}`;
+  return `${asset.id} ${DIM}(${source}${parts}${fullChain}${alphaCoverage}${colorSpace})${RESET}`;
 };
 
 const STATUS_LABELS: Record<PipelineRunResult['status'], string> = {

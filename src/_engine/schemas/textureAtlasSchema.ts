@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { DebugDataSchema, UserDataSchema } from './_helperSchemas';
-import { GeneratedAssetFieldsSchema, TextureArrayOptimizeSchema } from './assetsConfigSchema';
+import {
+  AlphaCoverageSchema,
+  GeneratedAssetFieldsSchema,
+  refineAlphaCoverageSlot,
+  TextureArrayOptimizeSchema,
+} from './assetsConfigSchema';
 import { TexOptsSchema } from './textureSchema';
 
 /**
@@ -25,6 +30,15 @@ export const getFullMipLevelCount = (width: number, height: number) =>
 
 const PxSchema = z.number().int();
 
+/** A slot's `optimize`: an array's, plus `alphaCoverage` (p341), which is the slot's own */
+export const TextureAtlasSlotOptimizeSchema = TextureArrayOptimizeSchema.extend({
+  alphaCoverage: AlphaCoverageSchema.optional(),
+})
+  .superRefine(refineAlphaCoverageSlot)
+  .describe(
+    "Asset optimization (p300): a profile, the slot and per-slot overrides, and the slot's alphaCoverage. The codec can't be none: an atlas slot is a KTX2 file."
+  );
+
 export const TextureAtlasSlotSchema = z
   .strictObject({
     /** The slot texture's sampler state and colour space (`colorSpace` decides how its sources
@@ -47,7 +61,7 @@ export const TextureAtlasSlotSchema = z
         'RGB(A), linear 0..1 like a pack constant: the atlas outside the cells, and the cells without a source in this slot (default transparent black; a normal map wants [0.5, 0.5, 1]). Not with `image`.'
       ),
     /** Build time only: never read by the runtime */
-    optimize: TextureArrayOptimizeSchema.optional(),
+    optimize: TextureAtlasSlotOptimizeSchema.optional(),
     userData: UserDataSchema.optional(),
     debugData: DebugDataSchema.optional(),
   })
