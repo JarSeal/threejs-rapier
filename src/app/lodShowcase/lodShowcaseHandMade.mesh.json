@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../.schemas/mesh.schema.json",
+  "props": {
+    "appId": "lodShowcaseHandMade",
+    "geo": "lodShowcaseSphereLod0",
+    "mat": "lodShowcaseSphere",
+    "castShadow": true,
+    "receiveShadow": true,
+    "position": { "x": -12, "y": 1, "z": -2 },
+    "lod": {
+      "levels": [
+        { "screenSize": 0.06 },
+        { "screenSize": 0.025, "geo": "lodShowcaseSphereLod1" },
+        { "screenSize": 0, "geo": "lodShowcaseSphereLod2", "castShadow": false }
+      ],
+      "cullScreenSize": 0.01,
+      "fadeSeconds": 0.4
+    }
+  },
+  "entityOpts": {
+    "debugData": {
+      "name": "LOD showcase: hand-made levels",
+      "description": "Lane 1 of the lodShowcase scene (p351 Phase 5): levels authored in JSON, the same sphere at fewer segments. This is the lane's first object (level 0's band); the lane places copies of this definition in the farther bands (lodShowcase/lanes/handMadeLevels.ts), so keep it at the lane's x (-12)."
+    }
+  }
+}

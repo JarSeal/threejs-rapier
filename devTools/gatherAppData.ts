@@ -69,6 +69,15 @@ import {
   type TextureAtlasSlotTexture,
 } from '../src/_engine/schemas/textureAtlasSchema';
 import { getAtlasCellTable, resolveTextureAtlas } from './assetPipeline/textureAtlases';
+import {
+  ImpostorAssetSchema,
+  type ImpostorAsset,
+  type ImpostorDef,
+} from '../src/_engine/schemas/impostorSchema';
+import {
+  getImpostorDefSlots,
+  IMPOSTOR_EXPORT_FORMAT_VERSION,
+} from '../src/_engine/core/Lod/Impostors/ImpostorFormat';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
@@ -93,6 +102,7 @@ const JSON_ENDING_SIGNATURES = {
   skybox: '.skybox.json',
   // physicsObjects: '.physObj.json',
   postFx: '.postFx.json',
+  impostor: '.impostor.json',
 };
 
 type ZodIssue = z.ZodError['issues'][number];
@@ -135,12 +145,14 @@ const GATHERED_SCHEMAS: Record<keyof typeof JSON_ENDING_SIGNATURES, z.ZodType> =
   importedAsset: ImportedAssetSchema,
   skybox: SkyBoxAssetSchema,
   postFx: PostFxAssetSchema,
+  impostor: ImpostorAssetSchema,
 };
 
 // The gathered types without per-scene `__saveData`
 const TYPES_WITHOUT_SAVE_DATA: (keyof typeof JSON_ENDING_SIGNATURES)[] = [
   'textureArray',
   'textureAtlas',
+  'impostor',
 ];
 
 const getGatheredJsonType = (filePath: string) =>
@@ -357,6 +369,7 @@ const compileJsonSchemas = () => {
     { name: 'importedAsset.schema.json', schema: ImportedAssetSchema },
     { name: 'skyBox.schema.json', schema: SkyBoxAssetSchema },
     { name: 'postFx.schema.json', schema: PostFxAssetSchema },
+    { name: 'impostor.schema.json', schema: ImpostorAssetSchema },
     { name: 'assetsConfig.schema.json', schema: AssetsConfigSchema },
   ];
 
@@ -440,6 +453,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
     importedAssets: Record<string, unknown>;
     skyboxes: Record<string, unknown>;
     postFx: Record<string, PostFxAsset>;
+    impostors: Record<string, ImpostorAsset>;
   } = {
     scenes: {},
     cameras: {},
@@ -452,6 +466,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
     skyboxes: {},
     // physicsObjects: {},
     postFx: {},
+    impostors: {},
   };
   let sceneFileImports = `// THIS IS AN AUTO-GENERATED FILE, DO NOT MODIFY!\n// ALSO, DO NOT MODIFY THE '${generatedAppDataJSONFilename}' FILE)!\n`;
   let addedFirstImport = false;
@@ -471,6 +486,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
     importedAssets: string[];
     skyboxes: string[];
     postFx: string[];
+    impostors: string[];
   } = {
     scenes: [],
     cameras: [],
@@ -482,6 +498,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
     importedAssets: [],
     skyboxes: [],
     postFx: [],
+    impostors: [],
   };
 
   const logJSONError = (file: string) =>
@@ -838,6 +855,8 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
               size: layout.size,
               padding: layout.padding,
               levels: layout.levels,
+              ...(layout.mipChain === 'FULL' ? { mipChain: 'FULL' as const } : {}),
+              ...(slotJSON.image ? { fromImage: true as const } : {}),
               cells,
             },
             ...getTextureAtlasSlotGeneratedFields(opts.pipeline, fullPath, slot),
@@ -848,6 +867,79 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
       }
     }
     combinedData.textures = { ...texRegistry, ...arrayRegistry, ...atlasSlotRegistry };
+
+    // Exported impostors (p351 Phase 4), in their own id space. After the atlases: an impostor's
+    // atlas must have its kind's slots, at its layout's size.
+    const impostorRegistry: Record<string, ImpostorAsset> = {};
+    const impostorFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.impostor)
+    ) as string[];
+    for (const file of impostorFiles) {
+      const fullPath = path.resolve(srcDir, file);
+      const fileContent = fs.readFileSync(fullPath, 'utf-8');
+      try {
+        const parsedData = JSON.parse(fileContent);
+        const validation = ImpostorAssetSchema.safeParse(parsedData);
+        if (!validation.success) {
+          logValidationError(
+            `Validation error inside impostor file ${file}`,
+            validation.error.issues
+          );
+          hasError = true;
+          continue;
+        }
+        const impostorJSON = validation.data;
+        const errors: string[] = [];
+        const slotIds = atlasSlotIds[impostorJSON.atlas];
+        if (!slotIds) {
+          errors.push(`its atlas "${impostorJSON.atlas}" isn't a *.textureAtlas.json id`);
+        } else {
+          const slots = new Set(slotIds.map((id) => atlasSlotRegistry[id].__atlas.slot));
+          const reads = getImpostorDefSlots(impostorJSON);
+          const missing = reads.filter((slot) => !slots.has(slot));
+          if (missing.length) {
+            errors.push(
+              `its atlas "${impostorJSON.atlas}" has no slot ${missing.map((slot) => `"${slot}"`).join(', ')} (this ${impostorJSON.kind} impostor reads ${reads.join(', ')})`
+            );
+          }
+          const { atlasSize } = impostorJSON.layout;
+          const [layoutWidth, layoutHeight] =
+            typeof atlasSize === 'number' ? [atlasSize, atlasSize] : atlasSize;
+          const [width, height] = atlasSlotRegistry[slotIds[0]].__atlas.size;
+          if (width !== layoutWidth || height !== layoutHeight) {
+            errors.push(
+              `its atlas "${impostorJSON.atlas}" is ${width}×${height}, its layout's atlasSize is ${layoutWidth}×${layoutHeight}`
+            );
+          }
+        }
+        if (errors.length) {
+          for (const error of errors) {
+            console.error(`\x1b[31m✗ [Scene Gatherer] ${file}: ${error}\x1b[0m`);
+          }
+          hasError = true;
+          continue;
+        }
+        // The runtime refuses another format and bakes instead: valid, but worth a re-export
+        if (impostorJSON.formatVersion !== IMPOSTOR_EXPORT_FORMAT_VERSION) {
+          console.warn(
+            `\x1b[33m⚠ [Scene Gatherer] ${file}: export format ${impostorJSON.formatVersion}, the engine's is ${IMPOSTOR_EXPORT_FORMAT_VERSION}. Scenes listing it don't load it, and the runtime bakes it instead: re-export it (the LOD tab's Impostors).\x1b[0m`
+          );
+        }
+        const impostorId = impostorJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.impostor);
+        if (ids.impostors.includes(impostorId)) {
+          logDuplicateIdError('impostor', impostorId, file);
+          continue;
+        }
+        ids.impostors.push(impostorId);
+        impostorJSON.id = impostorId;
+        impostorJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        delete impostorJSON.$schema;
+        impostorRegistry[impostorId] = impostorJSON;
+      } catch {
+        logJSONError(file);
+      }
+    }
+    combinedData.impostors = impostorRegistry;
 
     // Materials
     const matRegistry: Record<string, MaterialAsset> = {};
@@ -1284,6 +1376,38 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
           }
           return geoId; // Fallback to raw string ID if asset file doesn't exist yet
         });
+      }
+
+      // Add impostors to scenes (p351 Phase 4): the definitions (a production build keeps only the
+      // scenes), and their atlases' slots go into the scene's textures, so the loader loads them
+      // like any texture. One not found is left out: its generator call bakes as without an export.
+      if (Array.isArray(fileContentJSON.impostors)) {
+        const impostorDefs: ImpostorDef[] = [];
+        const impostorSlotIds: string[] = [];
+        for (const impostorId of fileContentJSON.impostors) {
+          const impostor = impostorRegistry[impostorId];
+          if (!impostor) {
+            console.warn(
+              `\x1b[33m⚠ [Scene Gatherer] Scene "${sceneId}" lists the impostor "${impostorId}", which has no *.impostor.json (or an invalid one): it bakes at load.\x1b[0m`
+            );
+            continue;
+          }
+          // The runtime would refuse it and bake: its slots would load for nothing (warned above)
+          if (impostor.formatVersion !== IMPOSTOR_EXPORT_FORMAT_VERSION) continue;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { $schema, __sourcePath, ...def } = impostor;
+          if (isProduction) delete def.debugData;
+          impostorDefs.push({ ...def, id: impostorId });
+          // The slots it reads (the atlas id would load every slot), all checked above
+          for (const slot of getImpostorDefSlots(impostor)) {
+            impostorSlotIds.push(getAtlasSlotTextureId(impostor.atlas, slot));
+          }
+        }
+        // The generated data's shape: the definitions in place of the ids
+        fileContentJSON.impostors = impostorDefs as unknown as string[];
+        if (impostorSlotIds.length) {
+          fileContentJSON.textures = [...(fileContentJSON.textures ?? []), ...impostorSlotIds];
+        }
       }
 
       // Add textures to scenes

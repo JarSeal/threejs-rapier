@@ -616,7 +616,7 @@ const loadTextureArrayAssetAsync = async ({
 /**
  * A loaded atlas slot file's {@link TextureAtlasInfo}. Throws when the file doesn't fit its
  * layout: its size must be the layout's halved per dropped top level, and those levels plus the
- * stored ones at most the layout's `levels`.
+ * stored ones at most the layout's `levels` (with `mipChain: 'FULL'`, its full chain's).
  */
 const getAtlasSlotInfo = (texture: THREE.Texture, atlas: TextureAtlasSlotInfo) => {
   const compressed = texture as THREE.CompressedTexture;
@@ -630,9 +630,14 @@ const getAtlasSlotInfo = (texture: THREE.Texture, atlas: TextureAtlasSlotInfo) =
     );
   }
   const storedLevels = compressed.mipmaps.length;
-  if (dropped + storedLevels > atlas.levels) {
+  // A full chain goes down to 1×1 (the schema's getFullMipLevelCount; core imports no zod)
+  const maxLevels =
+    atlas.mipChain === 'FULL'
+      ? Math.floor(Math.log2(Math.max(layoutWidth, layoutHeight))) + 1
+      : atlas.levels;
+  if (dropped + storedLevels > maxLevels) {
     throw new Error(
-      `its output has ${storedLevels} mip level(s)${dropped ? ` below ${dropped} dropped one(s)` : ''} and its layout keeps ${atlas.levels} apart (__atlas.levels): run "yarn gatherAppData"`
+      `its output has ${storedLevels} mip level(s)${dropped ? ` below ${dropped} dropped one(s)` : ''} and its layout ${atlas.mipChain === 'FULL' ? `has a full chain of ${maxLevels}` : `keeps ${maxLevels} apart (__atlas.levels)`}: run "yarn gatherAppData"`
     );
   }
   const info: TextureAtlasInfo = {

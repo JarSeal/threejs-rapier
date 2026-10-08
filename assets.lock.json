@@ -10,6 +10,102 @@
         "out": 33824
       }
     },
+    "2ced78e3ded0f2209b768d8fc54b85cc6fb45994c5da07ea739f3b9c8bbca0a3": {
+      "source": "src/app/textures/p299TestAtlasImage.textureAtlas.json",
+      "url": "/aek-assets/app/textures/p299TestAtlasImage.atlas.albedo.26184dd3.ktx2",
+      "bytes": 4202,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 4202,
+          "source": {
+            "width": 192,
+            "height": 192,
+            "bytes": 2322
+          },
+          "codec": "uastc",
+          "width": 192,
+          "height": 192,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "2ea1dcb6c483714b1f411c85c88f5f901163854219c7f57c02afbe919ed1c3ae": {
+      "source": "src/app/impostors/lodShowcaseTreeCross.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/lodShowcaseTreeCross.atlas.albedo.1f8ec40c.ktx2",
+      "bytes": 5498,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 5498,
+          "source": {
+            "width": 252,
+            "height": 136,
+            "bytes": 1420
+          },
+          "codec": "uastc",
+          "width": 252,
+          "height": 136,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "439ffcd2ea308edcd7d4d79c5340e94a774f0f0164c7da3f47755475d479ed53": {
+      "source": "src/app/impostors/lodShowcaseTreeCross.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/lodShowcaseTreeCross.atlas.normal.f8c4ac09.ktx2",
+      "bytes": 15194,
+      "textures": [
+        {
+          "slot": "normal",
+          "bytes": 15194,
+          "source": {
+            "width": 252,
+            "height": 136,
+            "bytes": 6744
+          },
+          "codec": "uastc",
+          "width": 252,
+          "height": 136,
+          "hasAlpha": false,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "59e067e2e191a60488fbac2eabd51178cab2301eff92361239b7160386aeb821": {
+      "source": "src/app/impostors/largeWorldTreeCross.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.albedo.5916d4c9.ktx2",
+      "bytes": 5603,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 5603,
+          "source": {
+            "width": 252,
+            "height": 136,
+            "bytes": 1464
+          },
+          "codec": "uastc",
+          "width": 252,
+          "height": 136,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
     "78b08805112a161e01fd696e77f8d22c160f3fcc6166b5a5bf01b359bbfafd51": {
       "source": "src/app/textures/p299TestAtlas.textureAtlas.json",
       "url": "/aek-assets/app/textures/p299TestAtlas.atlas.mask.91a3bdbd.ktx2",
@@ -63,6 +159,54 @@
       ],
       "ktxVersion": "4.4.2"
     },
+    "89b8aa63f903aef5a94425333943ffe8858c9f70af53ef043ff3737c417cd659": {
+      "source": "src/app/textures/p299TestAtlasImage.textureAtlas.json",
+      "url": "/aek-assets/app/textures/p299TestAtlasImage.atlas.normalDepth.339cb09e.ktx2",
+      "bytes": 12373,
+      "textures": [
+        {
+          "slot": "data",
+          "bytes": 12373,
+          "source": {
+            "width": 192,
+            "height": 192,
+            "bytes": 60702
+          },
+          "codec": "uastc",
+          "width": 192,
+          "height": 192,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "8fedcde3c7d9f81117cee12c663314630573fe2efae5ac3b2ba5899bdb9a5327": {
+      "source": "src/app/impostors/lodShowcaseKnotImpostor.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/lodShowcaseKnotImpostor.atlas.normalDepth.5bf8f162.ktx2",
+      "bytes": 796877,
+      "textures": [
+        {
+          "slot": "data",
+          "bytes": 796877,
+          "source": {
+            "width": 864,
+            "height": 864,
+            "bytes": 1465828
+          },
+          "codec": "uastc",
+          "width": 864,
+          "height": 864,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 10
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
     "9442fd32164cc23d52fef0976d43336dcfa4f2d708ff7273f0008fabbab37d21": {
       "source": "src/app/textures/p299TestArray.textureArray.json",
       "url": "/aek-assets/app/textures/p299TestArray.array.5c60d088.ktx2",
@@ -87,6 +231,54 @@
       ],
       "warnings": [
         "layers[1] (\"l1\"): 256×256 is upscaled to 512×512"
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "97ce0fadfe917d774e14d973b606a2c00f4485b0dafee1b03fa8eca5c8691cb7": {
+      "source": "src/app/impostors/largeWorldTreeCross.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.normal.6cb59704.ktx2",
+      "bytes": 13027,
+      "textures": [
+        {
+          "slot": "normal",
+          "bytes": 13027,
+          "source": {
+            "width": 252,
+            "height": 136,
+            "bytes": 5971
+          },
+          "codec": "uastc",
+          "width": 252,
+          "height": 136,
+          "hasAlpha": false,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 8
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "a0925f395edfaf4ab222fa2881ce38517ce62319a0eadf93b16ca3530469636f": {
+      "source": "src/app/impostors/largeWorldRockImpostor.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/largeWorldRockImpostor.atlas.albedo.e0bc22c0.ktx2",
+      "bytes": 82131,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 82131,
+          "source": {
+            "width": 864,
+            "height": 864,
+            "bytes": 45274
+          },
+          "codec": "uastc",
+          "width": 864,
+          "height": 864,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 10
+        }
       ],
       "ktxVersion": "4.4.2"
     },
@@ -133,6 +325,77 @@
           "mipmaps": true,
           "normalMode": false,
           "levels": 5
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "da95241cac37797d508d4f10a829fecf63ec29a34025006c1cee38651f1b96cb": {
+      "source": "src/app/impostors/lodShowcaseKnotImpostor.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/lodShowcaseKnotImpostor.atlas.albedo.0d91eb26.ktx2",
+      "bytes": 101012,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 101012,
+          "source": {
+            "width": 864,
+            "height": 864,
+            "bytes": 52199
+          },
+          "codec": "uastc",
+          "width": 864,
+          "height": 864,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 10
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "e1f647946295c32304bfb5c6f022eb40c9afa2fc094c58c76a306d61dd684aec": {
+      "source": "src/app/textures/source/p341AlphaCut.png",
+      "url": "/aek-assets/app/textures/source/p341AlphaCut.55dda072.ktx2",
+      "bytes": 17011,
+      "textures": [
+        {
+          "slot": "baseColor",
+          "bytes": 17011,
+          "source": {
+            "width": 256,
+            "height": 256,
+            "bytes": 8347
+          },
+          "codec": "uastc",
+          "width": 256,
+          "height": 256,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false
+        }
+      ],
+      "ktxVersion": "4.4.2"
+    },
+    "fb41ebc4f545e25b21e99e93613ea2bafc9bd59f0e32a20a15709d51c885ad24": {
+      "source": "src/app/impostors/largeWorldRockImpostor.textureAtlas.json",
+      "url": "/aek-assets/app/impostors/largeWorldRockImpostor.atlas.normalDepth.644af352.ktx2",
+      "bytes": 768041,
+      "textures": [
+        {
+          "slot": "data",
+          "bytes": 768041,
+          "source": {
+            "width": 864,
+            "height": 864,
+            "bytes": 1015620
+          },
+          "codec": "uastc",
+          "width": 864,
+          "height": 864,
+          "hasAlpha": true,
+          "mipmaps": true,
+          "normalMode": false,
+          "levels": 10
         }
       ],
       "ktxVersion": "4.4.2"

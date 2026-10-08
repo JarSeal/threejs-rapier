@@ -290,6 +290,15 @@ export const resizeImage = (img: Img, width: number, height: number, isNormal = 
 };
 
 /**
+ * The next mip level, at the GPU's `floor(size / 2)` (at least 1): an exact 2×2 box while both
+ * sides are even, an area filter past an odd size.
+ */
+export const getNextMipLevel = (img: Img, isNormal: boolean): Img =>
+  img.width % 2 || img.height % 2
+    ? resizeImage(img, Math.max(1, img.width >> 1), Math.max(1, img.height >> 1), isNormal)
+    : halve(img, isNormal);
+
+/**
  * The encoded size of a `width`×`height` image: fit into `maxSize` (never up), then, for a
  * block-compressed codec, rounded to multiples of 4. `stretch` is how far that rounding moved
  * the aspect ratio (0.01 = 1%), for a warning.

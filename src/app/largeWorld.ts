@@ -112,7 +112,9 @@ export const scene = async () => {
     sceneId: 'largeWorld',
   });
   // The farthest level: three alpha-cut planes with the tree baked on them
-  // (docs/plans/p351_impostor-billboard-lod.md §2.1), lit at runtime like the mesh
+  // (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.1), lit at runtime like the mesh. Built from its
+  // export (src/app/impostors/, listed in largeWorld.scene.json's `impostors`), so nothing is
+  // baked at load; re-export it from the LOD tab's Impostors after changing the tree
   const treeCross = generateCrossQuads(treeGeometry, [treeTrunkMat, treeFoliageMat], {
     id: 'largeWorldTreeCross',
   });
@@ -170,7 +172,7 @@ export const scene = async () => {
   bushPool.spawn(ecsWorld, bushPlacements);
 
   // Rocks: a toolkit asteroid, the same rock at a lower icosphere detail, and an octahedral
-  // impostor last (docs/plans/p351_impostor-billboard-lod.md §2.2). Hemi: they turn about y only
+  // impostor last (docs/plans/_DONE_p351_impostor-billboard-lod.md §2.2). Hemi: they turn about y only
   // and sit in the ground, so nothing sees them from below, and the frames cover the upper
   // hemisphere at twice the density.
   const rockPlacements = scatterOnSurface({
@@ -199,6 +201,8 @@ export const scene = async () => {
     type: 'PHONG',
     params: { color: '#8f8a80', flatShading: true },
   });
+  // Built from its export (src/app/impostors/, listed in largeWorld.scene.json's `impostors`), so
+  // nothing is baked at load; re-export it from the LOD tab's Impostors after changing the rock
   const rockImpostor = generateOctahedralImpostor(rockGeo, rockPoolMat, {
     id: 'largeWorldRockImpostor',
     hemi: true,
@@ -561,7 +565,7 @@ export const scene = async () => {
     },
   });
 
-  // --- Sky lights: the scene also lists the day-night sky box (docs/plans/p351_impostor-billboard-lod.md
+  // --- Sky lights: the scene also lists the day-night sky box (docs/plans/_DONE_p351_impostor-billboard-lod.md
   // Phase 3), which brings its own sun light, and its environment (and its ambient light, when it
   // has one) lights the shade. While a sky box with a sun light is active, the scene's sun and
   // ambient are off, so its night falls on everything.

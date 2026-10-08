@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../.schemas/geometry.schema.json",
+  "geoProps": {
+    "type": "SPHERE",
+    "params": { "radius": 1, "widthSegments": 20, "heightSegments": 12 },
+    "debugData": {
+      "name": "LOD showcase sphere, level 1",
+      "description": "Lane 1's hand-made level 1 (20 × 12 segments), see lodShowcaseHandMade.mesh.json."
+    }
+  }
+}

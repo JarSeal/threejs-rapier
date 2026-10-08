@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../.schemas/impostor.schema.json",
+  "id": "lodShowcaseKnotImpostor",
+  "kind": "OCTAHEDRAL",
+  "atlas": "lodShowcaseKnotImpostor",
+  "formatVersion": 1,
+  "sourceHash": "e871b50535ad685f",
+  "alphaTest": 0.5,
+  "shading": {
+    "type": "STANDARDNODEMATERIAL",
+    "params": {
+      "roughness": 0.35,
+      "metalness": 0.3
+    }
+  },
+  "layout": {
+    "frames": 12,
+    "hemi": true,
+    "frameSize": 64,
+    "gutter": 4,
+    "atlasSize": 864,
+    "center": [0.1908990740776062, -0.00010645389556884766, -0.0000015795230865478516],
+    "radius": 2.294197005060177,
+    "extent": 2.447143472064189
+  },
+  "surfaceDepth": false,
+  "debugData": {
+    "name": "lodShowcaseKnotImpostor (impostor)",
+    "description": "Written by the LOD tab's impostor Export (docs/plans/_DONE_p351_impostor-billboard-lod.md Phase 4): re-export the impostor instead of editing this file."
+  }
+}

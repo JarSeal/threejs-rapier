@@ -1,7 +1,17 @@
 import fs from 'fs';
 import type { TextureCodec, TextureSlot } from '../../src/_engine/schemas/assetsConfigSchema';
-import { encodePng, flipY, getOutputSize, readImageFile, resizeImage, type Img } from './images';
-import { encodeKtx2, type KtxProvider } from './ktxEncode';
+import { getFullMipLevelCount } from '../../src/_engine/schemas/textureAtlasSchema';
+import { measureAlphaCoverage, resolveCoverageCut, scaleAlphaForCoverage } from './alphaCoverage';
+import {
+  encodePng,
+  flipY,
+  getNextMipLevel,
+  getOutputSize,
+  readImageFile,
+  resizeImage,
+  type Img,
+} from './images';
+import { encodeKtx2, encodeKtx2Levels, type KtxProvider, type KtxSettings } from './ktxEncode';
 import {
   getLogicalPath,
   getPackLogicalPath,
@@ -9,7 +19,7 @@ import {
   writeOutput,
   type PipelineOutput,
 } from './outputs';
-import { buildPackedImage, listPackFiles } from './pack';
+import { buildPackedImage, getPackChannelCount, listPackFiles } from './pack';
 import type { ResolvedTextureSettings } from './settings';
 import { resolvePackFile, type AssetSource, type PackSource } from './sources';
 
@@ -103,14 +113,54 @@ export const describeEncodedTexture = (
 const getFileSize = (file: string) => fs.statSync(file).size;
 
 /**
+ * A texture's full chain with each level's alpha scaled to `sourceImg`'s coverage at `cut` (p341):
+ * the levels built here (`getNextMipLevel`, the atlases' box chain) instead of by `ktx
+ * --generate-mipmap`, each halved from the unscaled one before it, so the scales don't compound.
+ * `img` is level 0 as stored; when `maxSize` resized it from `sourceImg` (another object), it is
+ * scaled too.
+ */
+const encodeCoverageLevels = async (
+  sourceImg: Img,
+  img: Img,
+  cut: number,
+  settings: KtxSettings,
+  opts: TextureImageOpts
+) => {
+  const target = measureAlphaCoverage(sourceImg, cut);
+  let level: Img | null = null;
+  return encodeKtx2Levels(
+    getFullMipLevelCount(img.width, img.height),
+    async (index) => {
+      level = level ? getNextMipLevel(level, opts.isNormal) : img;
+      const stored =
+        index === 0 && img === sourceImg
+          ? level
+          : scaleAlphaForCoverage(level, cut, [target]).image;
+      return opts.flip ? flipY(stored) : stored;
+    },
+    settings,
+    { channels: 4, isSrgb: opts.isSrgb, isNormal: opts.isNormal, getKtx: opts.getKtx }
+  );
+};
+
+/**
  * Encodes a `*.texture.json`'s source (a file or a pack) with the settings of its slot.
- * A `codec: "none"` file that needs no resize is kept as it is (`passThroughSource`).
+ * A `codec: "none"` file that needs no resize is kept as it is (`passThroughSource`). With
+ * `alphaCoverage` (p341) each mip level keeps the source's coverage at that cut (see
+ * {@link encodeCoverageLevels}); a pack is then built at its own size and resized after, so its
+ * coverage is measured before `maxSize`, like a file's.
  */
 export const encodeTextureAsset = async (
   source: Extract<AssetSource, { file: string }> | PackSource,
   slot: TextureSlot,
   slotSettings: ResolvedTextureSettings,
-  opts: { isSrgb: boolean; getKtx: KtxProvider; warn: (message: string) => void }
+  opts: {
+    isSrgb: boolean;
+    /** The JSON's `optimize.alphaCoverage` */
+    alphaCoverage?: number;
+    getKtx: KtxProvider;
+    warn: (message: string) => void;
+  }
 ): Promise<{ output: PipelineOutput; texture: EncodedTexture }> => {
   const isNormal = slot === 'normal';
   const imageOpts: TextureImageOpts = {
@@ -119,25 +169,42 @@ export const encodeTextureAsset = async (
     flip: true,
     getKtx: opts.getKtx,
   };
+  const getCoverageCut = (hasAlpha: boolean) =>
+    resolveCoverageCut(opts.alphaCoverage, {
+      label: 'optimize.alphaCoverage',
+      slot,
+      settings: slotSettings,
+      hasAlpha,
+      warn: opts.warn,
+    });
 
+  // Level 0 as stored, and (with a cut) before maxSize, what the coverage is measured on.
+  // `resizeImage` returns the image itself when the size stays, so then they're one.
   let img: Img;
+  let sourceImg: Img;
   let sourceInfo: EncodedTexture['source'];
   let logicalPath: string;
+  let cut: number | undefined;
   if (source.kind === 'pack') {
+    cut = getCoverageCut(getPackChannelCount(source.pack) === 4);
     let packSize = { width: 0, height: 0 };
-    img = await buildPackedImage(source.pack, {
+    let size = packSize;
+    sourceImg = await buildPackedImage(source.pack, {
       resolveFile: (src) => resolvePackFile(source.jsonFile, src),
       isSrgb: opts.isSrgb,
       getSize: (width, height) => {
         packSize = { width, height };
-        return fitTextureSize(width, height, slotSettings, opts.warn);
+        size = fitTextureSize(width, height, slotSettings, opts.warn);
+        return cut === undefined ? size : packSize;
       },
     });
+    img = resizeImage(sourceImg, size.width, size.height, isNormal);
     const files = listPackFiles(source.pack).map((src) => resolvePackFile(source.jsonFile, src));
     sourceInfo = { ...packSize, bytes: files.reduce((sum, file) => sum + getFileSize(file), 0) };
     logicalPath = getPackLogicalPath(source);
   } else {
-    const sourceImg = await readImageFile(source.file, { isSrgb: opts.isSrgb, rgbOnly: isNormal });
+    sourceImg = await readImageFile(source.file, { isSrgb: opts.isSrgb, rgbOnly: isNormal });
+    cut = getCoverageCut(sourceImg.channels === 4);
     sourceInfo = {
       width: sourceImg.width,
       height: sourceImg.height,
@@ -159,7 +226,14 @@ export const encodeTextureAsset = async (
     logicalPath = getLogicalPath(source);
   }
 
-  const { bytes, ext } = await encodeTextureImage(img, slotSettings, imageOpts);
+  // `resolveCoverageCut` returns no cut for codec "none"
+  const { bytes, ext } =
+    cut !== undefined && slotSettings.codec !== 'none'
+      ? {
+          bytes: await encodeCoverageLevels(sourceImg, img, cut, slotSettings, imageOpts),
+          ext: '.ktx2' as const,
+        }
+      : await encodeTextureImage(img, slotSettings, imageOpts);
   const output = writeOutput(logicalPath, ext, bytes);
   const texture = describeEncodedTexture(img, slotSettings, {
     slot,

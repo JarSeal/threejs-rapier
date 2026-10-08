@@ -14,7 +14,9 @@ import { getTexture, getTextureRegistry } from './Texture';
  * id in its `textures` for every slot, or a slot's id for that one.
  *
  * The mip chain stops at the last level the layout keeps apart (`levels`), so a cell sampled at
- * any level the texture has never reads its neighbour.
+ * any level the texture has never reads its neighbour. An atlas with `mipChain: "FULL"` (p351
+ * Phase 4: an impostor's neighbouring views) has every level down to 1 × 1 instead, and its
+ * levels past `levels` mix neighbouring cells.
  */
 
 /** A slot texture's cell table and layout, on its `userData.textureAtlas`. */
@@ -23,8 +25,8 @@ export type TextureAtlasInfo = TextureAtlasSlotInfo & {
    * dropped */
   width: number;
   height: number;
-  /** Mip levels in the file: `levels` less the top levels its maxSize dropped, or 1 with
-   * `mipmaps: false` */
+  /** Mip levels in the file: `levels` (with `mipChain: 'FULL'`, the full chain's) less the top
+   * levels its maxSize dropped, or 1 with `mipmaps: false` */
   storedLevels: number;
 };
 

@@ -42,6 +42,12 @@ const SceneOverridesSchema = z.object({
   postFxEnabled: z.boolean().optional(),
   /** Spatial domains this scene registers for itself, before any of its entities join one; dropped on its exit (`DEFAULT`: partial, merged over its world settings). */
   spatialDomains: SceneSpatialDomainsSchema.optional(),
+  impostors: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Exported impostors (`*.impostor.json` ids): their atlases load with the scene's textures, and generateOctahedralImpostor / generateCrossQuads called with one's id builds from it instead of baking."
+    ),
 });
 
 export type SceneOverrides = z.infer<typeof SceneOverridesSchema>;
