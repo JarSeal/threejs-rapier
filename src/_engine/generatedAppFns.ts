@@ -39,6 +39,14 @@ export const sceneFileObjects: {
       }
     ).scene({ sceneData, assets });
   },
+  lodShowcase: async ({ sceneData, assets }) => {
+    const module = await import('../app/./lodShowcase.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
   oneMoreScene: async ({ sceneData, assets }) => {
     const module = await import('../app/./oneMoreScene');
     await (

@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../.schemas/camera.schema.json",
+  "camProps": {
+    "type": "PERSPECTIVE",
+    "fov": 50,
+    "near": 0.1,
+    "far": 600,
+    "position": { "x": 0, "y": 7, "z": 24 },
+    "lookAtPoint": { "x": 0, "y": 0, "z": -50 },
+    "active": true
+  },
+  "entityOpts": {
+    "appId": "lodShowcaseCamera",
+    "debugData": {
+      "name": "LOD showcase start camera",
+      "description": "Looks down the lanes (along -z). The lanes' objects are placed by their distance from this camera, so every level of every lane is on screen from here (lodShowcase/layout.ts)."
+    }
+  }
+}

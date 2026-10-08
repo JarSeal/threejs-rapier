@@ -4020,6 +4020,177 @@
         }
       ]
     },
+    "lodShowcase": {
+      "name": "LOD showcase",
+      "description": "The LOD system lane by lane (docs/plans/p351_impostor-billboard-lod.md Phase 5): each lane runs away from the start camera along -z, with an object in every level band. Lane 1: hand-made levels in JSON; lane 2: a generated chain (AUTO). Debug env: the scene's own \"LOD demo\" tab.",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 600,
+            "position": {
+              "x": 0,
+              "y": 7,
+              "z": 24
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 0,
+              "z": -50
+            },
+            "type": "PERSPECTIVE",
+            "fov": 50,
+            "appId": "lodShowcaseCamera"
+          },
+          "entityOpts": {
+            "appId": "lodShowcaseCamera",
+            "debugData": {
+              "name": "LOD showcase start camera",
+              "description": "Looks down the lanes (along -z). The lanes' objects are placed by their distance from this camera, so every level of every lane is on screen from here (lodShowcase/layout.ts)."
+            }
+          }
+        }
+      ],
+      "geometries": [
+        {
+          "id": "lodShowcaseSphereLod0",
+          "type": "SPHERE",
+          "params": {
+            "radius": 1,
+            "widthSegments": 64,
+            "heightSegments": 32
+          },
+          "debugData": {
+            "name": "LOD showcase sphere, level 0",
+            "description": "Lane 1's hand-made level 0 (64 × 32 segments), see lodShowcaseHandMade.mesh.json."
+          }
+        },
+        {
+          "id": "lodShowcaseSphereLod1",
+          "type": "SPHERE",
+          "params": {
+            "radius": 1,
+            "widthSegments": 20,
+            "heightSegments": 12
+          },
+          "debugData": {
+            "name": "LOD showcase sphere, level 1",
+            "description": "Lane 1's hand-made level 1 (20 × 12 segments), see lodShowcaseHandMade.mesh.json."
+          }
+        },
+        {
+          "id": "lodShowcaseSphereLod2",
+          "type": "SPHERE",
+          "params": {
+            "radius": 1,
+            "widthSegments": 8,
+            "heightSegments": 6
+          },
+          "debugData": {
+            "name": "LOD showcase sphere, level 2",
+            "description": "Lane 1's hand-made level 2 (8 × 6 segments), see lodShowcaseHandMade.mesh.json."
+          }
+        }
+      ],
+      "materials": [
+        {
+          "id": "lodShowcaseSphere",
+          "params": {
+            "color": "#c9a66b",
+            "roughness": 0.45,
+            "metalness": 0.1
+          },
+          "type": "STANDARD",
+          "nodes": {}
+        }
+      ],
+      "meshes": [
+        {
+          "props": {
+            "geo": "lodShowcaseSphereLod0",
+            "mat": "lodShowcaseSphere",
+            "castShadow": true,
+            "receiveShadow": true,
+            "position": {
+              "x": -12,
+              "y": 1,
+              "z": -2
+            },
+            "appId": "lodShowcaseHandMade",
+            "lod": {
+              "levels": [
+                {
+                  "screenSize": 0.06
+                },
+                {
+                  "screenSize": 0.025,
+                  "geo": "lodShowcaseSphereLod1"
+                },
+                {
+                  "screenSize": 0,
+                  "geo": "lodShowcaseSphereLod2",
+                  "castShadow": false
+                }
+              ],
+              "cullScreenSize": 0.01,
+              "fadeSeconds": 0.4
+            }
+          },
+          "entityOpts": {
+            "debugData": {
+              "name": "LOD showcase: hand-made levels",
+              "description": "Lane 1 of the lodShowcase scene (p351 Phase 5): levels authored in JSON, the same sphere at fewer segments. This is the lane's first object (level 0's band); the lane places copies of this definition in the farther bands (lodShowcase/lanes/handMadeLevels.ts), so keep it at the lane's x (-12)."
+            }
+          }
+        }
+      ],
+      "skyboxes": [
+        {
+          "base": {
+            "type": "COLOR",
+            "color": "#000000"
+          },
+          "atmosphere": {
+            "nightSkyColor": "#0a1020"
+          },
+          "suns": [
+            {
+              "glowIntensity": 0.4,
+              "light": {}
+            }
+          ],
+          "moons": [
+            {
+              "phase": 0.4,
+              "phaseMode": "CYCLE",
+              "light": {
+                "intensity": 0.5
+              }
+            }
+          ],
+          "stars": {
+            "milkyWay": {}
+          },
+          "clouds": {
+            "coverage": 0.35
+          },
+          "ground": {},
+          "dayNight": {
+            "timeOfDay": 17.5,
+            "cycleDurationSec": 300,
+            "dayOfYear": 100
+          },
+          "id": "dayNight",
+          "debugData": {
+            "name": "Day-night (showcase)",
+            "description": "The DAY_NIGHT preset (every p113 layer: atmosphere, sun and light, moon and light, stars and Milky Way, clouds and ground) on a 5-minute day."
+          }
+        }
+      ],
+      "id": "lodShowcase",
+      "sceneFile": "./lodShowcase.ts"
+    },
     "oneMoreScene": {
       "name": "One More Scene",
       "id": "oneMoreScene",
@@ -6009,6 +6180,34 @@
       },
       "__sourcePath": "src/app/cameras/largeWorldOverview.camera.json"
     },
+    "lodShowcaseCamera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 600,
+        "position": {
+          "x": 0,
+          "y": 7,
+          "z": 24
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 0,
+          "z": -50
+        },
+        "type": "PERSPECTIVE",
+        "fov": 50,
+        "appId": "lodShowcaseCamera"
+      },
+      "entityOpts": {
+        "appId": "lodShowcaseCamera",
+        "debugData": {
+          "name": "LOD showcase start camera",
+          "description": "Looks down the lanes (along -z). The lanes' objects are placed by their distance from this camera, so every level of every lane is on screen from here (lodShowcase/layout.ts)."
+        }
+      },
+      "__sourcePath": "src/app/cameras/lodShowcaseCamera.camera.json"
+    },
     "mainCamera": {
       "camProps": {
         "active": true,
@@ -6629,6 +6828,54 @@
         ]
       },
       "__sourcePath": "src/app/geometries/testSphere.geometry.json"
+    },
+    "lodShowcaseSphereLod0": {
+      "geoProps": {
+        "debugData": {
+          "name": "LOD showcase sphere, level 0",
+          "description": "Lane 1's hand-made level 0 (64 × 32 segments), see lodShowcaseHandMade.mesh.json."
+        },
+        "type": "SPHERE",
+        "params": {
+          "radius": 1,
+          "widthSegments": 64,
+          "heightSegments": 32
+        },
+        "id": "lodShowcaseSphereLod0"
+      },
+      "__sourcePath": "src/app/lodShowcase/lodShowcaseSphereLod0.geometry.json"
+    },
+    "lodShowcaseSphereLod1": {
+      "geoProps": {
+        "debugData": {
+          "name": "LOD showcase sphere, level 1",
+          "description": "Lane 1's hand-made level 1 (20 × 12 segments), see lodShowcaseHandMade.mesh.json."
+        },
+        "type": "SPHERE",
+        "params": {
+          "radius": 1,
+          "widthSegments": 20,
+          "heightSegments": 12
+        },
+        "id": "lodShowcaseSphereLod1"
+      },
+      "__sourcePath": "src/app/lodShowcase/lodShowcaseSphereLod1.geometry.json"
+    },
+    "lodShowcaseSphereLod2": {
+      "geoProps": {
+        "debugData": {
+          "name": "LOD showcase sphere, level 2",
+          "description": "Lane 1's hand-made level 2 (8 × 6 segments), see lodShowcaseHandMade.mesh.json."
+        },
+        "type": "SPHERE",
+        "params": {
+          "radius": 1,
+          "widthSegments": 8,
+          "heightSegments": 6
+        },
+        "id": "lodShowcaseSphereLod2"
+      },
+      "__sourcePath": "src/app/lodShowcase/lodShowcaseSphereLod2.geometry.json"
     }
   },
   "textures": {
@@ -10924,6 +11171,16 @@
     }
   },
   "materials": {
+    "lodShowcaseSphere": {
+      "id": "lodShowcaseSphere",
+      "params": {
+        "color": "#c9a66b",
+        "roughness": 0.45,
+        "metalness": 0.1
+      },
+      "type": "STANDARD",
+      "__sourcePath": "src/app/lodShowcase/lodShowcaseSphere.material.json"
+    },
     "testMaterial": {
       "id": "testMaterial",
       "params": {
@@ -11107,6 +11364,45 @@
     }
   },
   "meshes": {
+    "lodShowcaseHandMade": {
+      "props": {
+        "geo": "lodShowcaseSphereLod0",
+        "mat": "lodShowcaseSphere",
+        "castShadow": true,
+        "receiveShadow": true,
+        "position": {
+          "x": -12,
+          "y": 1,
+          "z": -2
+        },
+        "appId": "lodShowcaseHandMade",
+        "lod": {
+          "levels": [
+            {
+              "screenSize": 0.06
+            },
+            {
+              "screenSize": 0.025,
+              "geo": "lodShowcaseSphereLod1"
+            },
+            {
+              "screenSize": 0,
+              "geo": "lodShowcaseSphereLod2",
+              "castShadow": false
+            }
+          ],
+          "cullScreenSize": 0.01,
+          "fadeSeconds": 0.4
+        }
+      },
+      "entityOpts": {
+        "debugData": {
+          "name": "LOD showcase: hand-made levels",
+          "description": "Lane 1 of the lodShowcase scene (p351 Phase 5): levels authored in JSON, the same sphere at fewer segments. This is the lane's first object (level 0's band); the lane places copies of this definition in the farther bands (lodShowcase/lanes/handMadeLevels.ts), so keep it at the lane's x (-12)."
+        }
+      },
+      "__sourcePath": "src/app/lodShowcase/lodShowcaseHandMade.mesh.json"
+    },
     "testImportedMesh": {
       "props": {
         "geo": "testImport/Cube",

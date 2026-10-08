@@ -961,6 +961,85 @@ create(ctx), debugItems? }`, laid out by a lane list in `lodShowcase.ts`; a late
   baked half excepted); lane 4's GPU time with impostors against drawing its chain's last level
   shows the payoff; WebGPU and WebGL2; `readme.md`'s LOD highlight points at the scene.
 
+What changed from the text above when the code was read:
+
+- **Where the objects stand is computed, not hand-placed.** A level is used while the screen size
+  `r × k / d` (`k = zoom / tan(fov / 2)`, LodSystem.ts) is at least its `screenSize`, so a lane's
+  level bands are distance ranges from the start camera. The layout (`lodShowcase/layout.ts`) turns
+  a lane's `LodDef` and level 0's radius into those bands (past the hysteresis on the far side of
+  each switch, so a level is the same whether the camera came from near or far) and puts objects
+  in each, so every level of every lane is on screen whatever the thresholds. A lane's nearest
+  object is as far as it has to be to be in view (at a 4:3 aspect, see section 1).
+- **Lane 1's mesh JSON is one object.** A `*.mesh.json` is one entity at its own position, so it is
+  the lane's first object (level 0's band), and the lane places copies of its definition (the
+  gathered entry in the scene's data, with the scene's save entry) in the other bands. The levels,
+  `fadeSeconds` and the geometries (`*.geometry.json`) are JSON; only the copies' positions are code.
+- **Lane 2's torus knot is code:** the geometry JSON types are box, sphere, cylinder, capsule and
+  cone. The scene file registers it, starts `generateLodChain` and sets an `AUTO` lod (which awaits
+  the chain) on copies placed by the levels it resolves to (section 1).
+- **The sky holds still:** `dayNight` plays a 5-minute day, so the scene sets 15:00 and pauses it on
+  enter (the demo tab plays it). Levels are compared under one light.
+- **A lane returns its state** (`ShowcaseLaneState`: its entities, level 0's radius, its switch
+  distances), which the demo tab reads for its camera stops and per-level counts.
+
+Sections, each reviewed before the next:
+
+1. **Scene, layout, lanes 1-2:** `lodShowcase.scene.json` (the start camera JSON, `dayNight`), the
+   ground, the lane contract and the layout (`lodShowcase/layout.ts`), lane 1 (hand-made levels in
+   JSON: three sphere geometries, a material, the mesh with `lod` and `fadeSeconds`) and lane 2 (the
+   torus knot's generated chain, `AUTO`). Checked on WebGPU and WebGL2 from the start camera: both
+   lanes in view, every level band holds an object at the level the layout expects (the LOD tab's
+   overlay), the chain's levels and load time. — done: `lodShowcase.ts` (the ground, the lane list
+   with a slot per lane, the sky held at 15:00 on enter, `getShowcaseLanes()` for the tab),
+   `lodShowcase/layout.ts` (`ShowcaseLane`, `ShowcaseLaneContext` with `placeAt` / `getSlots` /
+   `getSwitchDistances`, `getStartCamera`), `lanes/handMadeLevels.ts`, `lanes/generatedChain.ts`
+   (`getShowcaseKnot`, which lane 4 reuses), the camera JSON and lane 1's JSON (three
+   `lodShowcaseSphereLod*.geometry.json`, `lodShowcaseSphere.material.json`,
+   `lodShowcaseHandMade.mesh.json`: screen sizes 0.06 / 0.025 / 0, cull 0.01, `fadeSeconds` 0.4).
+   Lanes are 8 m apart in six slots centred on the camera (lane 1 at -12, lane 2 at -4); the
+   ground runs to 290 m. Found in the code:
+
+   - The layout's first version put each lane's nearest object where the lane comes into view,
+     so the nearest objects of neighbouring lanes lined up along the view's edge and lane 2's knot
+     hid lane 1's sphere. A lane is now in a slot (`{ lane, slot }`), and one whose finest level
+     needs the camera close takes a centre slot; "in view" is a projection through the start
+     camera (sides and bottom), not the lane's x alone.
+   - Lane 2's chain and `AUTO`'s default don't fit a lane: at 1 px (1080p) the knot keeps level 0
+     only within 5 m and level 1 within 14 m, nearer than any lane starts, and its five-level chain
+     (down to 2 %) spans switch distances 36× apart against the lane's 15× (19-290 m). The chain
+     stops at 6 % (16,384 → 8,192 → 3,276 → 982 triangles, errors 0.0011 / 0.003 / 0.0105) and the
+     lane asks `{ auto: true, maxPixelError: 0.25 }`: switches at 21, 58 and 202 m. The lane
+     resolves the levels with `resolveAutoLod` before creating the meshes, then each mesh sets its
+     own (`setMeshLod`, awaited).
+   - When the scene loads again, its camera object hasn't turned to its `lookAtPoint` yet while
+     the scene file runs (identity rotation; on the first load it has), which moved lane 2's
+     nearest point from 19 to 21 m and dropped its level 0 object. The layout measures from a
+     private camera built from the camera JSON's pose (`getStartCamera`) instead.
+
+   Checked (WebGPU, Apple GPU, and WebGL2 on SwiftShader, 1200×800, `?isDebug=true`, by a harness
+   that reads each object's distance, screen size, the level its band expects and the level shown,
+   instead of the overlay): every object of both lanes shows its band's level, lane 1's farthest
+   LOD culled (lane 1 at 29, 58, 143 and 263 m; lane 2 at 19, 37, 114 and 255 m), the same on a
+   reload of the scene and after a visit to skyShowcase, no warnings or errors. The chain is
+   simplified on the assets worker in 90-107 ms on the first load (27-31 ms when warm, 517 ms on
+   SwiftShader); the scene loads in 1.1-1.2 s (1.9 s on WebGL2), about skyShowcase's 1.1 s.
+   After a bias change lane 1's copies fade for its own 0.4 s and lane 2's for the global 0.25 s.
+
+2. **Lanes 3 and 6:** the tree grove pool (largeWorld's generators, its own thresholds) ending in
+   cross-quads and a cull fade, exported through the LOD tab's Impostors folder; the static
+   instance cell (an `InstancedMesh` entity with hand-made levels). Checked like section 1, plus
+   the load without a cross-quad bake.
+3. **Lanes 4 and 5:** the torus knot as a pool (its chain's levels, then an exported octahedral
+   impostor); the rock baked and exported side by side, held at the impostor level. Checked: no
+   bake at load but lane 5's baked half, lane 4's GPU time with the impostor against its chain's
+   last level.
+4. **Demo tab:** "LOD demo" (`_dbg__lodShowcase.ts`): camera stops, the dolly (a scene looper), the
+   time of day, per lane its instances per level and triangles, buttons to the LOD tab and the
+   profiler; the camera stop persisted.
+5. **Close the phase:** the exit measured (the dolly with Phase 2's recorder, the load, lane 4's
+   payoff, both backends), As built, `readme.md`'s LOD highlight, CLAUDE.md, versions (an app
+   minor: a new scene) and CHANGELOG; mark the plan done.
+
 ## 4. Versioning
 
 Engine minor per phase: the generators and bake helpers live in core (`core/Lod/Impostors/`, see
