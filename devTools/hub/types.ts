@@ -33,6 +33,8 @@ export type HubSlot = {
   line: number;
   /** `<id>.md` in the page's folder, or null when there is none */
   mdFile: string | null;
+  /** A generated section's generator fills it (p551 §2.5), never an `.md` */
+  isGenerated: boolean;
 };
 
 export type HubPage = {
@@ -55,6 +57,13 @@ export type HubPage = {
   icon: string;
   /** `aek:featured` */
   isFeatured: boolean;
+  /**
+   * A generated section's child page (an issue): it has no `index.html`, `dir` and `file` are its
+   * source's (`docs/issues/<name>.md`)
+   */
+  isGenerated: boolean;
+  /** Listed in the nav's dropdowns (generated pages can leave themselves out) */
+  isInMenu: boolean;
   /** The `<body>`'s inner HTML and the line it starts on */
   body: string;
   bodyLine: number;

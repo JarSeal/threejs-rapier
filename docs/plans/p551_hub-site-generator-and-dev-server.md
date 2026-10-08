@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: in progress | Phases 1-4 implemented
 Category: Dev tooling, Hub
 Epic: p550_aekasha-hub-epic.md
 Blocks: p552_hub-code-blocks-and-search.md, p553_hub-api-documentation.md, p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
@@ -322,13 +322,62 @@ As built:
   theme toggle by keyboard, kept across a reload; light and dark screenshots. In `yarn dev`, an
   SCSS save restyles without a reload, and an unknown icon gives the error page with its line.
 
-### Phase 4 — Issues and Version
+### Phase 4 — Issues and Version — done
 
 §2.5.
 
 **Exit:** the three current `docs/issues/*.md` files each get a page with the right title and status.
 The Version page shows the versions from `package.json` and the whole changelog, and a changelog
 entry's anchor links work. Saving `CHANGELOG.md` during `yarn dev` refreshes the Version page.
+
+As built:
+
+- **Generated sections** (`devTools/hub/generated/section.ts`): a `HubGeneratedSection` names a
+  hand-written page (`issues/`, `version/`), the slots of it its generator fills (by id, a
+  `HubSlotGenerator` rendering in that page's Markdown env, so its headings reach the TOC and its
+  `hub:` links are checked), its child pages (`HubGeneratedPage`: markup with slots, no
+  `index.html`; `HubPage.isGenerated`, whose `dir` and `file` are its source's), its source
+  `files` and the `dirs` whose added files matter. `discoverPages(diag, sections)` marks the slots
+  (`HubSlot.isGenerated`: no "no `.md`" warning, and an `.md` for one is an error) and adds the
+  pages. The slots are `generated-issues`, `generated-versions` and `generated-changelog` (a
+  `generated-` prefix, so a generated heading's slug never meets a slot id).
+- **Error pages:** an error in a generated page's source shows on that page; one in a section's
+  other sources (`CHANGELOG.md`, `package.json`) on the section's page (`findOwnerPage`'s
+  `pagesByFile`).
+- **Issue pages aren't in the nav** (`HubPage.isInMenu: false`): a dropdown of sentence-long titles
+  would crowd it. They're in `hub-data.js`'s `pages`, not its `nav`. Their breadcrumb is the title
+  cut to 48 characters, their description the summary's first 200, and their `<h1>` a smaller
+  size (`hubIssueTitle`).
+- **The issue header is a block of `Key: value` lines** after the title, not only `Status:`: the
+  files carry `File at`, `Category`, `Found`, `Our workaround`. `Status` becomes the badge (the part
+  before the first `|`; the rest is shown next to it), the other keys a list (`hubMetaList`). The
+  issues are grouped by that badge text: `open` first (with "Status not stated"), closed ones
+  (`fixed`, `closed`, `resolved`, `done`, `won't fix`) last. Without `**Title:**` the build warns.
+- **The summary** is the first paragraph of the first section (after a heading or a bold-label
+  line like `**Describe the bug**`), else the first paragraph: the bug-report template's preamble
+  ("Everything below the line…") would otherwise be the gltf-transform issue's summary. CSS clamps
+  it to three lines.
+- **The changelog's headings move one level down** (`HubMarkdownEnv.headingOffset`,
+  `renderMarkdownText`): `# Changelog` is the page's h2 next to "Versions", an entry an h3 (in the
+  TOC, `#2026-10-07-dev-server-implementation`), a part an h4. Part ids are plain slugs
+  (`project`, `project-2`, …), so they shift as entries are added; nothing links to them.
+  `**Added**`-style paragraphs become `hubChangeLabel`s.
+- **`latestChange`** in `hub-data.js`: `{ date, branch, path: 'version/', hash, parts: [{ part,
+  version, codename }] }`, the hash read from the rendered heading.
+- **Build time:** the dev plugin passes its first build's time (`buildTime`), so a rebuild doesn't
+  change the Version page (and reload it) by itself; `public` builds use the time of the build.
+- **Watching:** `docs/issues/` is added to Vite's watcher as a folder (`HubBuildResult.dirs`), so a
+  new issue file rebuilds too; `CHANGELOG.md` is in `files`.
+- **Status colours:** a `--hub-success` token (dark `#5fd89a`, light `#1c7a46`). The badge text is
+  mixed 75/25 toward `--hub-text`: the plain colours were 3.9-4.7:1 on their tint in the light
+  theme; now at least 5.6:1 (light) and 9.5:1 (dark).
+- Verified against a dev server and headless Chromium: the three issues get their pages, titles
+  and badges (one "Status not stated"), grouped Open / Not filed yet; the Version page shows
+  `package.json`'s versions and the whole changelog; loading `#2026-10-07-impostor-billboard-lod`
+  and clicking a TOC entry land on the entry; a `CHANGELOG.md` save reloads only the Version tab
+  (with a new `latestChange`); a new issue file appears in the list and gets its page, a dead
+  `hub:` link in it shows the error page on that issue's page only, and removing the file makes
+  its page 404; no horizontal scroll at 375 px; no console errors.
 
 ### Phase 5 — Docs
 

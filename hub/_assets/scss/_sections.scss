@@ -1,0 +1,154 @@
+// The generated sections (p551 §2.5): the Issues list and pages, the Version table and changelog
+
+// A status badge: `open` asks for attention, a closed one is done, anything else is in between
+.hubStatus {
+  --hub-status: var(--hub-accent);
+
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  background: color-mix(in srgb, var(--hub-status) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--hub-status) 45%, transparent);
+  border-radius: 999px;
+  // Toward the text colour: the plain status colours miss 4.5:1 on their tint in the light theme
+  color: color-mix(in srgb, var(--hub-status) 75%, var(--hub-text));
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.hubStatus_open {
+  --hub-status: var(--hub-warning);
+}
+
+.hubStatus_closed {
+  --hub-status: var(--hub-success);
+}
+
+// An issue page's title is a sentence, often with code: smaller than a page title
+.hubContent .hubIssueTitle {
+  font-size: clamp(1.75rem, 3vw, 2.125rem);
+  letter-spacing: -0.02em;
+}
+
+.hubIssueStatus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.hubIssueStatusDetail {
+  color: var(--hub-text-muted);
+  font-size: 0.9375rem;
+}
+
+// `Key: value` facts: an issue's header lines, the build's commit and time
+.hubMetaList {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem 1.25rem;
+  margin: 0 0 1.5rem;
+  font-size: 0.9375rem;
+
+  > div {
+    display: contents;
+  }
+
+  dt {
+    color: var(--hub-text-muted);
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 30rem) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+
+    dd {
+      margin-bottom: 0.5rem;
+    }
+  }
+}
+
+.hubIssueList {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 2rem;
+  padding: 0;
+  list-style: none;
+}
+
+.hubIssueItem {
+  margin: 0;
+  padding: 1rem 1.25rem;
+  background: var(--hub-panel);
+  border: 1px solid var(--hub-border);
+  border-radius: var(--hub-radius);
+
+  .hubIssueStatus {
+    margin: 0.5rem 0;
+  }
+}
+
+.hubIssueLink {
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.hubIssueSummary {
+  color: var(--hub-text-muted);
+  font-size: 0.9375rem;
+
+  p {
+    display: -webkit-box;
+    margin: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+}
+
+.hubVersionTable {
+  min-width: min(100%, 28rem);
+  margin-bottom: 1.25rem;
+
+  th[scope='row'] {
+    font-weight: 600;
+  }
+}
+
+.hubChangelog {
+  // An entry: `2026-10-07 — dev-server-implementation`
+  :where(h3) {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--hub-border);
+  }
+
+  // A part: `Engine 4.12.0 (Afternoon)`
+  :where(h4) {
+    margin-top: 1.5rem;
+    color: var(--hub-accent);
+  }
+}
+
+// `**Added**`, `**Changed**`, `**Fixed**`, …
+.hubChangeLabel {
+  margin: 1rem 0 0.5rem;
+  color: var(--hub-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}

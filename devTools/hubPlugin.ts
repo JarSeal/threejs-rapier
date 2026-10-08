@@ -32,7 +32,8 @@ import { getHubContentType, resolveHubRoute } from './hub/serve';
  *   `full-reload`: open app tabs aren't touched.
  * - `hub/` is watched with `fs.watch`, not Vite's watcher: Vite logs every watched `.html` save
  *   as a "page reload", clearing the terminal, and sends a `full-reload`. The build's sources
- *   outside `hub/` (`package.json`) go through Vite's watcher. `hub/hub.config.ts` and the
+ *   outside `hub/` (`package.json`, `CHANGELOG.md`, `docs/issues/*.md`) and the folders whose new
+ *   files it reads (`docs/issues/`) go through Vite's watcher. `hub/hub.config.ts` and the
  *   generator are Vite config dependencies: a change restarts the server, and the open pages
  *   reload once it's back.
  * - A page with an error is served as an error page (`buildHub`), and the terminal gets the
@@ -130,8 +131,11 @@ export const hubPlugin = (): Plugin => ({
     let pendingFiles = new Set<string>();
     let timer: ReturnType<typeof setTimeout> | null = null;
     let hubWatcher: fs.FSWatcher | null = null;
-    /** The build's sources outside `hub/`, watched through Vite's watcher */
+    /** The build's sources and folders outside `hub/`, watched through Vite's watcher */
     let outsideFiles = new Set<string>();
+    let outsideDirs = new Set<string>();
+    /** The first build's time, shown on the Version page until the server restarts */
+    let buildTime: string | undefined;
 
     const report = (result: HubBuildResult, prev: HubBuildResult | null) => {
       const prevKeys = new Set(prev?.diag.items.map(diagnosticKey));
@@ -154,22 +158,26 @@ export const hubPlugin = (): Plugin => ({
       }
     };
 
-    const watchOutsideFiles = (files: string[]) => {
-      outsideFiles = new Set(files.filter((file) => !file.startsWith(HUB_DIR + path.sep)));
-      server.watcher.add([...outsideFiles]);
+    const watchOutsideFiles = ({ files, dirs }: HubBuildResult) => {
+      const isOutside = (file: string) => !file.startsWith(HUB_DIR + path.sep);
+      outsideFiles = new Set(files.filter(isOutside));
+      outsideDirs = new Set(dirs.filter(isOutside));
+      server.watcher.add([...outsideFiles, ...outsideDirs]);
     };
 
     const runBuild = async (changedFiles: Set<string>) => {
+      buildTime ??= new Date().toISOString();
       const result = await buildHub({
         mode: 'dev',
         outDir: HUB_DEV_OUT_DIR,
         basePath: HUB_DEV_URL_BASE,
         fallback: lastBuild?.assets,
+        buildTime,
       });
       const prev = lastBuild;
       lastBuild = result;
       if (isClosed) return;
-      watchOutsideFiles(result.files);
+      watchOutsideFiles(result);
       report(result, prev);
       if (!prev) {
         const errors = result.diag.errors.length;
@@ -226,7 +234,7 @@ export const hubPlugin = (): Plugin => ({
       for (const event of ['add', 'change', 'unlink']) {
         server.watcher.on(event, (filePath: string) => {
           const file = path.resolve(filePath);
-          if (outsideFiles.has(file)) schedule(file);
+          if (outsideFiles.has(file) || outsideDirs.has(path.dirname(file))) schedule(file);
         });
       }
     };

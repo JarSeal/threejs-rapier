@@ -13,6 +13,9 @@ import {
   type HubAssetFile,
 } from './assets';
 import { buildHubData, getPageSection } from './data';
+import { createIssuesSection } from './generated/issues';
+import type { HubGeneratedSection, HubSlotGenerator } from './generated/section';
+import { createVersionSection } from './generated/version';
 import { HUB_DEV_META, HUB_DEV_SOCKET_PLACEHOLDER } from './devProtocol';
 import { HubDiagnostics, lineAt, type HubDiagnostic } from './diagnostics';
 import { escapeHtml } from './html';
@@ -67,6 +70,11 @@ export type HubBuildOptions = {
   basePath?: string;
   /** `dev`: the last build's assets, kept when this build's fail, so error pages keep styles */
   fallback?: HubBuildAssets;
+  /**
+   * The build time the Version page and `hub-data.js` show (default now). The dev plugin passes
+   * its first build's, so a rebuild doesn't change the Version page by itself.
+   */
+  buildTime?: string;
 };
 
 export type HubBuiltPage = {
@@ -86,6 +94,8 @@ export type HubBuildResult = {
   durationMs: number;
   /** Every source file the build read, for the dev plugin's watcher */
   files: string[];
+  /** Folders whose added and removed files change the build (`docs/issues/`) */
+  dirs: string[];
   /** The pages and the 404 page as written; empty when nothing was */
   pages: HubBuiltPage[];
   assets: HubBuildAssets;
@@ -147,18 +157,27 @@ const resolvePageMarkup = (
     });
 };
 
-/** The page's body with its slots filled by their Markdown */
+/** A generated slot's key: `issues/#generated-issues` */
+const slotKey = (pagePath: string, slotId: string) => `${pagePath}#${slotId}`;
+
+/** The page's body with its slots filled by their Markdown, or by their section's generator */
 const renderPageBody = (
   page: HubPage,
   env: HubMarkdownEnv,
   md: ReturnType<typeof createHubMarkdown>,
-  helpers: HubMarkupHelpers
+  helpers: HubMarkupHelpers,
+  generators: Map<string, HubSlotGenerator>
 ) => {
   let body = '';
   let cursor = 0;
   for (const slot of page.slots) {
     body += resolvePageMarkup(page.body.slice(cursor, slot.offset), cursor, env, helpers);
-    const content = slot.mdFile ? renderMarkdown(md, slot.mdFile, env) : '';
+    const generate = slot.isGenerated ? generators.get(slotKey(page.path, slot.id)) : undefined;
+    const content = generate
+      ? generate(md, env)
+      : slot.mdFile
+        ? renderMarkdown(md, slot.mdFile, env)
+        : '';
     body += `${slot.openTag}\n${content}${slot.closeTag}`;
     cursor = slot.offset + slot.length;
   }
@@ -218,8 +237,17 @@ const writeImages = async (
   );
 };
 
-/** The page whose folder holds the file (an `.md`, an image), or null for one outside the pages */
-const findOwnerPage = (file: string, pagesByDir: Map<string, HubPage>) => {
+/**
+ * The page a file belongs to: a generated section's source (`pagesByFile`), else the page whose
+ * folder holds it (an `.md`, an image), or null for one outside the pages
+ */
+const findOwnerPage = (
+  file: string,
+  pagesByDir: Map<string, HubPage>,
+  pagesByFile: Map<string, HubPage>
+) => {
+  const owner = pagesByFile.get(file);
+  if (owner) return owner;
   for (
     let dir = path.dirname(file);
     dir === HUB_PAGES_DIR || dir.startsWith(HUB_PAGES_DIR + path.sep);
@@ -246,23 +274,41 @@ export const buildHub = async ({
   outDir,
   basePath = '/',
   fallback,
+  buildTime,
 }: HubBuildOptions): Promise<HubBuildResult> => {
   const startTime = performance.now();
   const diag = new HubDiagnostics();
   const rendered: RenderedPage[] = [];
   const builtPages: HubBuiltPage[] = [];
   const assets: HubBuildAssets = { styles: null, scripts: null };
+  const meta = getProjectMetadata();
+  if (buildTime) meta.build.time = buildTime;
+  const version = createVersionSection(meta, diag);
+  const sections: HubGeneratedSection[] = [createIssuesSection(diag), version.section];
+  const sectionDirs = sections.flatMap((section) => section.dirs);
   const result = (files: string[]): HubBuildResult => ({
     isOk: diag.errors.length === 0,
     diag,
     pageCount: rendered.length,
     durationMs: performance.now() - startTime,
     files,
+    dirs: sectionDirs,
     pages: builtPages,
     assets,
   });
 
-  const tree = discoverPages(diag);
+  const tree = discoverPages(diag, sections);
+  const generators = new Map<string, HubSlotGenerator>();
+  for (const section of sections) {
+    for (const [id, generate] of Object.entries(section.slots)) {
+      generators.set(slotKey(section.path, id), generate);
+    }
+    for (const page of section.pages) {
+      for (const [id, generate] of Object.entries(page.slots)) {
+        generators.set(slotKey(page.path, id), generate);
+      }
+    }
+  }
   const shell = fs.readFileSync(HUB_SHELL_FILE, 'utf-8');
   const notFoundBody = fs.readFileSync(HUB_NOT_FOUND_FILE, 'utf-8');
   const icons = loadHubIcons(diag);
@@ -285,20 +331,23 @@ export const buildHub = async ({
   assets.styles = buildStyles(mode, diag, hashStaticAsset) ?? fallback?.styles ?? null;
   assets.scripts = (await buildScripts(mode, diag)) ?? fallback?.scripts ?? null;
   // `dev` still writes the 404 page, as the error page every URL gets
-  if (!tree && mode === 'public') return result([]);
+  const sectionFiles = sections.flatMap((section) => section.files);
+  if (!tree && mode === 'public') return result(sectionFiles);
 
   const md = createHubMarkdown();
   for (const page of tree?.pages ?? []) {
     const env = createMarkdownEnv(page, relativeRoot(page.path), diag);
-    rendered.push({ page, env, body: renderPageBody(page, env, md, helpers) });
+    rendered.push({ page, env, body: renderPageBody(page, env, md, helpers, generators) });
   }
   if (tree) checkLinks(rendered, tree, diag);
 
-  const meta = getProjectMetadata();
   const headings = new Map<HubPage, HubHeading[]>(
     rendered.map(({ page, env }) => [page, env.headings])
   );
-  const data = tree ? buildHubData(meta, tree.root, tree.pages, headings) : null;
+  // After the render: the changelog's render fills `latestChange.hash`
+  const data = tree
+    ? buildHubData(meta, tree.root, tree.pages, headings, version.latestChange)
+    : null;
   const assetUrl = (root: string, file: HubAssetFile | null | undefined) =>
     file ? `${root}${file.outPath}?v=${file.hash}` : '';
   const findScript = (outPath: string) => assets.scripts?.find((file) => file.outPath === outPath);
@@ -371,10 +420,19 @@ export const buildHub = async ({
 
   // Every fillShell has run, so the errors are complete
   if (mode === 'dev' && diag.errors.length) {
-    const pagesByDir = new Map(rendered.map(({ page }) => [page.dir, page]));
+    const pagesByDir = new Map(
+      rendered.filter(({ page }) => !page.isGenerated).map(({ page }) => [page.dir, page])
+    );
+    // A section's sources are its page's, and a generated page's own source is that page's
+    const pagesByFile = new Map<string, HubPage>();
+    for (const section of sections) {
+      const page = tree?.byPath.get(section.path);
+      if (page) for (const file of section.files) pagesByFile.set(file, page);
+    }
+    for (const { page } of rendered) if (page.isGenerated) pagesByFile.set(page.file, page);
     const errorsByPage = new Map<HubPage | null, HubDiagnostic[]>();
     for (const error of diag.errors) {
-      const owner = findOwnerPage(error.file, pagesByDir);
+      const owner = findOwnerPage(error.file, pagesByDir, pagesByFile);
       errorsByPage.set(owner, [...(errorsByPage.get(owner) ?? []), error]);
     }
     const siteErrors = errorsByPage.get(null) ?? [];
@@ -409,12 +467,15 @@ export const buildHub = async ({
   }
 
   const sourceFiles = [
-    ...(tree?.files ?? []),
-    HUB_SHELL_FILE,
-    HUB_NOT_FOUND_FILE,
-    PACKAGE_JSON_FILE,
-    ...FAVICON_FILES,
-    ...rendered.flatMap(({ env }) => env.images.map((job) => job.source)),
+    ...new Set([
+      ...(tree?.files ?? []),
+      HUB_SHELL_FILE,
+      HUB_NOT_FOUND_FILE,
+      PACKAGE_JSON_FILE,
+      ...sectionFiles,
+      ...FAVICON_FILES,
+      ...rendered.flatMap(({ env }) => env.images.map((job) => job.source)),
+    ]),
   ];
   if (mode === 'public' && diag.errors.length) {
     builtPages.length = 0;

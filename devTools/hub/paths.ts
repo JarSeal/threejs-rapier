@@ -34,6 +34,10 @@ export const APP_DIST_DIR = path.join(ROOT, 'dist');
 /** The versions and packages (`getProjectMetadata`) */
 export const PACKAGE_JSON_FILE = path.join(ROOT, 'package.json');
 
+/** The generated sections' sources (p551 §2.5) */
+export const ISSUES_DIR = path.join(ROOT, 'docs', 'issues');
+export const CHANGELOG_FILE = path.join(ROOT, 'CHANGELOG.md');
+
 /** Copied from the app's public folder to the Hub's root */
 export const FAVICON_FILES = ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'].map((name) =>
   path.join(ROOT, 'src', 'public', name)

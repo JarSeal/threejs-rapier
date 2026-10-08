@@ -44,6 +44,8 @@ export type HubMarkdownEnv = {
   page: HubPage;
   /** The `.md` being rendered now */
   file: string;
+  /** Added to its headings' levels (a generated section's `# Changelog` is the page's h2) */
+  headingOffset: number;
   /** The relative path from the page to the site root (`../../`) */
   root: string;
   diag: HubDiagnostics;
@@ -61,6 +63,7 @@ export const createMarkdownEnv = (
 ): HubMarkdownEnv => ({
   page,
   file: page.file,
+  headingOffset: 0,
   root,
   diag,
   headings: [],
@@ -206,10 +209,13 @@ const headingsRule = (state: StateCore) => {
     const token = tokens[i];
     if (token.type !== 'heading_open') continue;
     const inline = tokens[i + 1];
+    const level = Math.min(6, Number(token.tag.slice(1)) + env.headingOffset);
+    token.tag = `h${level}`;
+    tokens[i + 2].tag = token.tag; // Its heading_close
     const text = inlineText(inline).trim();
     const id = uniqueId(env, token.attrGet('id') || slugify(text));
     token.attrSet('id', id);
-    env.headings.push({ level: Number(token.tag.slice(1)), id, text });
+    env.headings.push({ level, id, text });
     const anchor = new state.Token('html_inline', '', 0);
     anchor.content = ` <a class="hubAnchor" href="#${id}" aria-label="Link to this section">#</a>`;
     inline.children?.push(anchor);
@@ -322,8 +328,26 @@ export const createHubMarkdown = () => {
   return md;
 };
 
-/** Renders one slot's Markdown into the page's env */
-export const renderMarkdown = (md: MarkdownIt, file: string, env: HubMarkdownEnv) => {
+/**
+ * Renders Markdown into the page's env: `file` is where it's from (its diagnostics, relative
+ * images), and `headingOffset` shifts its headings for this text only
+ */
+export const renderMarkdownText = (
+  md: MarkdownIt,
+  text: string,
+  file: string,
+  env: HubMarkdownEnv,
+  headingOffset = 0
+) => {
   env.file = file;
-  return md.render(fs.readFileSync(file, 'utf-8'), env);
+  env.headingOffset = headingOffset;
+  try {
+    return md.render(text, env);
+  } finally {
+    env.headingOffset = 0;
+  }
 };
+
+/** Renders one slot's Markdown into the page's env */
+export const renderMarkdown = (md: MarkdownIt, file: string, env: HubMarkdownEnv) =>
+  renderMarkdownText(md, fs.readFileSync(file, 'utf-8'), file, env);

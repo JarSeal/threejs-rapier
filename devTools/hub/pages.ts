@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { lineAt, type HubDiagnostics } from './diagnostics';
+import type { HubGeneratedSection } from './generated/section';
 import { decodeEntities, parseAttributes } from './html';
 import { HUB_PAGES_DIR } from './paths';
 import type { HubPage, HubSlot } from './types';
@@ -8,7 +9,8 @@ import type { HubPage, HubSlot } from './types';
 /**
  * Finds the Hub's pages: every folder under `hub/pages/` with an `index.html` is one, at the URL
  * path of its folder (p550 §3.3). Reads each one's head metadata and body slots, and builds the
- * page tree (children by `aek:order`, then title).
+ * page tree (children by `aek:order`, then title). A generated section's pages join the tree
+ * here, and the slots its generator fills are marked (p551 §2.5).
  */
 
 const PAGE_FILE = 'index.html';
@@ -56,6 +58,7 @@ const findSlots = (html: string, body: string, bodyOffset: number, dir: string) 
       length: match[0].length,
       line: lineAt(html, bodyOffset + match.index),
       mdFile: fs.existsSync(mdFile) ? mdFile : null,
+      isGenerated: false,
     });
   }
   return slots;
@@ -112,6 +115,8 @@ const parsePage = (dir: string, diag: HubDiagnostics): HubPage | null => {
     description: meta['aek:description'] ?? '',
     icon: meta['aek:icon'] ?? '',
     isFeatured: meta['aek:featured'] === 'true',
+    isGenerated: false,
+    isInMenu: true,
     body,
     bodyLine: lineAt(html, bodyOffset),
     slots,
@@ -120,22 +125,33 @@ const parsePage = (dir: string, diag: HubDiagnostics): HubPage | null => {
   };
 };
 
-/** Every `.md` in the page's folder needs a slot, and every slot should have an `.md` */
+/**
+ * Every `.md` in the page's folder needs a slot that isn't generated, and every slot should have
+ * an `.md` or a generator
+ */
 const checkSlots = (page: HubPage, diag: HubDiagnostics) => {
-  const slotIds = new Set(page.slots.map((slot) => slot.id));
+  if (page.isGenerated) return; // Its folder is its source's, and its generator fills its slots
+  const slots = new Map(page.slots.map((slot) => [slot.id, slot]));
   for (const name of fs.readdirSync(page.dir)) {
     if (!name.endsWith('.md')) continue;
     const id = name.slice(0, -'.md'.length);
-    if (!slotIds.has(id)) {
+    const slot = slots.get(id);
+    if (!slot) {
       diag.error(
         path.join(page.dir, name),
         1,
         `No slot for it: add an empty element with id="${id}" to ${PAGE_FILE}'s <body>`
       );
+    } else if (slot.isGenerated) {
+      diag.error(
+        path.join(page.dir, name),
+        1,
+        `Slot "${id}" is filled by its section's generator: rename the slot or the file`
+      );
     }
   }
   for (const slot of page.slots) {
-    if (!slot.mdFile) {
+    if (!slot.mdFile && !slot.isGenerated) {
       diag.warn(page.file, slot.line, `Slot "${slot.id}" has no ${slot.id}.md: it stays empty`);
     }
   }
@@ -151,10 +167,76 @@ const listDirs = (dir: string): string[] => {
   return dirs;
 };
 
+/** Marks the slots a generated section fills on its page, and adds its pages to `byPath` */
+const attachSection = (
+  section: HubGeneratedSection,
+  byPath: Map<string, HubPage>,
+  diag: HubDiagnostics
+) => {
+  const page = byPath.get(section.path);
+  if (!page) {
+    diag.error(
+      path.join(HUB_PAGES_DIR, section.path, PAGE_FILE),
+      undefined,
+      `The generated section /${section.path} needs its page here`
+    );
+    return;
+  }
+  for (const id of Object.keys(section.slots)) {
+    const slot = page.slots.find((s) => s.id === id);
+    if (slot) slot.isGenerated = true;
+    else {
+      diag.error(
+        page.file,
+        undefined,
+        `No slot for the generated "${id}": add an empty element with id="${id}" to its <body>`
+      );
+    }
+  }
+  for (const generated of section.pages) {
+    if (byPath.has(generated.path)) {
+      diag.error(
+        generated.file,
+        undefined,
+        `Its page's URL /${generated.path} is taken by hub/pages/${generated.path}${PAGE_FILE}`
+      );
+      continue;
+    }
+    const dir = path.dirname(generated.file);
+    const slots = findSlots(generated.body, generated.body, 0, dir).map((slot) => ({
+      ...slot,
+      mdFile: null,
+      isGenerated: slot.id in generated.slots,
+    }));
+    byPath.set(generated.path, {
+      path: generated.path,
+      dir,
+      file: generated.file,
+      title: generated.title,
+      menu: generated.menu,
+      order: 0,
+      tags: generated.tags,
+      description: generated.description,
+      icon: '',
+      isFeatured: false,
+      isGenerated: true,
+      isInMenu: generated.isInMenu,
+      body: generated.body,
+      bodyLine: 1,
+      slots,
+      parent: null,
+      children: [],
+    });
+  }
+};
+
 export const sortPages = (pages: HubPage[]) =>
   pages.sort((a, b) => a.order - b.order || a.menu.localeCompare(b.menu));
 
-export const discoverPages = (diag: HubDiagnostics): HubPageTree | null => {
+export const discoverPages = (
+  diag: HubDiagnostics,
+  sections: HubGeneratedSection[] = []
+): HubPageTree | null => {
   if (!fs.existsSync(path.join(HUB_PAGES_DIR, PAGE_FILE))) {
     diag.error(path.join(HUB_PAGES_DIR, PAGE_FILE), undefined, 'The homepage is missing');
     return null;
@@ -178,6 +260,7 @@ export const discoverPages = (diag: HubDiagnostics): HubPageTree | null => {
 
   const root = byPath.get('');
   if (!root) return null;
+  for (const section of sections) attachSection(section, byPath, diag);
   for (const page of byPath.values()) {
     if (page === root) continue;
     const parentPath = page.path.replace(/[^/]+\/$/, '');

@@ -103,7 +103,8 @@ export const renderNav = (
   const item = (page: HubPage, isTop: boolean): string => {
     const isCurrent = page === active;
     const isInTrail = page !== homepage && trail.has(page);
-    const hasMenu = isTop && page !== homepage && page.children.length > 0;
+    const menuPages = page.children.filter((child) => child.isInMenu);
+    const hasMenu = isTop && page !== homepage && menuPages.length > 0;
     const classes = [
       'hubNavItem',
       isCurrent || isInTrail ? 'hubNavItem_active' : '',
@@ -116,7 +117,7 @@ export const renderNav = (
     if (!hasMenu) return `<li class="${classes}">${link}</li>`;
     const menuId = `hubNavMenu_${page.path.replace(/\/$/, '').replace(/[^\w-]/g, '_')}`;
     const toggle = `<button type="button" class="hubNavToggle" aria-expanded="false" aria-controls="${menuId}" aria-label="${escapeHtml(page.menu)}: show its pages">${icons.render('chevron-down', page.file)}</button>`;
-    const menu = `<ul class="hubNavDropdown" id="${menuId}">${page.children.map((child) => item(child, false)).join('')}</ul>`;
+    const menu = `<ul class="hubNavDropdown" id="${menuId}">${menuPages.map((child) => item(child, false)).join('')}</ul>`;
     return `<li class="${classes}">${link}${toggle}${menu}</li>`;
   };
   return `<ul class="hubNavList">${[homepage, ...homepage.children].map((page) => item(page, true)).join('')}</ul>`;
