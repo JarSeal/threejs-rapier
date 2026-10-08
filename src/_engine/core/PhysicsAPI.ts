@@ -1476,7 +1476,7 @@ export const createRigidBody = async (params: RigidBodyParams) => {
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const res = await messageWorkerAsync<CreateRigidBodyResponse>({
       type: PhysicsProtocolType.CREATE_RIGID_BODY,
-      params,
+      params: toWireRigidBodyParams(params),
     });
     throwIfCapacityExceeded(res.capacityExceeded);
     const rbAPI = new RigidBodyProxyAPI(
@@ -1856,12 +1856,22 @@ export const readBodyPositionsSync = (ids: ArrayLike<number>, out: Float32Array)
   return engAPI.readBodyPositions(ids, out);
 };
 
+/** A RigidBodyParams for the postMessage boundary: its rotation as a plain object (a
+ * THREE.Quaternion would arrive without x/y/z/w, see toPlainRot). Returns the original object
+ * when it has no rotation. */
+const toWireRigidBodyParams = <T extends RigidBodyParams | undefined>(params: T): T =>
+  params?.rotation ? { ...params, rotation: toPlainRot(params.rotation) } : params;
+
 /** Strips collisionEventFn/contactForceEventFn from a ColliderParams before it crosses
  * the postMessage boundary (functions can't be structured-cloned — this is what would
  * otherwise throw DataCloneError), replacing them with the boolean flags EngineRapier.ts
- * uses to still set up the right Rapier ActiveEvents on the worker side. Returns the
- * original object unchanged when there's nothing to strip. */
-const toWireColliderParams = (params: ColliderParams): ColliderParams => {
+ * uses to still set up the right Rapier ActiveEvents on the worker side, and makes its
+ * rotation a plain object (toPlainRot). Returns the original object unchanged when there's
+ * nothing to change. */
+const toWireColliderParams = (colliderParams: ColliderParams): ColliderParams => {
+  const params = colliderParams.rotation
+    ? { ...colliderParams, rotation: toPlainRot(colliderParams.rotation) }
+    : colliderParams;
   if (!params.collisionEventFn && !params.contactForceEventFn) return params;
   const { collisionEventFn, contactForceEventFn, ...rest } = params;
   return {
@@ -1916,7 +1926,7 @@ export const createRigidBodyWithColliders = async (
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const res = await messageWorkerAsync<CreatePhysicsEntityResponse>({
       type: PhysicsProtocolType.CREATE_PHYSICS_ENTITY,
-      rigidBody: rigidBodyParams,
+      rigidBody: toWireRigidBodyParams(rigidBodyParams),
       colliders: colliderParams.map(toWireColliderParams),
     });
     throwIfCapacityExceeded(res.capacityExceeded);

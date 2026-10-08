@@ -1,4 +1,8 @@
-import { getGeneratedSceneData } from '../../_engine/core/Scene';
+import {
+  getCurrentSceneId,
+  getGeneratedSceneData,
+  registerOnAllSceneEnterings,
+} from '../../_engine/core/Scene';
 import { takeSnapshotAsync } from '../../_engine/core/Snapshot';
 import { isRuntimeViewActive } from '../../_engine/core/ViewManager';
 import { addDebugToast, createDebuggerTab } from '../../_engine/debug/DebuggerGUI';
@@ -16,6 +20,9 @@ import { lerror, lwarn } from '../../_engine/utils/Logger';
 // `<sceneId>.hub.png` beside the scene file through the dev files (_DONE_p342). The Hub's
 // `::: scene` directive and `aek:image` pick it up by that path (devTools/hub/scenes.ts) and
 // convert it to webp. Without the dev files the PNG is downloaded, with the path to put it at.
+// Every scene whose file is under `src/app/examples/` gets the tab on enter
+// (`registerExampleHubTabs`, called from src/index.ts), so the example scene files hold only the
+// example: the Hub pages include them.
 
 const TAB_ID = 'exampleHub';
 
@@ -126,3 +133,18 @@ export const createExampleHubTab = (sceneId: string, size: HubImageSize = 'CARD'
     ],
   });
 };
+
+/** Example scenes whose Hub image isn't a card */
+const SCENE_IMAGE_SIZES: Record<string, HubImageSize> = { exampleHubHero: 'HERO' };
+
+/**
+ * Gives every example scene (a scene file under `src/app/examples/`) its "Hub" tab on enter.
+ * Call it once before the first scene loads, in the debug env only, through a dynamic import.
+ */
+export const registerExampleHubTabs = () =>
+  registerOnAllSceneEnterings(TAB_ID, () => {
+    const sceneId = getCurrentSceneId();
+    const sceneFile = sceneId ? getGeneratedSceneData(sceneId)?.sceneFile : undefined;
+    if (!sceneId || !sceneFile || !/^(\.\/)?examples\//.test(sceneFile)) return;
+    createExampleHubTab(sceneId, SCENE_IMAGE_SIZES[sceneId]);
+  });

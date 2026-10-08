@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../../.schemas/importedAsset.schema.json",
+  "id": "aekashaSymbol",
+  "fileName": "./aekashaSymbol.glb",
+  "optimize": {
+    "mesh": { "codec": "draco" }
+  },
+  "debugData": {
+    "name": "Ækasha symbol",
+    "description": "The Æ glyph of the favicon, extruded with a small bevel: 1 unit high, centred on the origin, facing +z. One geometry, aekashaSymbol/aekashaSymbol. Built by devTools/toolkit/buildAekashaSymbol.ts; the pipeline keeps it Draco."
+  }
+}

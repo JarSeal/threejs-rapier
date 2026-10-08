@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Instructions, Examples, Scene
 Epic: p550_aekasha-hub-epic.md
 Blocks: p555_hub-features-and-homepage-content.md (its example links and cards)
@@ -235,11 +235,43 @@ As built:
 - An unknown id fails the build.
 - "Save Hub image" in a scene writes its PNG, and the page shows it as webp.
 
-### Phase 3 — Quick start, Physics, Toolkit (and the Æ model)
+### Phase 3 — Quick start, Physics, Toolkit (and the Æ model) — done
 
 §2.2's first three scenes and pages, and §2.3. The Quick start page carries the dev environment
 set-up: Node from `.nvmrc` (22.13.0, `nvm use`), yarn 1, `yarn`, `yarn dev`, opening
 `http://localhost:8080/?isDebug=true`, `h` for the debug drawer, and `yarn dev:https` for a phone.
+
+As built:
+
+- The Æ model's GLB sits next to its JSON, `src/toolkit/models/aekashaSymbol/aekashaSymbol.glb`
+  (`fileName: "./aekashaSymbol.glb"`), not in `src/public/toolkit/models/`: the asset pipeline
+  takes JSON-relative sources and writes its output into `src/public/aek-assets/`, which answers
+  p450's public folder question for models. The JSON (`optimize.mesh.codec: "draco"`) is
+  hand-written; the script writes only the GLB. It uses `shapePath.toShapes()` (three r186
+  deprecates `SVGLoader.createShapes`), fails when the glyph has no hole, and leaves the glTF
+  scene unnamed: GLTFLoader makes scene and node names unique together, so a scene named like the
+  node renamed the node (`aekashaSymbol_1`) and the geometry id. `linkedom` 0.18.13 is a devDep.
+- Each example has its own camera and two light JSONs in its folder, and its own asset ids
+  (`quickStartCube`, `physicsBox`, …): `createGeometry` returns an id that's registered already,
+  with its old params.
+- The Hub tab isn't created by the scene files: `registerExampleHubTabs()`
+  (`_dbg__exampleHub.ts`, called from `src/index.ts` in the debug env before the first load)
+  gives every scene whose file is under `src/app/examples/` its tab on enter
+  (`registerOnAllSceneEnterings`), with `HERO` for `exampleHubHero`. A region can't leave lines
+  out, so this keeps debug code out of the code the pages include.
+- `examplePhysics` drops on Space (`createKeyBinding` with `sceneId`), deletes the oldest past 80,
+  and shows a HUD hint (`position: fixed`: `#hudRoot` is a 0 × 0 box).
+- Engine fix found here: in `WORKER_THREAD` mode a `THREE.Quaternion` body or collider `rotation`
+  reached the worker without x/y/z/w (structured clone), so the body spawned unrotated.
+  `toWireRigidBodyParams` and `toWireColliderParams` (`PhysicsAPI.ts`) now pass it through
+  `toPlainRot`. Engine patch (covered by §4's minor).
+- Pages: the Quick start section of `/hub/examples/` (set-up, the scene panel, the scene JSON,
+  its camera and lights as a code group, the `quick-start` region), `/hub/examples/physics/`
+  (`physics-shapes`, `physics-drop`, `physics-scene`) and the new `/hub/examples/toolkit/`
+  (the asset JSON, `toolkit-scene`). The example pages have `aek:image: scene:<id>`.
+- The Hub images aren't saved yet: the pages show the dev panel's "No Hub image yet" until each
+  scene's PNG is saved from its Hub tab (a warning per page in `hub:build`).
+- The search index is 1018 kB, close to its 1 MB warning.
 
 **Exit:**
 

@@ -82,6 +82,15 @@
       ],
       "ktxVersion": "4.4.2"
     },
+    "4881a4f477d5294a60239af74e61aaaff916917651e0f1042ddabc5055a613a8": {
+      "source": "src/toolkit/models/aekashaSymbol/aekashaSymbol.glb",
+      "url": "/aek-assets/toolkit/models/aekashaSymbol/aekashaSymbol.ac7e8564.glb",
+      "bytes": 16576,
+      "geometryBytes": {
+        "in": 117856,
+        "out": 117248
+      }
+    },
     "59e067e2e191a60488fbac2eabd51178cab2301eff92361239b7160386aeb821": {
       "source": "src/app/impostors/largeWorldTreeCross.textureAtlas.json",
       "url": "/aek-assets/app/impostors/largeWorldTreeCross.atlas.albedo.5916d4c9.ktx2",

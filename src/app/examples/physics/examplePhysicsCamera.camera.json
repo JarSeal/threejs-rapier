@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../.schemas/camera.schema.json",
+  "camProps": {
+    "type": "PERSPECTIVE",
+    "fov": 45,
+    "near": 0.1,
+    "far": 120,
+    "position": { "x": 9, "y": 8, "z": 14 },
+    "lookAtPoint": { "x": 0, "y": 1, "z": 0 },
+    "active": true
+  },
+  "entityOpts": {
+    "appId": "examplePhysicsCamera",
+    "debugData": { "name": "Physics example camera" }
+  }
+}

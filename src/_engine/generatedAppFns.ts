@@ -143,6 +143,30 @@ export const sceneFileObjects: {
       }
     ).scene({ sceneData, assets });
   },
+  examplePhysics: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/physics/examplePhysics.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
+  exampleQuickStart: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/quickStart/exampleQuickStart.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
+  exampleToolkit: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/toolkit/exampleToolkit.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
 };
 
 export const tslMaterialFileObjects = {

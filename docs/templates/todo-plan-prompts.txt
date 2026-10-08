@@ -214,20 +214,25 @@ Category: Refactoring, documentation
 UNDER_CONSTRUCTION
 This is an epic plan and will probably require several plans.
 
-We have two goals: we should create our own components to replace Tweakpane and we should provide them also for the app to be imported and used. We probably shouldn't create our own color picker, but we should pick the best library that is flexible (maybe we want to add our own features). All of the Tweakpane's features should be integrated into our own "Form and data display system" (number inputs, folders with nestin, color picker, sliders, dropdowns, checkboxes, radio buttons, text, text areas, etc.), and they should have proper and optimized listener features.
+We should create our own components to replace Tweakpane (and possibly stats-gl) and we should provide them also for the app to be imported and used. We probably shouldn't create our own color picker, but we should pick the best library that is flexible (maybe we want to add our own features). All of the Tweakpane's features should be integrated into our own "Form and data display system" (number inputs, folders with nestin, color picker, sliders, dropdowns, checkboxes, radio buttons, text, text areas, etc.), and they should have proper and optimized listener features. We should then also gather all of our current basic UI components (toaster, dialog, window, percentagePie etc.) and have them have a logical folder structure and coherent coding style and usage pattern.
 
-We should then also gather all of our current basic UI components (toaster, dialog, window, percentagePie etc.) and have them have a logical folder structure and coherent coding style and usage pattern.
+The visual style needs to be reworked as well. The visual style should come from the Hub (dark and light mode) and it should have the same feel, theme, and look, but should respect the tighter space more. Fonts should be "subtle", readable and nice, and should be included in the project (if new fonts are introduced, they should probably be used also in the Hub. I am not sure, but experiment with some fonts and if they work for both then good and if not then pick something that serves the overall Aekasha feeling). Subtle animations should be used to make the UI feel professional and to hint the user about UI patterns and guidance. The blue accent color should be used sparingly but knowing that it can really help the user to spot up UI elements of importance. Error, warning, and success colors should also be defined (toaster etc.) and they should also be used sparingly in the design.
 
 In addition to existing components we should create (at least) these components:
-- Button: with options/features to have an icon, text becoming a spinner, what else? All the modern practices and then some
-- Link: internal vs. external
-- Range (basically a double slider that is highly customizable)
+- Button: with options/features to have an icon, text becoming a spinner, what else? All the modern practices and then some.
+- Link: internal vs. external.
+- Range: basically a double slider that is highly customizable.
 - Tables (title, headers, colors, cells as buttons, hover highlighting a cell/row/column, responsiveness, what else?)
 - Graphs (basic static graphs, running profiler graphs, 100% stacked/segmented bar chart)
-- Lists (static, draggable, searchable/filterable)
-- Spinners and progress bar loaders
+- Lists (static, draggable items, searchable/filterable)
+- Spinner(s) and progress bar loader(s)
+- What else would be good to provide as an UI component for the users/developers? What are some new and modern game UI components out there?
 
-We should make it easy to build a game or 3D app UI with these HTML/Javascript components and they should be easily overwritten with styles (a developer pattern and a HUB guide should be made). Also a guide to how to create your own scene debugger drawer tab should be made. The usage should implement the SPB (Smallest Possible Build) strategy.
+The on-screen tools should provide.
+
+We should make it easy to build a game or 3D app UI with these HTML/Javascript components and they should be easily overwritten with styles (a developer pattern and a HUB guide should be made). Also a guide to how to create your own scene debugger drawer tab should be made. The usage should implement the SPB (Smallest Possible Build) strategy. An example page of all of the HTML UI components should be constructed for the Hub.
+
+One more thing to focus here is semantics and accessibility. The UI should follow good HTML and accessibility standards and should help - not just disabled - but also keyboard driven users. If some standards should not be followed, it should have a very good reason. The main mantra here is "USER FIRST"! The goal is to have a professional, yet cool UI and a welcoming, "Can't wait to get back to Aekasha!" type of UI vibe.
 
 This complete overhaul should replace all of the debugger UI code, 
 

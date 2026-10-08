@@ -13437,6 +13437,366 @@
       "postFxEnabled": true,
       "id": "topDownTestScene",
       "sceneFile": "./scene_topDownTest.ts"
+    },
+    "examplePhysics": {
+      "name": "Example: Physics",
+      "description": "A static ground with a box, a sphere, a capsule and a cylinder dropping onto it, each a mesh entity with a Rapier body from createPhysicsEntity. Space drops another one.",
+      "backgroundColor": "#1c212b",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 120,
+            "position": {
+              "x": 9,
+              "y": 8,
+              "z": 14
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 45,
+            "appId": "examplePhysicsCamera"
+          },
+          "entityOpts": {
+            "appId": "examplePhysicsCamera",
+            "debugData": {
+              "name": "Physics example camera"
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.6,
+            "appId": "examplePhysicsAmbient"
+          },
+          "entityOpts": {
+            "appId": "examplePhysicsAmbient",
+            "debugData": {
+              "name": "Physics example ambient light"
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 8,
+              "y": 16,
+              "z": 6
+            },
+            "targetPos": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowCameraNearFar": [
+              1,
+              50
+            ],
+            "shadowCameraFrustum": [
+              -12,
+              12,
+              12,
+              -12
+            ],
+            "appId": "examplePhysicsSun"
+          },
+          "entityOpts": {
+            "appId": "examplePhysicsSun",
+            "debugData": {
+              "name": "Physics example sun"
+            }
+          }
+        }
+      ],
+      "id": "examplePhysics",
+      "sceneFile": "./examples/physics/examplePhysics.ts"
+    },
+    "exampleQuickStart": {
+      "name": "Example: Quick start",
+      "description": "The smallest complete scene: a camera and two lights from JSON, a ground, and a cube with the toolkit's checkerBoard material, hovering with the toolkit's HoverEffect.",
+      "backgroundColor": "#1c212b",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 100,
+            "position": {
+              "x": 4,
+              "y": 3.5,
+              "z": 6
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 45,
+            "appId": "exampleQuickStartCamera"
+          },
+          "entityOpts": {
+            "appId": "exampleQuickStartCamera",
+            "debugData": {
+              "name": "Quick start camera"
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.6,
+            "appId": "exampleQuickStartAmbient"
+          },
+          "entityOpts": {
+            "appId": "exampleQuickStartAmbient",
+            "debugData": {
+              "name": "Quick start ambient light"
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 5,
+              "y": 10,
+              "z": 4
+            },
+            "targetPos": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowCameraNearFar": [
+              1,
+              30
+            ],
+            "shadowCameraFrustum": [
+              -8,
+              8,
+              8,
+              -8
+            ],
+            "appId": "exampleQuickStartSun"
+          },
+          "entityOpts": {
+            "appId": "exampleQuickStartSun",
+            "debugData": {
+              "name": "Quick start sun"
+            }
+          }
+        }
+      ],
+      "materials": [
+        {
+          "id": "checkerBoard",
+          "params": {
+            "color": "#1a233a"
+          },
+          "tslFile": "materials/checkerBoard.tsl.ts",
+          "nodes": {
+            "colorNode": {
+              "baseColor": "#1a233a",
+              "panelColor": "#ffaa00",
+              "gridScale": 4
+            },
+            "roughnessNode": {
+              "baseRoughness": 0.2,
+              "scratchIntensity": 0.8
+            },
+            "normalNode": {
+              "bumpScale": 0.05
+            }
+          },
+          "type": "STANDARDNODEMATERIAL"
+        }
+      ],
+      "id": "exampleQuickStart",
+      "sceneFile": "./examples/quickStart/exampleQuickStart.ts"
+    },
+    "exampleToolkit": {
+      "name": "Example: Toolkit",
+      "description": "Pieces of the toolkit together: the Ækasha symbol model (a Draco GLB imported from its asset JSON) with the triplanarCheckerboard material in two colours, hovering with HoverEffect over a ground with the triplanarGrid material.",
+      "backgroundColor": "#1c212b",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 100,
+            "position": {
+              "x": 2.5,
+              "y": 2.6,
+              "z": 7.5
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 1.4,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 40,
+            "appId": "exampleToolkitCamera"
+          },
+          "entityOpts": {
+            "appId": "exampleToolkitCamera",
+            "debugData": {
+              "name": "Toolkit example camera"
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.6,
+            "appId": "exampleToolkitAmbient"
+          },
+          "entityOpts": {
+            "appId": "exampleToolkitAmbient",
+            "debugData": {
+              "name": "Toolkit example ambient light"
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 4,
+              "y": 9,
+              "z": 7
+            },
+            "targetPos": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowCameraNearFar": [
+              1,
+              30
+            ],
+            "shadowCameraFrustum": [
+              -6,
+              6,
+              6,
+              -6
+            ],
+            "appId": "exampleToolkitSun"
+          },
+          "entityOpts": {
+            "appId": "exampleToolkitSun",
+            "debugData": {
+              "name": "Toolkit example sun"
+            }
+          }
+        }
+      ],
+      "materials": [
+        {
+          "id": "triplanarCheckerboard",
+          "params": {
+            "color": "#ff0000",
+            "roughness": 0.85,
+            "metalness": 0
+          },
+          "tslFile": "materials/triplanarCheckerboard.tsl.ts",
+          "staticDefines": {
+            "alignToObject": true,
+            "fitToBounds": false,
+            "dominantAxis": false,
+            "plusSigns": true
+          },
+          "nodes": {
+            "colorNode": {
+              "checkerSize": 0.25,
+              "checkerColorA": "#898989",
+              "checkerColorB": "#787878",
+              "plusSignColor": "#555555"
+            }
+          },
+          "type": "STANDARDNODEMATERIAL"
+        },
+        {
+          "id": "triplanarGrid",
+          "params": {
+            "color": "#808080",
+            "roughness": 0.85,
+            "metalness": 0
+          },
+          "tslFile": "materials/triplanarGrid.tsl.ts",
+          "staticDefines": {
+            "alignToObject": true,
+            "fitToBounds": true,
+            "dominantAxis": false,
+            "minorLines": true,
+            "seamNormals": false
+          },
+          "nodes": {
+            "colorNode": {
+              "lineThickness": 0.05,
+              "lineFrequency": 1,
+              "lineColor": "#999999",
+              "backgroundColor": "#808080",
+              "minorLineDivisions": 2,
+              "minorLineColor": "#878787"
+            },
+            "normalNode": {
+              "seamNormalStrength": 0.5,
+              "minorSeamNormalStrength": 0.25
+            }
+          },
+          "type": "STANDARDNODEMATERIAL"
+        }
+      ],
+      "importedAssets": [
+        {
+          "id": "aekashaSymbol",
+          "fileName": "./aekashaSymbol.glb",
+          "debugData": {
+            "name": "Ækasha symbol",
+            "description": "The Æ glyph of the favicon, extruded with a small bevel: 1 unit high, centred on the origin, facing +z. One geometry, aekashaSymbol/aekashaSymbol. Built by devTools/toolkit/buildAekashaSymbol.ts; the pipeline keeps it Draco."
+          },
+          "__fileSize": 16320,
+          "__sourceUrl": "/toolkit/models/aekashaSymbol/aekashaSymbol.glb",
+          "__url": "/aek-assets/toolkit/models/aekashaSymbol/aekashaSymbol.ac7e8564.glb",
+          "__bytes": {
+            "in": 16320,
+            "out": 16576
+          },
+          "__vramBytes": {
+            "in": 117856,
+            "out": 117248
+          }
+        }
+      ],
+      "id": "exampleToolkit",
+      "sceneFile": "./examples/toolkit/exampleToolkit.ts"
     }
   },
   "cameras": {
@@ -13727,6 +14087,87 @@
         }
       },
       "__sourcePath": "src/app/cameras/topDownTestCamera.camera.json"
+    },
+    "examplePhysicsCamera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 120,
+        "position": {
+          "x": 9,
+          "y": 8,
+          "z": 14
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 1,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 45,
+        "appId": "examplePhysicsCamera"
+      },
+      "entityOpts": {
+        "appId": "examplePhysicsCamera",
+        "debugData": {
+          "name": "Physics example camera"
+        }
+      },
+      "__sourcePath": "src/app/examples/physics/examplePhysicsCamera.camera.json"
+    },
+    "exampleQuickStartCamera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 100,
+        "position": {
+          "x": 4,
+          "y": 3.5,
+          "z": 6
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 1,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 45,
+        "appId": "exampleQuickStartCamera"
+      },
+      "entityOpts": {
+        "appId": "exampleQuickStartCamera",
+        "debugData": {
+          "name": "Quick start camera"
+        }
+      },
+      "__sourcePath": "src/app/examples/quickStart/exampleQuickStartCamera.camera.json"
+    },
+    "exampleToolkitCamera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 100,
+        "position": {
+          "x": 2.5,
+          "y": 2.6,
+          "z": 7.5
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 1.4,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 40,
+        "appId": "exampleToolkitCamera"
+      },
+      "entityOpts": {
+        "appId": "exampleToolkitCamera",
+        "debugData": {
+          "name": "Toolkit example camera"
+        }
+      },
+      "__sourcePath": "src/app/examples/toolkit/exampleToolkitCamera.camera.json"
     }
   },
   "lights": {
@@ -14086,6 +14527,159 @@
         }
       },
       "__sourcePath": "src/app/lights/topDownTestSun.light.json"
+    },
+    "examplePhysicsAmbient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#ffffff",
+        "intensity": 0.6,
+        "appId": "examplePhysicsAmbient"
+      },
+      "entityOpts": {
+        "appId": "examplePhysicsAmbient",
+        "debugData": {
+          "name": "Physics example ambient light"
+        }
+      },
+      "__sourcePath": "src/app/examples/physics/examplePhysicsAmbient.light.json"
+    },
+    "examplePhysicsSun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 8,
+          "y": 16,
+          "z": 6
+        },
+        "targetPos": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowCameraNearFar": [
+          1,
+          50
+        ],
+        "shadowCameraFrustum": [
+          -12,
+          12,
+          12,
+          -12
+        ],
+        "appId": "examplePhysicsSun"
+      },
+      "entityOpts": {
+        "appId": "examplePhysicsSun",
+        "debugData": {
+          "name": "Physics example sun"
+        }
+      },
+      "__sourcePath": "src/app/examples/physics/examplePhysicsSun.light.json"
+    },
+    "exampleQuickStartAmbient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#ffffff",
+        "intensity": 0.6,
+        "appId": "exampleQuickStartAmbient"
+      },
+      "entityOpts": {
+        "appId": "exampleQuickStartAmbient",
+        "debugData": {
+          "name": "Quick start ambient light"
+        }
+      },
+      "__sourcePath": "src/app/examples/quickStart/exampleQuickStartAmbient.light.json"
+    },
+    "exampleQuickStartSun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 5,
+          "y": 10,
+          "z": 4
+        },
+        "targetPos": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowCameraNearFar": [
+          1,
+          30
+        ],
+        "shadowCameraFrustum": [
+          -8,
+          8,
+          8,
+          -8
+        ],
+        "appId": "exampleQuickStartSun"
+      },
+      "entityOpts": {
+        "appId": "exampleQuickStartSun",
+        "debugData": {
+          "name": "Quick start sun"
+        }
+      },
+      "__sourcePath": "src/app/examples/quickStart/exampleQuickStartSun.light.json"
+    },
+    "exampleToolkitAmbient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#ffffff",
+        "intensity": 0.6,
+        "appId": "exampleToolkitAmbient"
+      },
+      "entityOpts": {
+        "appId": "exampleToolkitAmbient",
+        "debugData": {
+          "name": "Toolkit example ambient light"
+        }
+      },
+      "__sourcePath": "src/app/examples/toolkit/exampleToolkitAmbient.light.json"
+    },
+    "exampleToolkitSun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 4,
+          "y": 9,
+          "z": 7
+        },
+        "targetPos": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowCameraNearFar": [
+          1,
+          30
+        ],
+        "shadowCameraFrustum": [
+          -6,
+          6,
+          6,
+          -6
+        ],
+        "appId": "exampleToolkitSun"
+      },
+      "entityOpts": {
+        "appId": "exampleToolkitSun",
+        "debugData": {
+          "name": "Toolkit example sun"
+        }
+      },
+      "__sourcePath": "src/app/examples/toolkit/exampleToolkitSun.light.json"
     }
   },
   "geometries": {
@@ -22415,6 +23009,31 @@
       "__vramBytes": {
         "in": 45544,
         "out": 33824
+      }
+    },
+    "aekashaSymbol": {
+      "id": "aekashaSymbol",
+      "fileName": "./aekashaSymbol.glb",
+      "debugData": {
+        "name": "Ækasha symbol",
+        "description": "The Æ glyph of the favicon, extruded with a small bevel: 1 unit high, centred on the origin, facing +z. One geometry, aekashaSymbol/aekashaSymbol. Built by devTools/toolkit/buildAekashaSymbol.ts; the pipeline keeps it Draco."
+      },
+      "optimize": {
+        "mesh": {
+          "codec": "draco"
+        }
+      },
+      "__sourcePath": "src/toolkit/models/aekashaSymbol/aekashaSymbol.importedAsset.json",
+      "__fileSize": 16320,
+      "__sourceUrl": "/toolkit/models/aekashaSymbol/aekashaSymbol.glb",
+      "__url": "/aek-assets/toolkit/models/aekashaSymbol/aekashaSymbol.ac7e8564.glb",
+      "__bytes": {
+        "in": 16320,
+        "out": 16576
+      },
+      "__vramBytes": {
+        "in": 117856,
+        "out": 117248
       }
     }
   },

@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "DIRECTIONAL",
+    "color": "#fff2d9",
+    "intensity": 3,
+    "position": { "x": 8, "y": 16, "z": 6 },
+    "targetPos": { "x": 0, "y": 0, "z": 0 },
+    "castShadow": true,
+    "shadowCameraNearFar": [1, 50],
+    "shadowCameraFrustum": [-12, 12, 12, -12]
+  },
+  "entityOpts": {
+    "appId": "examplePhysicsSun",
+    "debugData": { "name": "Physics example sun" }
+  }
+}

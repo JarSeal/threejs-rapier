@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "DIRECTIONAL",
+    "color": "#fff2d9",
+    "intensity": 3,
+    "position": { "x": 4, "y": 9, "z": 7 },
+    "targetPos": { "x": 0, "y": 0, "z": 0 },
+    "castShadow": true,
+    "shadowCameraNearFar": [1, 30],
+    "shadowCameraFrustum": [-6, 6, 6, -6]
+  },
+  "entityOpts": {
+    "appId": "exampleToolkitSun",
+    "debugData": { "name": "Toolkit example sun" }
+  }
+}

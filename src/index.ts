@@ -3,6 +3,7 @@ import { createRenderer } from './_engine/core/Renderer';
 import { InitEngine } from './_engine/InitApp';
 import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 import { CMP } from './_engine/utils/CMP';
+import { IS_DEBUG_ENV } from './_engine/core/Config';
 
 InitEngine(async () => {
   // Init renderer
@@ -66,6 +67,12 @@ InitEngine(async () => {
       }
     },
   });
+
+  // The example scenes' Hub tab (debug env)
+  if (IS_DEBUG_ENV) {
+    const { registerExampleHubTabs } = await import('./app/examples/_dbg__exampleHub');
+    registerExampleHubTabs();
+  }
 
   // Load scene
   await loadScene({ sceneId: 'sceneTestECS' });

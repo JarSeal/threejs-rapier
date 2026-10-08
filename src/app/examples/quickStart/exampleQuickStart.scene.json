@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../../.schemas/scene.schema.json",
+  "id": "exampleQuickStart",
+  "sceneFile": "./examples/quickStart/exampleQuickStart.ts",
+  "name": "Example: Quick start",
+  "description": "The smallest complete scene: a camera and two lights from JSON, a ground, and a cube with the toolkit's checkerBoard material, hovering with the toolkit's HoverEffect.",
+  "backgroundColor": "#1c212b",
+  "cameras": ["exampleQuickStartCamera"],
+  "lights": ["exampleQuickStartAmbient", "exampleQuickStartSun"],
+  "materials": ["checkerBoard"]
+}
