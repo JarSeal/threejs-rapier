@@ -5,8 +5,15 @@ import path from 'node:path';
 import type { Plugin } from 'vite';
 import { DevFilesError } from './devFiles/http';
 import { checkHostAndOrigin } from './devFiles/security';
+import { extractApiModelInChildProcess, isApiInputFile } from './hub/api/extract';
+import { isApiPagePath } from './hub/api/model';
 import { buildHub, type HubBuildResult } from './hub/build';
-import { HUB_DEV_EVENT, HUB_DEV_SOCKET_PLACEHOLDER, type HubDevEvent } from './hub/devProtocol';
+import {
+  HUB_API_REBUILDING_STATUS,
+  HUB_DEV_EVENT,
+  HUB_DEV_SOCKET_PLACEHOLDER,
+  type HubDevEvent,
+} from './hub/devProtocol';
 import { diagnosticKey, formatDiagnostic } from './hub/diagnostics';
 import {
   FAVICON_FILES,
@@ -38,9 +45,18 @@ import { getHubContentType, resolveHubRoute } from './hub/serve';
  *   reload once it's back.
  * - A page with an error is served as an error page (`buildHub`), and the terminal gets the
  *   errors and warnings that are new since the last run.
+ * - The API docs (p553 §2.5) are never rebuilt by a save. The builds take the last good model
+ *   (`api: 'last'`, from the cache file at first), and a save of one of its inputs (an engine or
+ *   toolkit `.ts`, `tsconfig.json`, …) only marks it stale. The next request for an API page
+ *   while it's stale starts the rebuild and gets the rebuilding page (`HUB_API_REBUILDING_STATUS`),
+ *   which reloads on the `api` event once the next run has rendered the new model. TypeDoc runs in
+ *   a child process (`extractApiModelInChildProcess`): in this one it would block every request,
+ *   the app's too, for seconds. Other pages never wait for it.
  */
 
 const DEBOUNCE_MS = 100;
+/** The pages an update line names (an API rebuild can change them all) */
+const MAX_LOGGED_PAGES = 5;
 
 const RED = '\x1b[31m';
 const YELLOW = '\x1b[33m';
@@ -106,9 +122,12 @@ const diffBuilds = (
 const describeEvents = (events: HubDevEvent[]) =>
   events
     .map((event) => {
+      if (event.kind === 'api') return 'the API docs';
       if (event.kind === 'all') return 'scripts or static assets: every page reloads';
       if (event.kind === 'css') return 'styles';
-      const names = event.paths.map((p) => p || '/');
+      const names = event.paths.slice(0, MAX_LOGGED_PAGES).map((p) => p || '/');
+      const more = event.paths.length - names.length;
+      if (more) names.push(`and ${more} more`);
       return `${event.paths.length} page${s(event.paths.length)} (${names.join(', ')})`;
     })
     .join(', ');
@@ -136,6 +155,12 @@ export const hubPlugin = (): Plugin => ({
     let outsideDirs = new Set<string>();
     /** The first build's time, shown on the Version page until the server restarts */
     let buildTime: string | undefined;
+    /** An API input changed since the model was built, or there's none yet */
+    let isApiStale = false;
+    /** From the rebuild's start until the run that renders its model has written the pages */
+    let isApiRebuilding = false;
+    /** The rebuild's conversion has ended: the next run renders it */
+    let apiExtract: { isOk: boolean; durationMs: number } | null = null;
 
     const report = (result: HubBuildResult, prev: HubBuildResult | null) => {
       const prevKeys = new Set(prev?.diag.items.map(diagnosticKey));
@@ -169,7 +194,8 @@ export const hubPlugin = (): Plugin => ({
       server.watcher.add([...outsideFiles, ...outsideDirs]);
     };
 
-    const runBuild = async (changedFiles: Set<string>) => {
+    /** `extracted`: the run renders an API rebuild's model, and tells the rebuilding pages */
+    const runBuild = async (changedFiles: Set<string>, extracted: typeof apiExtract = null) => {
       buildTime ??= new Date().toISOString();
       const result = await buildHub({
         mode: 'dev',
@@ -177,6 +203,7 @@ export const hubPlugin = (): Plugin => ({
         basePath: HUB_DEV_URL_BASE,
         fallback: lastBuild?.assets,
         buildTime,
+        api: 'last',
       });
       const prev = lastBuild;
       lastBuild = result;
@@ -184,14 +211,29 @@ export const hubPlugin = (): Plugin => ({
       watchOutsideFiles(result);
       report(result, prev);
       if (!prev) {
+        isApiStale = result.isApiStale;
         const errors = result.diag.errors.length;
         console.log(
-          `${errors ? YELLOW : GREEN}${errors ? '⚠' : '✓'} [Hub] ${result.pageCount} page${s(result.pageCount)} at ${HUB_DEV_URL_BASE}${errors ? `, ${errors} with errors` : ''} ${DIM}(${Math.round(result.durationMs)} ms${result.api && !result.api.isCached ? `, the API model extracted in ${(result.api.extractMs / 1000).toFixed(1)} s` : ''})${RESET}`
+          `${errors ? YELLOW : GREEN}${errors ? '⚠' : '✓'} [Hub] ${result.pageCount} page${s(result.pageCount)} at ${HUB_DEV_URL_BASE}${errors ? `, ${errors} with errors` : ''} ${DIM}(${Math.round(result.durationMs)} ms${isApiStale ? '; the API docs aren’t current: rebuilt on their first request' : ''})${RESET}`
         );
         return;
       }
       removeStaleFiles(result, prev);
       const events = diffBuilds(prev, result, changedFiles);
+      if (extracted) {
+        isApiRebuilding = false;
+        events.push({ kind: 'api' });
+        const seconds = (extracted.durationMs / 1000).toFixed(1);
+        if (extracted.isOk) {
+          console.log(
+            `${GREEN}✓ [Hub] API docs rebuilt${RESET} ${DIM}(TypeDoc ${seconds} s)${RESET}`
+          );
+        } else {
+          console.error(
+            `${RED}✗ [Hub] The API docs didn't rebuild: their pages list the errors, the other pages keep the last good api: links${RESET}`
+          );
+        }
+      }
       for (const data of events) server.hot.send({ type: 'custom', event: HUB_DEV_EVENT, data });
       if (events.length) {
         console.log(
@@ -205,17 +247,40 @@ export const hubPlugin = (): Plugin => ({
       timer = null;
       if (building) return; // The run in progress picks them up when it ends
       const run = async () => {
-        while (pendingFiles.size && !isClosed) {
+        while ((pendingFiles.size || apiExtract) && !isClosed) {
           const files = pendingFiles;
+          const extracted = apiExtract;
           pendingFiles = new Set();
+          apiExtract = null;
           try {
-            await runBuild(files);
+            await runBuild(files, extracted);
           } catch (err) {
             console.error(`${RED}✗ [Hub] The build failed:${RESET}`, err);
+          } finally {
+            // A failed run: the rebuilding pages reload into the last build's pages
+            if (extracted && isApiRebuilding) {
+              isApiRebuilding = false;
+              const data: HubDevEvent = { kind: 'api' };
+              if (!isClosed) server.hot.send({ type: 'custom', event: HUB_DEV_EVENT, data });
+            }
           }
         }
       };
       building = run().finally(() => (building = null));
+    };
+
+    /** Converts in a child process; the next run renders the new model */
+    const rebuildApi = () => {
+      if (isApiRebuilding) return;
+      isApiRebuilding = true;
+      isApiStale = false; // A save from now on is newer than this conversion
+      console.log(`[Hub] Rebuilding the API docs… ${DIM}(TypeDoc in a child process)${RESET}`);
+      void extractApiModelInChildProcess().then((extract) => {
+        if (isClosed) return;
+        apiExtract = extract;
+        if (timer) clearTimeout(timer);
+        flush();
+      });
     };
 
     const schedule = (file: string) => {
@@ -238,6 +303,8 @@ export const hubPlugin = (): Plugin => ({
       for (const event of ['add', 'change', 'unlink']) {
         server.watcher.on(event, (filePath: string) => {
           const file = path.resolve(filePath);
+          // Only marked: the next API page request rebuilds them
+          if (isApiInputFile(file)) isApiStale = true;
           if (outsideFiles.has(file) || outsideDirs.has(path.dirname(file))) schedule(file);
         });
       }
@@ -270,6 +337,21 @@ export const hubPlugin = (): Plugin => ({
       const route = resolveHubRoute(HUB_DEV_OUT_DIR, HUB_DEV_URL_BASE, pathname);
       if (route.kind === 'redirect') {
         res.writeHead(301, { Location: route.location }).end();
+        return;
+      }
+      const rebuildingHtml = lastBuild?.apiRebuildingHtml;
+      if (
+        (isApiStale || isApiRebuilding) &&
+        rebuildingHtml &&
+        isApiPagePath(pathname.slice(HUB_DEV_URL_BASE.length))
+      ) {
+        rebuildApi();
+        res.writeHead(HUB_API_REBUILDING_STATUS, {
+          'Content-Type': getHubContentType('.html'),
+          'Cache-Control': 'no-cache',
+          'Retry-After': '5',
+        });
+        res.end(rebuildingHtml.replace(HUB_DEV_SOCKET_PLACEHOLDER, socketPath()));
         return;
       }
       const file = route.kind === 'file' ? route.file : path.join(HUB_DEV_OUT_DIR, '404.html');

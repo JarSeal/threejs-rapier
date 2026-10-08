@@ -32,7 +32,7 @@ import {
   type CommentParts,
   type InlineTagPart,
 } from './comments';
-import { loadApiModel, type ApiExtractMessage } from './extract';
+import { getLastApiModel, loadApiModel, type ApiExtractMessage } from './extract';
 import { getApiLinks, type ApiLinks } from './links';
 import {
   API_SECTION_PATH,
@@ -88,6 +88,13 @@ const COMMENT_HEADING_OFFSET = 3;
 const MAX_ROW_DEPTH = 3;
 const DESCRIPTION_LENGTH = 200;
 
+/**
+ * Where a build's API model comes from (§2.5): `current` converts when its inputs changed (the
+ * public build), `last` takes the last good one whatever its inputs (the dev plugin, which
+ * rebuilds it in a child process), `none` builds no API docs (`hub:build --no-api`)
+ */
+export type ApiModelSource = 'current' | 'last' | 'none';
+
 export type ApiBuildStats = {
   isCached: boolean;
   extractMs: number;
@@ -98,9 +105,12 @@ export type ApiBuildStats = {
 
 export type ApiSectionResult = {
   section: HubGeneratedSection;
+  /** Null when the model didn't build or there's none (`none`, or `last` before any) */
   stats: ApiBuildStats | null;
   /** Every page's `api:` links (§2.3), null when the model didn't build */
   links: HubApiLinkResolver | null;
+  /** `last`: the model is older than its inputs (an old cache file), or there's none yet */
+  isStale: boolean;
 };
 
 // --- Memo ---
@@ -1037,35 +1047,65 @@ export type ApiSectionOptions = {
   mode: HubBuildMode;
   diag: HubDiagnostics;
   meta: ProjectMetadata;
+  model: ApiModelSource;
 };
 
+/** The section without API pages: its landing slot says why */
+const createEmptySection = (
+  text: string,
+  links: HubApiLinkResolver | null,
+  isStale = false
+): ApiSectionResult => ({
+  section: {
+    path: API_SECTION_PATH,
+    slots: { [LANDING_SLOT]: () => `<p>${text}</p>\n` },
+    pages: [],
+    files: [TSCONFIG_FILE],
+    dirs: [],
+  },
+  stats: null,
+  links,
+  isStale,
+});
+
+/** `api:` links when there's no model to check them against: they point at the landing page */
+const uncheckedLinks: HubApiLinkResolver = () => ({ pagePath: API_SECTION_PATH, anchor: '' });
+
 /**
- * The Documentation section: the API model (converted, or from the cache), its pages, and the
- * landing slot on `documentation/`. A failed conversion is an error on the section's page, which
- * then says the API docs didn't build.
+ * The Documentation section: the API model (`model` says from where), its pages, and the landing
+ * slot on `documentation/`. A failed conversion is an error on the section's page, which then says
+ * the API docs didn't build. Without a model (`none`, or `last` before the first), `api:` links
+ * aren't checked.
  */
 export const createApiSection = async ({
   mode,
   diag,
   meta,
+  model,
 }: ApiSectionOptions): Promise<ApiSectionResult> => {
-  const extract = await loadApiModel();
+  if (model === 'none') {
+    diag.warn(
+      TSCONFIG_FILE,
+      undefined,
+      'The API docs are not built (--no-api), and api: links are not checked'
+    );
+    return createEmptySection(
+      'The API documentation isn’t in this build (<code>yarn hub:build --no-api</code>).',
+      uncheckedLinks
+    );
+  }
+  const extract =
+    model === 'last' ? getLastApiModel() : { ...(await loadApiModel()), isStale: false };
+  const { isStale } = extract;
   reportMessages(diag, extract.messages);
-  const files = [TSCONFIG_FILE];
   if (!extract.model) {
-    const notBuilt: HubSlotGenerator = () =>
-      '<p>The API documentation didn’t build: the errors are listed above and in the terminal.</p>\n';
-    return {
-      section: {
-        path: API_SECTION_PATH,
-        slots: { [LANDING_SLOT]: notBuilt },
-        pages: [],
-        files,
-        dirs: [],
-      },
-      stats: null,
-      links: null,
-    };
+    // `last` with no conversion yet: the dev plugin converts on the first API page request
+    return extract.messages.length
+      ? createEmptySection(
+          'The API documentation didn’t build: the errors are listed above and in the terminal.',
+          null
+        )
+      : createEmptySection('The API documentation isn’t built yet.', uncheckedLinks, isStale);
   }
 
   const index = getIndex(extract.model.project);
@@ -1132,11 +1172,12 @@ export const createApiSection = async ({
       path: API_SECTION_PATH,
       slots: { [LANDING_SLOT]: generator(API_SECTION_PATH, renderLanding) },
       pages,
-      files,
+      files: [TSCONFIG_FILE],
       dirs: [],
       searchDocs: getSearchDocs(index),
     },
     links: createLinkResolver(links),
+    isStale,
     stats: {
       isCached: extract.isCached,
       extractMs: extract.durationMs,

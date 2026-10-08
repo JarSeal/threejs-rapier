@@ -57,6 +57,14 @@ export const API_SUBTREES: { id: ApiSubtree; sourceDir: string; title: string }[
   { id: 'toolkit', sourceDir: 'src/toolkit', title: 'Toolkit' },
 ];
 
+/**
+ * Whether a site path (`documentation/engine/core/SceneLoader/`) is one of the pages the API
+ * model renders: the landing page and both subtrees, not the section's hand-written children
+ */
+export const isApiPagePath = (sitePath: string) =>
+  sitePath === API_SECTION_PATH ||
+  API_SUBTREES.some(({ id }) => sitePath.startsWith(`${API_SECTION_PATH}${id}/`));
+
 /** Documented or not: a comment on it, or on one of its signatures */
 export type Coverage = { documented: number; total: number };
 

@@ -6,8 +6,11 @@ import { formatDiagnostic } from './hub/diagnostics';
 import { APP_DIST_DIR, HUB_DIST_DIR, ROOT, toRepoPath } from './hub/paths';
 
 /**
- * `yarn hub:build [--out <dir>]`: builds the Ækasha Hub's public site (p551) into `dist-hub/`
- * (emptied first), and exits 1 on an error, without writing anything. `yarn build` runs it last.
+ * `yarn hub:build [--out <dir>] [--no-api]`: builds the Ækasha Hub's public site (p551) into
+ * `dist-hub/` (emptied first), and exits 1 on an error, without writing anything. `yarn build`
+ * runs it last.
+ * - `--no-api`: no API docs (p553 §2.5), for fast content work: no TypeDoc conversion, the
+ *   Documentation page says they aren't built, and `api:` links aren't checked (one warning).
  * - `AEK_HUB=false`: does nothing (`yarn build` without the Hub).
  * - `AEK_HUB_IN_DIST=true`: also copies the site into the app's `dist/hub/`, so the app's own
  *   site serves it at `/hub/` (p550 §3.1). Off by default: the Hub isn't in production unless
@@ -26,11 +29,13 @@ const fail = (message: string) => {
 
 const parseArgs = (args: string[]) => {
   let outDir = HUB_DIST_DIR;
+  let isApiSkipped = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--out' && args[i + 1]) outDir = path.resolve(ROOT, args[++i]);
-    else fail(`Unknown argument "${args[i]}" (usage: yarn hub:build [--out <dir>])`);
+    else if (args[i] === '--no-api') isApiSkipped = true;
+    else fail(`Unknown argument "${args[i]}" (usage: yarn hub:build [--out <dir>] [--no-api])`);
   }
-  return { outDir };
+  return { outDir, isApiSkipped };
 };
 
 /**
@@ -60,8 +65,12 @@ const main = async () => {
     console.log('[Hub] AEK_HUB=false: not built');
     return;
   }
-  const { outDir } = parseArgs(process.argv.slice(2));
-  const result = await buildHub({ mode: 'public', outDir });
+  const { outDir, isApiSkipped } = parseArgs(process.argv.slice(2));
+  const result = await buildHub({
+    mode: 'public',
+    outDir,
+    api: isApiSkipped ? 'none' : 'current',
+  });
 
   for (const warning of result.diag.warnings) {
     console.warn(`${YELLOW}⚠ [Hub] ${formatDiagnostic(warning)}${RESET}`);
@@ -82,6 +91,8 @@ const main = async () => {
     console.log(
       `  API: ${moduleCount} modules, ${symbolCount} symbols, ${share}% documented; model ${isCached ? 'reused' : 'extracted'} (${(extractMs / 1000).toFixed(1)} s)`
     );
+  } else if (isApiSkipped) {
+    console.log('  API: not built (--no-api)');
   }
   if (result.search) {
     console.log(

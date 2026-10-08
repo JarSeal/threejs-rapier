@@ -41,7 +41,10 @@ export type HubImageJob = {
   isConverted: boolean;
 };
 
-/** Where an `api:` link's name points: a page of the API docs and its anchor, or why it can't */
+/**
+ * Where an `api:` link's name points: a page of the API docs and its anchor (none: the page's
+ * top), or why it can't
+ */
 export type HubApiLinkResult = { pagePath: string; anchor: string } | { error: string };
 
 /** Resolves an `api:` link's name (`loadScene`, `SceneLoader.loadScene`) */
@@ -280,7 +283,7 @@ export const resolveApiLink = (href: string, env: HubMarkdownEnv, file: string, 
     env.diag.error(file, line, result.error);
     return '#';
   }
-  return `${env.root}${result.pagePath}#${result.anchor}`;
+  return `${env.root}${result.pagePath}${result.anchor ? `#${result.anchor}` : ''}`;
 };
 
 const isRelativeUrl = (url: string) => !!url && !/^([a-z][\w+.-]*:|\/|#)/i.test(url);

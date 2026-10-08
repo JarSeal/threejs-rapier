@@ -18,10 +18,20 @@ export const HUB_DEV_META = 'aek-hub-dev';
  */
 export const HUB_DEV_SOCKET_PLACEHOLDER = '%AEK_HUB_DEV_SOCKET%';
 
+/**
+ * The page path (`data-hub-page`) of the page served for an API page while the API docs rebuild
+ * (p553 §2.5): it reloads on the `api` event, or when its own URL no longer answers with
+ * `HUB_API_REBUILDING_STATUS` (the rebuild ended before its socket opened)
+ */
+export const HUB_API_REBUILDING_PAGE = 'api-rebuilding';
+export const HUB_API_REBUILDING_STATUS = 503;
+
 export type HubDevEvent =
   /** Only the stylesheet changed: the client swaps it to `?v=<version>` without a reload */
   | { kind: 'css'; version: string }
   /** These pages' HTML changed (site paths, '' the homepage, '404'): open ones reload */
   | { kind: 'pages'; paths: string[] }
   /** The scripts or the static assets changed: every open page reloads */
-  | { kind: 'all' };
+  | { kind: 'all' }
+  /** The API docs rebuilt (p553 §2.5), whether or not a page changed: rebuilding pages reload */
+  | { kind: 'api' };

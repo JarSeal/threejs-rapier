@@ -12,14 +12,14 @@ import {
   HUB_DEV_CLIENT_OUT_PATH,
   type HubAssetFile,
 } from './assets';
-import { createApiSection, type ApiBuildStats } from './api/render';
+import { createApiSection, type ApiBuildStats, type ApiModelSource } from './api/render';
 import { buildHubData, getPageSection } from './data';
 import { hubCodePlugin, loadHubHighlighter } from './code';
 import { buildSearchIndex } from './search';
 import { createIssuesSection } from './generated/issues';
 import type { HubGeneratedSection, HubSlotGenerator } from './generated/section';
 import { createVersionSection } from './generated/version';
-import { HUB_DEV_META, HUB_DEV_SOCKET_PLACEHOLDER } from './devProtocol';
+import { HUB_API_REBUILDING_PAGE, HUB_DEV_META, HUB_DEV_SOCKET_PLACEHOLDER } from './devProtocol';
 import { HubDiagnostics, lineAt, type HubDiagnostic } from './diagnostics';
 import { escapeHtml } from './html';
 import { loadHubIcons } from './icons';
@@ -80,6 +80,8 @@ export type HubBuildOptions = {
    * its first build's, so a rebuild doesn't change the Version page by itself.
    */
   buildTime?: string;
+  /** The API docs' model (p553 §2.5): `current` by default, `last` in the dev plugin */
+  api?: ApiModelSource;
 };
 
 export type HubBuiltPage = {
@@ -111,6 +113,13 @@ export type HubBuildResult = {
   search: { bytes: number; docCount: number; pageDocCount: number } | null;
   /** The API docs (p553): whether the model was reused, its size, null when it didn't build */
   api: ApiBuildStats | null;
+  /** `api: 'last'`: the model is older than its inputs, or there's none yet */
+  isApiStale: boolean;
+  /**
+   * `dev`: the page served for an API page while the API docs rebuild (p553 §2.5), at any depth
+   * like the 404 page; not written
+   */
+  apiRebuildingHtml: string | null;
 };
 
 /** p552 §2.4: over it, the build warns (the API docs are the risk) */
@@ -130,6 +139,12 @@ const notFoundBaseTag = (basePath: string) => `<base href="${escapeHtml(basePath
 
 export const rebaseNotFoundPage = (html: string, basePath: string) =>
   html.replace(/<base href="[^"]*" \/>/, notFoundBaseTag(basePath));
+
+/** `dev`: the body of the page the dev plugin serves for an API page while the API docs rebuild */
+const API_REBUILDING_BODY = `<h1>Rebuilding the API documentation…</h1>
+<p>An engine or toolkit source changed since the API documentation was built. TypeDoc is reading the sources again, which takes a few seconds: this page reloads by itself when it’s done.</p>
+<p>The other Hub pages load as usual meanwhile.</p>
+`;
 
 /** Netlify's headers (p550 §3.6): every `_assets/` reference carries `?v=<hash>` */
 const NETLIFY_HEADERS = `/_assets/*
@@ -295,6 +310,7 @@ export const buildHub = async ({
   basePath = '/',
   fallback,
   buildTime,
+  api: apiModel = 'current',
 }: HubBuildOptions): Promise<HubBuildResult> => {
   const startTime = performance.now();
   const diag = new HubDiagnostics();
@@ -304,10 +320,11 @@ export const buildHub = async ({
   const meta = getProjectMetadata();
   if (buildTime) meta.build.time = buildTime;
   const version = createVersionSection(meta, diag);
-  const api = await createApiSection({ mode, diag, meta });
+  const api = await createApiSection({ mode, diag, meta, model: apiModel });
   const sections: HubGeneratedSection[] = [createIssuesSection(diag), version.section, api.section];
   const sectionDirs = sections.flatMap((section) => section.dirs);
   let searchStats: HubBuildResult['search'] = null;
+  let apiRebuildingHtml: string | null = null;
   const result = (files: string[]): HubBuildResult => ({
     isOk: diag.errors.length === 0,
     diag,
@@ -319,6 +336,8 @@ export const buildHub = async ({
     assets,
     search: searchStats,
     api: api.stats,
+    isApiStale: api.isStale,
+    apiRebuildingHtml,
   });
 
   const tree = discoverPages(diag, sections);
@@ -470,6 +489,21 @@ export const buildHub = async ({
   }
   const notFoundHtml = fillPage('', null, notFoundValues, notFoundBaseTag(basePath));
   builtPages.push({ path: '404', outPath: '404.html', html: notFoundHtml, isErrorPage: false });
+  if (mode === 'dev') {
+    apiRebuildingHtml = fillPage(
+      '',
+      null,
+      {
+        ...notFoundValues,
+        title: escapeHtml(`Rebuilding the API documentation · ${hubConfig.title}`),
+        pageTitle: 'Rebuilding the API documentation',
+        pagePath: HUB_API_REBUILDING_PAGE,
+        bodyClass: 'hubPage_apiRebuilding',
+        body: API_REBUILDING_BODY,
+      },
+      notFoundBaseTag(basePath)
+    );
+  }
 
   // Every fillShell has run, so the errors are complete
   if (mode === 'dev' && diag.errors.length) {

@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Dev tooling, Hub, Documentation
 Epic: p550_aekasha-hub-epic.md
 Blocks: p555_hub-features-and-homepage-content.md (its `api:` links)
@@ -256,13 +256,50 @@ As built:
   with a faint dotted underline. 3,044 type links in the build; every anchored link in it lands on
   an id.
 
-### Phase 3 — Dev staleness
+### Phase 3 — Dev staleness — done
 
 §2.5.
 
 **Exit:** during `yarn dev`, an engine edit rebuilds nothing. The next documentation page request
 shows the rebuilding page, then the updated comment. A non-documentation Hub page loads at once
 meanwhile.
+
+As built:
+
+- **TypeDoc runs in a child process in dev.** A conversion took 6.6 s, blocked the event loop
+  for up to 2.3 s at a time and left 674 MB of heap: in the dev server's process it would stall
+  every request, the app's too. `extractApiModelInChildProcess` (`extract.ts`) forks
+  `api/extractProcess.ts` through `--import tsx` (about 160 ms to start). The child writes the
+  cache file, and the plugin reads it in (about 140 ms). `hub:build` still converts in-process.
+- **Model source:** `buildHub({ api })` takes an `ApiModelSource`: `current` (default: convert
+  when the inputs changed), `last` (the dev plugin) or `none` (`--no-api`). `last` is the last good
+  model whatever its inputs (`getLastApiModel`): from memory, else the cache file, and
+  `HubBuildResult.isApiStale` says whether that file is older than its inputs, or missing. A failed
+  conversion keeps the last good model. Its errors land on the API pages (`tsconfig.json`'s on the
+  landing page, a source file's on its module's page), and the other pages keep the last good
+  `api:` links.
+- **Stale flag:** `isApiInputFile` is the hash's inputs (engine and toolkit `.ts` minus the
+  excludes, `src/*.ts`, `tsconfig.json`, `package.json`, `yarn.lock`). Vite's watcher sets the
+  flag; it doesn't watch `yarn.lock`.
+- **"A documentation page"** is an API page (`isApiPagePath`: the landing page and the
+  `engine/` / `toolkit/` subtrees). The hand-written `documentation/code-blocks/` never waits.
+- **The rebuilding page** is built in every dev build like the 404 page (the shell, a `<base>`),
+  kept in memory (`HubBuildResult.apiRebuildingHtml`) and served with 503 and `Retry-After`. Its
+  `data-hub-page` is `api-rebuilding` (`HUB_API_REBUILDING_PAGE`). It reloads on a new `aek:hub`
+  kind, `api`, sent after the run that renders the new model, also when that run threw. Its
+  `pages` diff can't do that: a rebuild may change no page. A rebuild that ends before the page's
+  socket opens would leave it waiting, so the client sends a `HEAD` for its own URL on open and
+  reloads unless it's still 503.
+- **Startup:** a current cache serves as before. A stale or missing one doesn't hold the first
+  build (no cache: 11 pages in 1.4 s, with `api:` links pointing at the landing page, unchecked
+  and without a warning), and the first API page request rebuilds.
+- **Measured** (exit): an edit to `loadScene`'s JSDoc rebuilt nothing. The `SceneLoader` page got
+  the rebuilding page, and during TypeDoc's 6.1 s `/hub/examples/` and an app module answered in
+  1-2 ms. The run that renders the new model (in-process, 1.6-1.8 s: a memo miss) holds requests
+  that arrive during it, as any rebuild does: one waited 1.46 s. Then the page had the new comment.
+- **`--no-api`:** 11 pages in about 2.5 s, one warning (on `tsconfig.json`), `api:` links point at
+  the Documentation page (`HubApiLinkResult`'s `anchor` may be empty: the page's top).
+- **Logs:** an update line names at most 5 pages (an API rebuild can change all of them).
 
 ### Phase 4 — Docs and versioning
 

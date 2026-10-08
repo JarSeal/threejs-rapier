@@ -1,8 +1,9 @@
+import { fork } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { JSONOutput, MinimalNode, MinimalSourceFile } from 'typedoc';
 import { hashContent } from '../hash';
-import { HUB_API_CACHE_FILE, PACKAGE_JSON_FILE, ROOT, TSCONFIG_FILE } from '../paths';
+import { HUB_API_CACHE_FILE, PACKAGE_JSON_FILE, ROOT, toRepoPath, TSCONFIG_FILE } from '../paths';
 
 /**
  * The API model (p553 §2.1): TypeDoc's JSON for the engine and the toolkit, from the
@@ -15,6 +16,11 @@ import { HUB_API_CACHE_FILE, PACKAGE_JSON_FILE, ROOT, TSCONFIG_FILE } from '../p
  * without type checking (`skipErrorChecking`: `tsc` checks the types, and a type error elsewhere
  * would stop the docs) and without git (`disableGit`: the Hub writes its own source links, so the
  * model doesn't change with the commit).
+ *
+ * The dev plugin never converts in its own process (§2.5): a conversion blocks the event loop for
+ * seconds at a time (the app's requests too) and keeps hundreds of MB. Its builds take the last
+ * good model whatever its inputs (`getLastApiModel`), and its rebuilds convert in a child process
+ * (`extractApiModelInChildProcess`), which writes the cache file this process then reads.
  */
 
 /** Bump when the options below or the cache file's shape change */
@@ -27,6 +33,8 @@ const SRC_DIR = path.join(ROOT, 'src');
 const LOCK_FILE = path.join(ROOT, 'yarn.lock');
 /** `typedocOptions.exclude`: they aren't in the model, so they aren't in its hash */
 const EXCLUDED_FILE_REGEX = /^(_dbg__|generatedApp)/;
+/** The child process's entry, run through tsx */
+const CHILD_PROCESS_ENTRY = path.join(ROOT, 'devTools', 'hub', 'api', 'extractProcess.ts');
 
 export type ApiExtractMessage = {
   level: 'error' | 'warning';
@@ -52,15 +60,29 @@ export type ApiExtractResult = {
   durationMs: number;
 };
 
+/** What the child process (`extractProcess.ts`) sends back: the cached model's hash, or null */
+export type ApiChildProcessReply = Omit<ApiExtractResult, 'model'> & { hash: string | null };
+
 type CacheFile = ApiModel & { version: number };
+
+const isSourceFileName = (name: string) => name.endsWith('.ts') && !EXCLUDED_FILE_REGEX.test(name);
 
 const listSourceFiles = (dir: string, files: string[] = []) => {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const file = path.join(dir, entry.name);
     if (entry.isDirectory()) listSourceFiles(file, files);
-    else if (entry.name.endsWith('.ts') && !EXCLUDED_FILE_REGEX.test(entry.name)) files.push(file);
+    else if (isSourceFileName(entry.name)) files.push(file);
   }
   return files;
+};
+
+/** Whether `file` (absolute) is one of `hashApiInputs`' inputs: the dev plugin's stale check */
+export const isApiInputFile = (file: string) => {
+  if (file === TSCONFIG_FILE || file === PACKAGE_JSON_FILE || file === LOCK_FILE) return true;
+  if (!isSourceFileName(path.basename(file))) return false;
+  return (
+    path.dirname(file) === SRC_DIR || SOURCE_DIRS.some((dir) => file.startsWith(dir + path.sep))
+  );
 };
 
 const getTypedocVersion = () =>
@@ -89,17 +111,26 @@ export const hashApiInputs = () => {
   return hashContent(`${EXTRACT_VERSION}\n${getTypedocVersion()}\n${lines.join('\n')}`);
 };
 
+/** The last good model in this process */
 let memory: ApiModel | null = null;
+/** The last conversion's messages when it failed (the dev plugin's builds keep `memory` then) */
+let failure: ApiExtractMessage[] | null = null;
 
-const readCache = (hash: string): ApiModel | null => {
-  if (memory?.hash === hash) return memory;
+const readCacheFile = (): CacheFile | null => {
   try {
     const cache = JSON.parse(fs.readFileSync(HUB_API_CACHE_FILE, 'utf-8')) as CacheFile;
-    if (cache.version !== EXTRACT_VERSION || cache.hash !== hash) return null;
-    return (memory = { hash: cache.hash, project: cache.project, messages: cache.messages });
+    return cache.version === EXTRACT_VERSION ? cache : null;
   } catch {
     return null; // None yet, or unreadable: converted again
   }
+};
+
+const toModel = ({ hash, project, messages }: CacheFile): ApiModel => ({ hash, project, messages });
+
+const readCache = (hash: string): ApiModel | null => {
+  if (memory?.hash === hash) return memory;
+  const cache = readCacheFile();
+  return cache?.hash === hash ? (memory = toModel(cache)) : null;
 };
 
 const writeCache = (model: ApiModel) => {
@@ -213,6 +244,7 @@ export const loadApiModel = async (): Promise<ApiExtractResult> => {
       return { model: null, messages, isCached: false, durationMs: durationMs() };
     }
     memory = { hash, project, messages };
+    failure = null;
     writeCache(memory);
     return { model: memory, messages, isCached: false, durationMs: durationMs() };
   } catch (err) {
@@ -221,3 +253,69 @@ export const loadApiModel = async (): Promise<ApiExtractResult> => {
     return { model: null, messages, isCached: false, durationMs: durationMs() };
   }
 };
+
+/**
+ * The dev plugin's model (§2.5): the last good one whatever its inputs (from memory, else the
+ * cache file), with the last conversion's messages: a failed one's errors land on the API pages
+ * while every other page keeps the last good `api:` links. `isStale` when it was read from a cache
+ * file older than its inputs, or there's none and no conversion has run.
+ */
+export const getLastApiModel = (): ApiExtractResult & { isStale: boolean } => {
+  const startTime = performance.now();
+  let isStale = false;
+  if (!memory && !failure) {
+    const cache = readCacheFile();
+    if (cache) memory = toModel(cache);
+    isStale = !cache || cache.hash !== hashApiInputs();
+  }
+  return {
+    model: memory,
+    messages: failure ?? memory?.messages ?? [],
+    isCached: true,
+    isStale,
+    durationMs: performance.now() - startTime,
+  };
+};
+
+/**
+ * Converts in a child process (`extractProcess.ts`, through tsx), which writes the cache file, and
+ * then reads it into this process: `getLastApiModel` returns it from then on. A failure keeps the
+ * last good model, and its messages are the next builds' (`getLastApiModel`). Never rejects.
+ */
+export const extractApiModelInChildProcess = () =>
+  new Promise<{ isOk: boolean; isCached: boolean; durationMs: number }>((resolve) => {
+    const startTime = performance.now();
+    let reply: ApiChildProcessReply | null = null;
+    let isSettled = false;
+    const settle = (isOk: boolean, isCached = false) => {
+      if (isSettled) return;
+      isSettled = true;
+      resolve({ isOk, isCached, durationMs: performance.now() - startTime });
+    };
+    const fail = (message: string) => {
+      failure = [{ level: 'error', message, file: TSCONFIG_FILE }];
+      settle(false);
+    };
+
+    const child = fork(CHILD_PROCESS_ENTRY, [], {
+      cwd: ROOT,
+      execArgv: ['--import', 'tsx'],
+      // Its stderr reaches the terminal: a crash's stack
+      stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+    });
+    child.on('message', (message) => (reply = message as ApiChildProcessReply));
+    child.on('error', (err) => fail(`The API extraction process failed: ${err.message}`));
+    child.on('exit', (code, signal) => {
+      if (!reply) {
+        fail(`The API extraction process exited (${signal ?? `code ${code}`}) without a model`);
+      } else if (!reply.hash) {
+        failure = reply.messages;
+        settle(false);
+      } else if (readCache(reply.hash)) {
+        failure = null;
+        settle(true, reply.isCached);
+      } else {
+        fail(`The API extraction process wrote no ${toRepoPath(HUB_API_CACHE_FILE)}`);
+      }
+    });
+  });
