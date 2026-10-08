@@ -1,7 +1,8 @@
 /**
  * The Hub's page script, loaded on every page (p551). The menu is in the page already (rendered
  * at build time), so this only adds behaviour on top of it: the theme toggle, the mobile menu,
- * the nav's dropdowns, the code blocks' copy, collapse and tabs, and opening the search.
+ * the nav's dropdowns, the code blocks' copy, collapse and tabs, the API pages' source links in
+ * dev, and opening the search.
  */
 
 document.documentElement.classList.add('hubJs');
@@ -201,6 +202,21 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   selectCodeTab(next);
   next.focus();
+});
+
+// --- API source links (p553, dev) ---
+
+// A source link opens the file in the editor through Vite's `/__open-in-editor`, which answers
+// with an empty page: fetched, not followed
+document.addEventListener('click', (e) => {
+  const link = (e.target as Element | null)?.closest<HTMLAnchorElement>(
+    'a[data-hub-open-in-editor]'
+  );
+  if (!link || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  fetch(link.href).catch(() => {
+    // The dev server is gone: nothing to open
+  });
 });
 
 // --- Search (p552) ---

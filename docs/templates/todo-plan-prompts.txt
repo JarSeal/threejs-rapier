@@ -180,6 +180,13 @@ If for some reason this plan or some of its features can't or shouldn't be creat
 
 ************************************
 
+Create "Whole codebase refactoring and documentation" plan in docs/plans/p600_whole-codebase-refactoring-and-documentation.md
 
+Category: Refactoring, documentation
+
+UNDER_CONSTRUCTION
+This is an epic plan and we should create several plans with clear sections that are being refactored and documented (JsDoc).
+
+We need to go through every file in this codebase to check whether it meets a good coding standard, 
 
 ************************************

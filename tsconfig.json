@@ -24,7 +24,8 @@
     "types": ["node"]
   },
   "typedocOptions": {
-    "entryPoints": ["src/_engine/**", "src/toolkit/**"],
+    "entryPoints": ["src/_engine/**/*.ts", "src/toolkit/**/*.ts"],
+    "exclude": ["**/_dbg__*", "**/generatedApp*"],
     "out": "docs-api",
     "theme": "default",
     "excludePrivate": true,

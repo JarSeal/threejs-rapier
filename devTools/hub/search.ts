@@ -76,7 +76,8 @@ const HEADING_TAG_REGEX = /^h[1-6]$/;
 
 /** Never text: controls, icons, and the code blocks' headers (title, language, copy) */
 const SKIPPED_TAGS = new Set(['button', 'script', 'style', 'svg', 'template']);
-const SKIPPED_CLASSES = ['hubAnchor', 'hubCodeHeader', 'hubCodeTabs'];
+/** `hubSearchSkip`: content a section indexes its own way (the API's lists) */
+const SKIPPED_CLASSES = ['hubAnchor', 'hubCodeHeader', 'hubCodeTabs', 'hubSearchSkip'];
 
 const isSkipped = (tag: string, attrs: Record<string, string>) =>
   SKIPPED_TAGS.has(tag) ||
@@ -222,7 +223,7 @@ export type HubSearchIndexFile = HubAssetFile & { docCount: number };
 export const buildSearchIndex = (pages: { page: HubPage; body: string }[]): HubSearchIndexFile => {
   const docs: HubSearchDoc[] = [];
   for (const { page, body } of pages) {
-    if (!page.path) continue; // The homepage
+    if (!page.path || !page.isSearchable) continue; // The homepage
     splitSections(body).forEach((section, i) => {
       const isPageSection = i === 0;
       // The description summarises the page: its own section's snippet starts with it

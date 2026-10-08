@@ -186,7 +186,7 @@ export const hubPlugin = (): Plugin => ({
       if (!prev) {
         const errors = result.diag.errors.length;
         console.log(
-          `${errors ? YELLOW : GREEN}${errors ? '⚠' : '✓'} [Hub] ${result.pageCount} page${s(result.pageCount)} at ${HUB_DEV_URL_BASE}${errors ? `, ${errors} with errors` : ''} ${DIM}(${Math.round(result.durationMs)} ms)${RESET}`
+          `${errors ? YELLOW : GREEN}${errors ? '⚠' : '✓'} [Hub] ${result.pageCount} page${s(result.pageCount)} at ${HUB_DEV_URL_BASE}${errors ? `, ${errors} with errors` : ''} ${DIM}(${Math.round(result.durationMs)} ms${result.api && !result.api.isCached ? `, the API model extracted in ${(result.api.extractMs / 1000).toFixed(1)} s` : ''})${RESET}`
         );
         return;
       }

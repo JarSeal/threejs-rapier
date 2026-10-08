@@ -64,6 +64,11 @@ export type HubPage = {
   isGenerated: boolean;
   /** Listed in the nav's dropdowns (generated pages can leave themselves out) */
   isInMenu: boolean;
+  /**
+   * In the search: its sections in the index, and the page in `hub-data.js`'s `pages` (the
+   * dialog's breadcrumbs). The API pages leave themselves out: their symbols are indexed apart.
+   */
+  isSearchable: boolean;
   /** The `<body>`'s inner HTML and the line it starts on */
   body: string;
   bodyLine: number;

@@ -22,6 +22,8 @@ export type HubGeneratedPage = {
   description: string;
   tags: string[];
   isInMenu: boolean;
+  /** In the search (default true): `HubPage.isSearchable` */
+  isSearchable?: boolean;
   /** The page's markup: `{{root}}`, `hub:` links and slots work as in a page's `<body>` */
   body: string;
   /** Its slots' generators, by slot id */

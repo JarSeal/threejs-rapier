@@ -34,6 +34,11 @@ export const APP_DIST_DIR = path.join(ROOT, 'dist');
 /** The versions and packages (`getProjectMetadata`) */
 export const PACKAGE_JSON_FILE = path.join(ROOT, 'package.json');
 
+/** The TypeScript config: its `typedocOptions` are the API docs' entry points (p553) */
+export const TSCONFIG_FILE = path.join(ROOT, 'tsconfig.json');
+/** The API model's cache: TypeDoc's JSON and the hash of its inputs (p553 §2.1) */
+export const HUB_API_CACHE_FILE = path.join(ROOT, '.cache', 'hub', 'typedoc.json');
+
 /** The generated sections' sources (p551 §2.5) */
 export const ISSUES_DIR = path.join(ROOT, 'docs', 'issues');
 export const CHANGELOG_FILE = path.join(ROOT, 'CHANGELOG.md');

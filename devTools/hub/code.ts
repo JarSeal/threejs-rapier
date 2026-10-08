@@ -66,7 +66,11 @@ export const loadHubHighlighter = () =>
     langs: LANGUAGES,
   }));
 
-const THEMES = { dark: HUB_CODE_THEME_DARK.name!, light: HUB_CODE_THEME_LIGHT.name! };
+/** The Hub's two code themes by name: shiki's `themes` (`devTools/hub/api/` highlights with them too) */
+export const HUB_CODE_THEMES = {
+  dark: HUB_CODE_THEME_DARK.name!,
+  light: HUB_CODE_THEME_LIGHT.name!,
+};
 
 export type HubFenceOptions = {
   title: string;
@@ -160,7 +164,7 @@ const renderFence = ({ highlighter, icons }: HubCodeOptions, token: Token, env: 
 
   const pre = highlighter.codeToHtml(token.content.replace(/\n$/, ''), {
     lang,
-    themes: THEMES,
+    themes: HUB_CODE_THEMES,
     defaultColor: false,
     meta: { __raw: options.meta },
     transformers: [
@@ -324,7 +328,7 @@ export const hubCodePlugin = (md: MarkdownIt, options: HubCodeOptions) => {
     if (resolved === 'text') return defaultCodeInline(tokens, idx, opts, env, self);
     const html = options.highlighter.codeToHtml(token.content, {
       lang: resolved,
-      themes: THEMES,
+      themes: HUB_CODE_THEMES,
       defaultColor: false,
       structure: 'inline',
     });

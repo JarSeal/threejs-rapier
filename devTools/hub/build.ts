@@ -12,6 +12,7 @@ import {
   HUB_DEV_CLIENT_OUT_PATH,
   type HubAssetFile,
 } from './assets';
+import { createApiSection, type ApiBuildStats } from './api/render';
 import { buildHubData, getPageSection } from './data';
 import { hubCodePlugin, loadHubHighlighter } from './code';
 import { buildSearchIndex } from './search';
@@ -103,6 +104,8 @@ export type HubBuildResult = {
   assets: HubBuildAssets;
   /** The search index's size (`hub:build` reports it) and its sections, null when not built */
   search: { bytes: number; docCount: number } | null;
+  /** The API docs (p553): whether the model was reused, its size, null when it didn't build */
+  api: ApiBuildStats | null;
 };
 
 /** p552 §2.4: over it, the build warns (the API docs are the risk) */
@@ -296,7 +299,8 @@ export const buildHub = async ({
   const meta = getProjectMetadata();
   if (buildTime) meta.build.time = buildTime;
   const version = createVersionSection(meta, diag);
-  const sections: HubGeneratedSection[] = [createIssuesSection(diag), version.section];
+  const api = await createApiSection({ mode, diag, meta });
+  const sections: HubGeneratedSection[] = [createIssuesSection(diag), version.section, api.section];
   const sectionDirs = sections.flatMap((section) => section.dirs);
   let searchStats: HubBuildResult['search'] = null;
   const result = (files: string[]): HubBuildResult => ({
@@ -309,6 +313,7 @@ export const buildHub = async ({
     pages: builtPages,
     assets,
     search: searchStats,
+    api: api.stats,
   });
 
   const tree = discoverPages(diag, sections);

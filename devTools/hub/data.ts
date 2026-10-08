@@ -59,14 +59,16 @@ export const buildHubData = (
     build: meta.build,
     latestChange,
     nav: [toNavItem(homepage)],
-    pages: pages.map((page) => ({
-      path: page.path,
-      title: page.title,
-      tags: page.tags,
-      description: page.description,
-      section: getPageSection(page),
-      headings: headings.get(page) ?? [],
-    })),
+    pages: pages
+      .filter((page) => page.isSearchable)
+      .map((page) => ({
+        path: page.path,
+        title: page.title,
+        tags: page.tags,
+        description: page.description,
+        section: getPageSection(page),
+        headings: headings.get(page) ?? [],
+      })),
     searchIndex,
   };
   const content = `window.${HUB_DATA_GLOBAL} = ${JSON.stringify(data)};\n`;

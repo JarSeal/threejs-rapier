@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Dev tooling, Hub, Documentation
 Epic: p550_aekasha-hub-epic.md
 Blocks: p555_hub-features-and-homepage-content.md (its `api:` links)
@@ -113,7 +113,7 @@ is an open question (§5).
 
 ## 3. Phases
 
-### Phase 1 — Extraction and pages
+### Phase 1 — Extraction and pages — done
 
 §2.1, §2.2.
 
@@ -121,6 +121,79 @@ is an open question (§5).
 `createPhysicsEntity`, `ECSWorld`, `SkyBoxDef` and a toolkit function each render with their
 signature, comment, parameters and source link. No `_dbg__` module appears. The extraction is reused
 when nothing changed (the second build is faster, logged).
+
+As built:
+
+- **Files:** `devTools/hub/api/` has `extract.ts` (the model and its cache), `model.ts` (modules,
+  folders, anchors, coverage), `signature.ts` (the type printer and its shiki highlighting),
+  `comments.ts` (comment parts to Markdown) and `render.ts` (the pages and `createApiSection`).
+  `build.ts` adds the section after Issues and Version; `HubBuildResult.api` has its stats, which
+  `hub:build` prints (`API: 221 modules, 2017 symbols, 63% documented; model reused (0.1 s)`).
+- **TypeDoc options:** `typedocOptions.entryPoints` are `src/_engine/**/*.ts` and
+  `src/toolkit/**/*.ts`: the bare `**` also matched the SVGs, SCSS and JSON, a warning each. The
+  extraction reads `typedocOptions` (so `yarn docs` and the Hub share the excludes) and adds
+  `skipErrorChecking` (`tsc` checks types, and any type error in the program stopped the
+  conversion; 8.6 s → about 5 s) and `disableGit` with a `sourceLinkTemplate` (TypeDoc errors
+  without one). The Hub writes its own source links, so the cached model doesn't change with
+  the commit.
+- **Cache:** `.cache/hub/typedoc.json` (about 9 MB) plus an in-memory copy. The hash covers the
+  `.ts` files under `src/_engine/` and `src/toolkit/` minus the excludes, `src/*.ts` (the engine
+  imports `AppECSRegistry.ts` and `CONFIG.ts`), `tsconfig.json`, `package.json`, `yarn.lock`, the
+  TypeDoc version and `EXTRACT_VERSION`. TypeDoc is imported only on a miss.
+- **TypeDoc's warnings** become Hub warnings, at the source line when TypeDoc names a node, else
+  at the module its message names. Warnings about comments in `node_modules` (three's) are
+  dropped. Today there are 12, all `@param` names that no longer match (`SceneLoader.ts`,
+  `PhysicsAPITypes.ts`).
+- **Kinds** are numbers in `model.ts` (`Kind`), checked against `ReflectionKind` with
+  `satisfies`, so the Hub build never loads TypeDoc for its enum and an upgrade that renumbers a
+  kind fails `tsc`.
+- **A module next to a folder of the same name** (`core/ECS.ts` + `core/ECS/`,
+  `core/Character.ts`, `core/PostFX.ts`) has the folder's URL: its page lists the folder's modules
+  first, then its own symbols.
+- **Every folder gets a page** (the page tree needs each page's parent), titled by its name;
+  `documentation/engine/` and `documentation/toolkit/` are "Engine API" / "Toolkit API". Folder
+  pages are `isInMenu` (so `hub-data.js`'s nav has them); module pages aren't. The nav itself
+  still renders one dropdown level: Documentation shows Engine, Toolkit and Code blocks.
+- **Search:** `HubPage.isSearchable` (`HubGeneratedPage.isSearchable`, default true). The API
+  pages are false until Phase 2's symbol entries, so they're in neither the index nor
+  `hub-data.js`'s `pages` (which would grow by about 140 kB with their headings). The landing
+  page's lists are in a `hubSearchSkip` element, which `search.ts` skips.
+- **Memo:** rendering the whole API takes about a second (shiki and Markdown per symbol), so each
+  slot's output (with the headings, ids, links and diagnostics it added) is kept in memory per
+  model hash, mode, commit and the page's prior ids. A dev rebuild with an unchanged model adds
+  about 25 ms (dev rebuilds were 360-410 ms before this phase, with the SCSS and TS builds).
+- **Pages:** symbols in kind sections (functions, classes, interfaces, type aliases, enums,
+  variables, then namespaces and re-exports), alphabetical; each symbol an h3 with its anchor, so
+  the TOC lists them. Class and interface members get `#Owner.member` anchors and h4 blocks
+  (methods, constructors as `constructor(…)`); properties go in a table, with object literal
+  types as nested rows (`physics.workerTarget`, `items[].id`, 3 levels). "Optional", `readonly`,
+  `static`, `get` / `set`, `deprecated` and `internal` (36 symbols carry `@internal`) are badges,
+  not columns. Inherited members are left out (`FatLineSegments` would list three's `Mesh`).
+  `@default` / `@defaultValue` and parameter defaults show as "Default".
+- **Type aliases:** 242 of them are object literals, which TypeDoc models as members on the alias
+  with no `type`: they print `type X = { … }` with the members in the table. A long union or
+  conditional type gets a line per member or branch.
+- **Highlighting:** a type alone in a table cell is highlighted as `type T = …` and a member
+  signature inside `class C { …`, with the prefix's tokens dropped: alone, the grammar reads them
+  as expressions and colours nothing.
+- **Comments** render with markdown-it's `html` off (`Array<Mesh>` in a comment is text), and
+  their own headings start at h4. Diagnostics point near the symbol's line.
+- **Module summaries:** no file has an `@module` comment, so the summary is the first documented
+  function or class's first sentence (by source line), else any export's. Plain "first export"
+  picked helpers and option types.
+- **Re-exports** (83, the toolkit's deprecated `InstancedMeshPool` ones among them) link to the
+  original symbol and its module.
+- **Source links:** `public` links GitHub at `meta.build.commit` (short hash); `dev` links
+  `/__open-in-editor?file=<absolute path>:<line>`, which `hub.ts` fetches instead of following
+  (Vite answers with an empty page).
+- **Size:** the landing page is 443 kB (53 kB gzipped), about 300 kB of it the A-Z index's 2,017
+  entries. `dist-hub/` has 264 pages (221 modules plus folders).
+- **The section's `files`** are `tsconfig.json`: a `typedocOptions` change rebuilds the Hub in
+  dev, and a conversion error lands on the Documentation page.
+- **Zod-derived types** render as their type expression (`SkyBoxDef` is
+  `Omit<z.input<typeof SkyBoxDefSchema>, 'base' | 'preset'> & { … }`, with `base` and `sceneId`
+  in the table): the schema's own fields aren't expanded. `ImpostorDef` prints as its conditional
+  type, a branch per line.
 
 ### Phase 2 — Links and search
 

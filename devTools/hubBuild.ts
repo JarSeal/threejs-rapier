@@ -76,6 +76,13 @@ const main = async () => {
   console.log(
     `${GREEN}✓ [Hub] ${result.pageCount} pages → ${toRepoPath(outDir)}/ (${Math.round(result.durationMs)} ms)${RESET}`
   );
+  if (result.api) {
+    const { isCached, extractMs, moduleCount, symbolCount, coverage } = result.api;
+    const share = coverage.total ? Math.round((coverage.documented / coverage.total) * 100) : 100;
+    console.log(
+      `  API: ${moduleCount} modules, ${symbolCount} symbols, ${share}% documented; model ${isCached ? 'reused' : 'extracted'} (${(extractMs / 1000).toFixed(1)} s)`
+    );
+  }
   if (result.search) {
     console.log(
       `  Search index: ${formatBytes(result.search.bytes)}, ${result.search.docCount} sections`
