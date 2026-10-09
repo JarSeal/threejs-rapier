@@ -324,6 +324,21 @@ The app's `lodShowcase` scene (`_DONE_p351` Phase 5) is the LOD demo and the ver
 - `rollup-plugin-visualizer` writes a bundle treemap to `dist-stats/bundle-stats.html`.
 - No TS path aliases are configured (`tsconfig.json` has no `paths`) — imports are relative.
 
+## Coding standards
+
+The full text, with examples, is the Hub page `hub/pages/documentation/coding-standards/` (`intro.md`, `jsdoc.md`). In one line each:
+
+- Layering: engine ← toolkit ← app; a feature owns its folder; debug code in colocated `_dbg__` modules, reached only through the debug loader.
+- Public API: entry points only, everything else `@internal`; options objects past two parameters or any optional one; no internal types in public signatures.
+- Naming: `create`/`delete`, `register`/`unregister`, `get`/`set`, `*Async`, `on*` returning the remover, `is`/`has`; PascalCase files (an asset id's file keeps the id); no `Manager` suffix; no names differing only in case.
+- Size: about 800 lines per file and 150 per function or closure, or the file's header says why not.
+- Async and disposal: re-check the scene / entity / request after every `await`, and say in the JSDoc which overlapping call wins; one owner disposes each resource; listeners and timers return or register their cleanup.
+- Per-frame code: no allocations, storages read once per frame, no redundant GPU state changes (`perf-auditor` agent).
+- Smallest build: no module-level side effects, heavy dependencies behind `import()`, no `Addons.js` barrel.
+- Simulation (`APP_PHYSICS_STEP`, physics, controllers, AI): step-index time, seeded RNG, intents as the only input, state read at the step (never synced `TRANSFORM`s or interpolated poses), plain-data messages, `import type` across the boundary, data components, one Rapier build.
+- Type hygiene: no `any`; `eslint-disable` with `-- reason`; a TODO names its issue file or plan.
+- JSDoc: a summary on every export saying what the signature can't; `@param name text` (no hyphen, no type) and `@returns` only where they add; `@example` on entry APIs; `@remarks` for traps; empty `@internal`; `@deprecated` with its replacement and removal major; `{@link}` only to our exports; Zod types documented on the alias and on each shape key.
+
 ## Versioning
 
 `package.json` holds four semver versions (`MAJOR.MINOR.PATCH`: major = breaking, minor = new feature, patch = fix):
