@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Refactoring, Architecture
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage B, engine major)
-Blocked by: p606_layering-inversion-and-public-entry.md, p607_sbp-foundation-feature-modules.md, the in-flight branches merged (p554, p555, p299)
+Blocked by: p606_layering-inversion-and-public-entry.md, p607_sbp-foundation-feature-modules.md, p299_texture-arrays-and-atlases.md (in progress: merged before the move)
 Blocks: p609_toolkit-and-app-restructure.md, p610_character-and-input-action-architecture.md, p611_sbp-tooling-profiles-and-marketing.md, p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md
 
 # Engine Folder Restructure — Stub

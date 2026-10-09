@@ -415,8 +415,8 @@ standards, the structure and the SBP strategy to it would make every session pay
   - p070 "Refactor dynamic character code": its sensor bug fixes and new options come after p610,
     on the restructured controller.
   - p770 "Key binding refactoring": aligned with p610's action layer (one key binding model).
-- **In-flight work:** `p554` and `p555` (the Hub, on `aekasha-hub`) and `p299` (in progress) are
-  merged before p608's move, which touches nearly every file.
+- **In-flight work:** `p299` (in progress) is merged before p608's move, which touches nearly
+  every file.
 
 ## 10. Roadmap
 
@@ -429,7 +429,7 @@ standards, the structure and the SBP strategy to it would make every session pay
 | A | p605_coding-standards-and-documentation-tooling.md | Coding standards, JSDoc style, eslint-plugin-jsdoc + TypeDoc validation as a ratchet, the CLAUDE.md split | p602 |
 | B | p606_layering-inversion-and-public-entry.md | The engine stops importing the app; declaration-merged component types; the `aekasha` entry; boundary lint | p601, p602 |
 | B | p607_sbp-foundation-feature-modules.md | No side-effect registrations, `sideEffects`, lazy Rapier, `__AEK_DEBUG__`, lazy maps and loaders, the feature manifest | p606 |
-| B | p608_engine-folder-restructure.md | The folder map applied with a codemod; utils, UI and debug moved; demo code out of the engine | p606, p607, in-flight branches merged |
+| B | p608_engine-folder-restructure.md | The folder map applied with a codemod; utils, UI and debug moved; demo code out of the engine | p606, p607, p299 merged |
 | B | p609_toolkit-and-app-restructure.md | Toolkit categories (p450's structure), app scenes in folders, deprecated re-exports removed | p608 |
 | B | p610_character-and-input-action-architecture.md | The input action layer, the controller contract, `createDynamicCharacter` split, intents | p603, p608 |
 | B | p611_sbp-tooling-profiles-and-marketing.md | `yarn sbp`, budgets, the banner profile and example, the lite-renderer study, marketing | p607, p608 |
