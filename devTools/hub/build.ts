@@ -12,10 +12,11 @@ import {
   HUB_DEV_CLIENT_OUT_PATH,
   type HubAssetFile,
 } from './assets';
+import { isApiPagePath } from './api/model';
 import { createApiSection, type ApiBuildStats, type ApiModelSource } from './api/render';
 import { buildHubData, getPageSection } from './data';
 import './cards'; // Registers the `cards` directive
-import './claudeMd'; // Registers the `claude-md` directive
+import { checkClaudeMdCoverage } from './claudeMd'; // Also registers the `claude-md` directive
 import { hubCodePlugin, loadHubHighlighter } from './code';
 import { buildSearchIndex } from './search';
 import { createHomeSection, getRepoWebUrl } from './generated/home';
@@ -242,12 +243,21 @@ const renderPageBody = (
   return body + resolvePageMarkup(page.body.slice(cursor), cursor, env, helpers);
 };
 
-/** A `hub:` link must reach a page, and its `#hash` an id on that page */
-const checkLinks = (rendered: RenderedPage[], tree: HubPageTree, diag: HubDiagnostics) => {
+/**
+ * A `hub:` link must reach a page, and its `#hash` an id on that page. Without an API model
+ * (`areApiPagesUnchecked`), a link to an API page isn't checked: it's there in a full build.
+ */
+const checkLinks = (
+  rendered: RenderedPage[],
+  tree: HubPageTree,
+  areApiPagesUnchecked: boolean,
+  diag: HubDiagnostics
+) => {
   const envs = new Map(rendered.map(({ page, env }) => [page.path, env]));
   for (const { env } of rendered) {
     for (const link of env.links) {
       const target = tree.byPath.get(link.targetPath);
+      if (!target && areApiPagesUnchecked && isApiPagePath(link.targetPath)) continue;
       if (!target) {
         diag.error(
           link.file,
@@ -374,6 +384,9 @@ export const buildHub = async ({
   });
 
   const tree = discoverPages(diag, sections);
+  const coverageFiles = tree
+    ? checkClaudeMdCoverage(tree.pages, hubConfig.coverageIgnore, diag)
+    : [];
   const generators = new Map<string, HubSlotGenerator>();
   for (const section of sections) {
     for (const [id, generate] of Object.entries(section.slots)) {
@@ -434,7 +447,7 @@ export const buildHub = async ({
     const env = createMarkdownEnv(page, relativeRoot(page.path), diag, context);
     rendered.push({ page, env, body: renderPageBody(page, env, md, helpers, generators) });
   }
-  if (tree) checkLinks(rendered, tree, diag);
+  if (tree) checkLinks(rendered, tree, api.areApiPagesUnchecked, diag);
 
   const headings = new Map<HubPage, HubHeading[]>(
     rendered.map(({ page, env }) => [page, env.headings])
@@ -609,6 +622,7 @@ export const buildHub = async ({
       HUB_NOT_FOUND_FILE,
       PACKAGE_JSON_FILE,
       ...sectionFiles,
+      ...coverageFiles,
       ...FAVICON_FILES,
       ...rendered.flatMap(({ env }) => env.images.map((job) => job.source)),
       // Snippet includes (p552) and scenes (p554): an edit to one rebuilds, and reloads the

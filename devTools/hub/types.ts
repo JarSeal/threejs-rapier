@@ -9,6 +9,11 @@ export type HubConfig = {
   title: string;
   /** The homepage's `<meta name="description">` when its page sets none */
   description: string;
+  /**
+   * CLAUDE.md Architecture sections that aren't features (p555 §2.5), by heading without its
+   * parenthetical: the coverage check doesn't ask a page's `aek:covers` for them
+   */
+  coverageIgnore: string[];
 };
 
 export type HubHeading = {

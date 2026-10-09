@@ -9,6 +9,13 @@ const hubConfig: HubConfig = {
   title: 'Ækasha Hub',
   description:
     'Instructions, examples and API documentation for Ækasha, the WebGPU framework built on Three.js, Rapier and its own ECS.',
+  coverageIgnore: [
+    'Three-folder split',
+    'Plans logic and structure',
+    'Bootstrap flow',
+    'Ækasha Hub',
+    'Build config notes',
+  ],
 };
 
 export default hubConfig;

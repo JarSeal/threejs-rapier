@@ -112,6 +112,11 @@ export type ApiSectionResult = {
   links: HubApiLinkResolver | null;
   /** `last`: the model is older than its inputs (an old cache file), or there's none yet */
   isStale: boolean;
+  /**
+   * No model to check links against (`none`, or `last` before any): `hub:` links to the API pages
+   * aren't checked either, like `api:` links
+   */
+  areApiPagesUnchecked: boolean;
 };
 
 // --- Memo ---
@@ -1044,6 +1049,9 @@ export type ApiSectionOptions = {
   model: ApiModelSource;
 };
 
+/** `api:` links when there's no model to check them against: they point at the landing page */
+const uncheckedLinks: HubApiLinkResolver = () => ({ pagePath: API_SECTION_PATH, anchor: '' });
+
 /** The section without API pages: its landing slot says why */
 const createEmptySection = (
   text: string,
@@ -1060,10 +1068,8 @@ const createEmptySection = (
   stats: null,
   links,
   isStale,
+  areApiPagesUnchecked: links === uncheckedLinks,
 });
-
-/** `api:` links when there's no model to check them against: they point at the landing page */
-const uncheckedLinks: HubApiLinkResolver = () => ({ pagePath: API_SECTION_PATH, anchor: '' });
 
 /**
  * The Documentation section: the API model (`model` says from where), its pages, and the landing
@@ -1081,7 +1087,7 @@ export const createApiSection = async ({
     diag.warn(
       TSCONFIG_FILE,
       undefined,
-      'The API docs are not built (--no-api), and api: links are not checked'
+      'The API docs are not built (--no-api): api: links and hub: links to API pages are not checked'
     );
     return createEmptySection(
       'The API documentation isn’t in this build (<code>yarn hub:build --no-api</code>).',
@@ -1172,6 +1178,7 @@ export const createApiSection = async ({
     },
     links: createLinkResolver(links),
     isStale,
+    areApiPagesUnchecked: false,
     stats: {
       isCached: extract.isCached,
       extractMs: extract.durationMs,
