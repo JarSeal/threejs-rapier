@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { getEntityIdByAppId } from '../../../_engine/core/ECS';
 import { getGeometry } from '../../../_engine/core/Geometry';
 import { getMaterial } from '../../../_engine/core/Material';

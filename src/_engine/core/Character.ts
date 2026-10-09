@@ -1,6 +1,6 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { createPhysicsEntity } from './PhysicsManager';
-import { ColliderParams, RigidBodyParams } from './Physics/PhysicsAPITypes';
+import type { ColliderParams, RigidBodyParams } from './Physics/PhysicsAPITypes';
 import { createKeyBinding, deleteKeyBinding, type KeyBinding } from './Input/KeyboardInput';
 import { createMouseBinding, deleteMouseBinding, type MouseBinding } from './Input/MouseInput';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';

@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Documentation, Dev tooling, Standards
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md (the standard they apply)
@@ -307,7 +307,7 @@ Documents only.
   `{@link}`s, which Phase 4's lint and Phase 5's validation pick up).
 - CLAUDE.md: the "Coding standards" section (2.6 kB) between Architecture and Versioning.
 
-### Phase 2: lint enforcement and type-only imports
+### Phase 2: lint enforcement and type-only imports — done
 
 1. `verify.sh`: after `yarn lint --fix`, run `yarn lint` again and exit 2 with its first 30 error
    lines when it fails. `tool-lint.sh`: after `--fix`, print the file's remaining errors to stderr
@@ -320,6 +320,27 @@ Documents only.
    type import that was a side-effect import before shows up here.
 5. Verification: `yarn lint`, `tsc`, `yarn test`, `yarn verify:baselines` (bundle and API
    unchanged), `yarn verify:scenes --config quick`.
+
+**As built:**
+
+- The scene baselines were recorded on `main` before this phase (`ee5a641`, `webgl`, 96 entries).
+- The hooks fix and report in one pass: `yarn -s lint --fix --quiet` exits 1 with the errors it
+  couldn't fix (shown, exit 2), and 2 when ESLint itself failed; no second lint run (§5 risk 1).
+  The Stop hook takes about 29 s on a clean tree. `tool-lint.sh` shows the edited file's remaining
+  errors and skips a file outside the project (ESLint fails on one). ESLint 9 has no `unix`
+  formatter, so both print `stylish`'s lines.
+- The rules' count was 185 declarations in 91 files plus 15 inline-only `import { type X }`: the
+  rule reports one per declaration, not per name (the plan's 268). Two of the 15 were in the
+  generated `generatedAppFns.ts`, fixed in `gatherAppData.ts`'s emitter.
+- `consistent-type-imports` has `disallowTypeAnnotations: false`: the 35 `typeof import('…')`
+  annotations that type the debug loader's modules stay (they're erased and load nothing).
+- `verbatimModuleSyntax`: `tsc` and `tsc -p hub` reported nothing beyond the lint (no TS1205 or
+  TS1484). `hub/tsconfig.json` inherits it through `extends`, so it's unchanged.
+- The bundle is byte-identical to the committed `bundle.json`, every chunk, `physicsWorker.js`
+  (2,308,147 B) and the main chunk included: esbuild already dropped imports used only as types,
+  so the rules change the source, not the output. API and docs baselines unchanged.
+- `yarn verify:scenes --config quick`: 24 of 24 passed against `main`'s baselines (966 s).
+- The Hub page's `import type` rule names its check; CLAUDE.md's Workflow describes the hooks.
 
 ### Phase 3: the simulation rules
 

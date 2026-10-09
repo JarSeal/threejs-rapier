@@ -1,5 +1,6 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { lerror, lwarn } from '../utils/Logger';
+import type { SceneData } from './Scene';
 import {
   deleteAllSceneLoopers,
   getCurrentScene,
@@ -11,11 +12,10 @@ import {
   runOnAllSceneExits,
   runOnSceneEnter,
   runOnSceneExit,
-  SceneData,
   setCurrentScene,
   setLoadingSceneId,
 } from './Scene';
-import { TCMP } from '../utils/CMP';
+import type { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
 import { deleteAllPhysicsEntities, settlePendingPhysicsEntities } from './PhysicsManager';
 import {

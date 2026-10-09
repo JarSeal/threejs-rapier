@@ -1,4 +1,4 @@
-import { type TCMP } from '../utils/CMP';
+import type { TCMP } from '../utils/CMP';
 import type { FolderApi, Pane } from 'tweakpane';
 import type { BindingApi } from '@tweakpane/core';
 import type { SvgIconKey } from '../core/UI/icons/SvgIcon';

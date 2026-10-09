@@ -1,24 +1,20 @@
 import * as THREE from 'three/webgpu';
-import {
+import type {
   ComponentData,
-  ComponentType,
   ECSPosition,
   ECSRotation,
   ECSTransformProp,
-  Transform,
 } from './ECS/ECSCoreComponents';
+import { ComponentType, Transform } from './ECS/ECSCoreComponents';
 import { existsOrThrow } from '../utils/assert';
-import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
+import type { RigidBodyAPI } from './Physics/PhysicsAPITypes';
 import { getConfig, IS_DEBUG_ENV, IS_PROD_TEST_MODE } from './Config';
 import { CoreComponentType } from './ECS/ECSRegistry';
-import {
-  getECSStorageLSOverride,
-  ECSStorageMode,
-  IComponentStorage,
-} from './ECS/ECSComponentStorage';
+import type { ECSStorageMode, IComponentStorage } from './ECS/ECSComponentStorage';
+import { getECSStorageLSOverride } from './ECS/ECSComponentStorage';
 import { TypedArrayTransformStore } from './ECS/TypedArrayTransformStore';
 import { ECSSystemStage } from '../../AppECSRegistry';
-import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import type { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
 import { lerror } from '../utils/Logger';
 

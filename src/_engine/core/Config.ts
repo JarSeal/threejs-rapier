@@ -1,14 +1,14 @@
 import configFile from '../../CONFIG';
-import { TCMP } from '../utils/CMP';
-import {
+import type { TCMP } from '../utils/CMP';
+import type {
   PhysicsBackgroundBehavior,
   PhysicsEngine,
   PhysicsInterpolationMode,
   PhysicsWorkerTarget,
 } from './Physics/PhysicsAPITypes';
 import type { AssetsWorkerTarget } from './Assets/AssetsAPITypes';
-import { DraggableWindow } from './UI/DraggableWindow';
-import { ECSStorageMode } from './ECS/ECSComponentStorage';
+import type { DraggableWindow } from './UI/DraggableWindow';
+import type { ECSStorageMode } from './ECS/ECSComponentStorage';
 import { lsGetItem } from '../utils/LocalAndSessionStorage';
 import type { DebugKeyBindingConfig } from './Input/DefaultDebugKeyBindings';
 

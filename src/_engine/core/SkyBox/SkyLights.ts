@@ -22,12 +22,8 @@
 import * as THREE from 'three/webgpu';
 import { getECSWorld, type ECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
-import {
-  createLightEntity,
-  getLightTargetId,
-  SHADOW_PRESETS,
-  ShadowQuality,
-} from '../LightManager';
+import type { ShadowQuality } from '../LightManager';
+import { createLightEntity, getLightTargetId, SHADOW_PRESETS } from '../LightManager';
 import { getActiveCamera } from '../CameraManager';
 import type {
   SkyBoxAmbientLightDef,

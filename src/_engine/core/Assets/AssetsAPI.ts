@@ -16,7 +16,7 @@ import {
   RequestTimeoutError,
   resolveRequest,
 } from '../../utils/PromiseResolver';
-import {
+import type {
   AssetKind,
   AssetLoadReport,
   AssetsDownProtocol,
@@ -25,7 +25,6 @@ import {
   AssetsLoadHDRTextureResponse,
   AssetsLoadTextureResponse,
   AssetsPingResponse,
-  AssetsProtocolType,
   AssetsSimplifyGeometryResponse,
   AssetsState,
   AssetsUpProtocol,
@@ -36,6 +35,7 @@ import {
   DracoWorkerSettings,
   KTX2WorkerSettings,
 } from './AssetsAPITypes';
+import { AssetsProtocolType } from './AssetsAPITypes';
 import type { TransferableGeometry } from '../Import/GeometryTransfer';
 import type { ResolvedLodChainOptions } from '../Lod/LodSimplify';
 

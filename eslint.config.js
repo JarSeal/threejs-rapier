@@ -23,6 +23,15 @@ export default [
     rules: {
       '@typescript-eslint/no-unused-vars': 1,
       'prettier/prettier': ['error', { endOfLine: 'auto' }],
+      // Type-only imports as a top-level `import type`, which is erased, so a type can't pull its
+      // module (and three) into the physics worker. The inline `import { type X }` alone compiles
+      // to `import {}` under verbatimModuleSyntax: a side-effect import that still loads it.
+      // `typeof import('…')` annotations are erased too, and type the debug loader's modules.
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        { fixStyle: 'separate-type-imports', disallowTypeAnnotations: false },
+      ],
+      '@typescript-eslint/no-import-type-side-effects': 'error',
     },
   }),
 

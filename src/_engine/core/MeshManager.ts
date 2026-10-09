@@ -1,20 +1,14 @@
 import * as THREE from 'three/webgpu';
-import {
-  createGeometry,
-  incGeometryRef,
-  decGeometryRef,
-  GeoProps,
-  getGeometryRegistry,
-} from './Geometry';
+import type { GeoProps } from './Geometry';
+import { createGeometry, incGeometryRef, decGeometryRef, getGeometryRegistry } from './Geometry';
+import type { MatProps, MaterialVariantOverrides } from './Material';
 import {
   createMaterial,
   incMaterialRef,
   decMaterialRef,
-  MatProps,
   getMaterial,
   getMaterialRegistry,
   getMaterialVariant,
-  MaterialVariantOverrides,
 } from './Material';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getRootScene } from './Scene';
@@ -23,7 +17,7 @@ import { getRenderer } from './Renderer';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { setTransform } from '../utils/ECSHelpers';
 import { lerror, lwarn } from '../utils/Logger';
-import { type CoreEntityOpts } from '../schemas/_helperSchemas';
+import type { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { getGeometry } from './Geometry';
 import { CoreComponentType } from './ECS/ECSRegistry';

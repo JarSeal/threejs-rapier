@@ -1,14 +1,14 @@
 /// <reference lib="webworker" />
 
-import { LoopState } from '../core/MainLoop';
-import {
+import type { LoopState } from '../core/MainLoop';
+import type {
   EngineAPIType,
   PhysicsBodyActivity,
   PhysicsState,
-  PhysicsProtocolType,
   PhysicsUpProtocol,
   WorldAPI,
 } from '../core/Physics/PhysicsAPITypes';
+import { PhysicsProtocolType } from '../core/Physics/PhysicsAPITypes';
 import { initPhysicsEngine } from '../core/Physics/PhysicsUtils';
 import {
   createPhysicsTransformArrayBuffer,

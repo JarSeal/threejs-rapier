@@ -3,10 +3,10 @@ import { markDebugHelper } from '../../../debug/Profiler';
 import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../../AppECSRegistry';
 import { ECSWorld, getECSWorld } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
+import type { LineObject } from '../../LineManager';
 import {
   BOX_EDGE_SEGMENT_COUNT,
   createLines,
-  LineObject,
   type LineWriter,
   writeBox3Edges,
 } from '../../LineManager';

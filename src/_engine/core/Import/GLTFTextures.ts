@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { lwarn } from '../../utils/Logger';
 import type { TextureMapKeys } from '../Material';
 import { doesTextureExist, getTextureRegistry, saveTexture, type TexOpts } from '../Texture';

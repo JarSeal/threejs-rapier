@@ -1,5 +1,6 @@
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../core/Config';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import type { DebugKeyShortcutsTab } from '../core/Debug/_dbg__DebugKeyShortcuts';
 
 type LightGUIModule = typeof import('../core/Debug/_dbg__DebugTools');

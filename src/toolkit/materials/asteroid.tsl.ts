@@ -20,7 +20,7 @@ import {
   vec3,
 } from 'three/tsl';
 // The real generic `Node<T>` typings (the `three/tsl` `Node` is a loose local shim)
-import { type Node, type NodeMaterial } from 'three/webgpu';
+import type { Node, NodeMaterial } from 'three/webgpu';
 
 // ─── Static defines ───
 // Set them in the material JSON `staticDefines`, or per mesh with `matOverrides.staticDefines`.

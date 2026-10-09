@@ -24,21 +24,16 @@ import {
 import { lerror, lwarn } from '../utils/Logger';
 // Always-safe thin wrapper: a no-op outside debug builds and tree-shaken out of production.
 import { updatePhysicsPanel } from '../debug/Stats';
+import type { LoopState } from './MainLoop';
 import {
   addVisibilityChangeFn,
   getFixedFrameDelta,
   getReadOnlyLoopState,
-  LoopState,
   toggleMainPlay,
 } from './MainLoop';
-import {
-  DebugModuleRef,
-  initWorker,
-  loadDebugModule,
-  loadDebugModuleAsync,
-  useDebug,
-} from '../utils/helpers';
-import {
+import type { DebugModuleRef } from '../utils/helpers';
+import { initWorker, loadDebugModule, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type {
   ColliderAPI,
   CollBorderRadiusResponse,
   CollHeightsResponse,
@@ -52,7 +47,6 @@ import {
   InteractionGroupsAPI,
   PhysicsState,
   PhysicsDownProtocol,
-  PhysicsProtocolType,
   PhysicsUpProtocol,
   PhysRay,
   PhysVector,
@@ -142,7 +136,6 @@ import {
   CollHalfExtentsResponse,
   CollCollisionGroupsResponse,
   CollSolverGroupsResponse,
-  ContactForceEventSnapshot,
   TempContactForceEvent,
   EventsPushMessage,
   JointAPI,
@@ -160,6 +153,10 @@ import {
   RigidDetachResponse,
   RigidReadPositionsResponse,
   RigidReattachResponse,
+} from './Physics/PhysicsAPITypes';
+import {
+  PhysicsProtocolType,
+  ContactForceEventSnapshot,
   type PhysicsBodyActivity,
   type RigidBodyAttachState,
 } from './Physics/PhysicsAPITypes';
@@ -169,7 +166,7 @@ import {
   type IntervalCounterSnapshot,
 } from '../utils/stats/IntervalCounterStats';
 import { RAY_STATS_WINDOWS, RAY_TESTER_ID_PREFIX, type RayDebugOpts } from './RayDebugTypes';
-import { ShapeType } from '@dimforge/rapier3d-compat';
+import type { ShapeType } from '@dimforge/rapier3d-compat';
 import { existsOrThrow } from '../utils/assert';
 
 let physicsState: PhysicsState = {

@@ -4,7 +4,8 @@ import { getRootScene } from './Scene';
 import { existsOrThrow } from '../utils/assert';
 import { tslMaterialFileObjects } from '../generatedAppFns';
 import { lerror, lwarn } from '../utils/Logger';
-import { color, Node, texture, uniform } from 'three/tsl';
+import type { Node } from 'three/tsl';
+import { color, texture, uniform } from 'three/tsl';
 import { textureMapKeys } from '../utils/constants';
 import { recordAssetOwner, retagAssetOwner } from './Assets/AssetOwners';
 

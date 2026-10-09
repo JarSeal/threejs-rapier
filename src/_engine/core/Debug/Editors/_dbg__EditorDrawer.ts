@@ -12,7 +12,7 @@
  * on-screen row, the viewport stack and the editor's own UI shift with it.
  */
 import { CMP, type TCMP } from '../../../utils/CMP';
-import { type AnyDebuggerTabDef } from '../../../debug/DebuggerGUI';
+import type { AnyDebuggerTabDef } from '../../../debug/DebuggerGUI';
 import { getSvgIcon } from '../../UI/icons/SvgIcon';
 import { createTabHost } from '../_dbg__TabHost';
 import debuggerStyles from '../DebuggerGUI.module.scss';

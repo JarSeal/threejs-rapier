@@ -1,5 +1,6 @@
 import { getConfig, IS_DEBUG_ENV } from '../core/Config';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
 type PostFxProfilerModule = typeof import('../core/Debug/_dbg__PostFXProfiler');
 let profiler: DebugModuleRef<PostFxProfilerModule> | null = null;

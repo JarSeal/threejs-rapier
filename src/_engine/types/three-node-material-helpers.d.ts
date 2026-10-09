@@ -3,7 +3,7 @@
 // three-node-material-helpers.d.ts
 // Place this file somewhere in your project (e.g., `src/types/`) and ensure your tsconfig “typeRoots” (or include) picks it up.
 
-import * as THREE from 'three';
+import type * as THREE from 'three';
 
 /**
  * Basic Node type alias for TSL/Node-Material system.

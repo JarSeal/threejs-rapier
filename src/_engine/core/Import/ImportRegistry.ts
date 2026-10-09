@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { lerror, lwarn } from '../../utils/Logger';
 import { deleteGeometry, doesGeoExist, getGeometryRegistry, saveBufferGeometry } from '../Geometry';
 import { isTextureUsedByAnyMaterial } from '../Material';

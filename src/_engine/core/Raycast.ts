@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { DIRECTIONS } from '../utils/constants';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import {
   IntervalCounterStats,
   type IntervalCounterSnapshot,

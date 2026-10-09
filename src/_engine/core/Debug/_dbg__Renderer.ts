@@ -4,7 +4,7 @@ import {
   persistDebuggerTabValue,
   updateDebuggerTab,
 } from '../../debug/DebuggerGUI';
-import { RendererOptions } from '../Renderer';
+import type { RendererOptions } from '../Renderer';
 import { RENDERER_SHADOW_OPTIONS } from '../../utils/constants';
 import { _recordUndoRedoAction, _registerUndoRedoActionHandler } from './_dbg__UndoRedo';
 

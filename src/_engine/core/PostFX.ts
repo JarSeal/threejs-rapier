@@ -28,7 +28,8 @@ import {
 import { getActiveCamera } from './CameraManager';
 import { postFxFileObjects } from '../generatedAppFns';
 import { lerror, llog, lwarn } from '../utils/Logger';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import type {
   PostFxBuiltChain,
   PostFxPassApi,

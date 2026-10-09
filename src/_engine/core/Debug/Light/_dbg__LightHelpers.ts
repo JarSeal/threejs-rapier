@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 
 import { ECSWorld } from '../../ECS';
 import { ComponentType, type CoreComponentData } from '../../ECS/ECSCoreComponents';
-import { CoreComponentType } from '../../ECS/ECSRegistry';
+import type { CoreComponentType } from '../../ECS/ECSRegistry';
 import { ECSSystemStage } from '../../../../AppECSRegistry';
 import { existsOrThrow } from '../../../utils/assert';
 import { getRootScene } from '../../Scene';

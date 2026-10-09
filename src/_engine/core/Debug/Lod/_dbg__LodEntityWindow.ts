@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { registerEntityWindowOpener } from '../../../debug/Profiler';
 import { CMP } from '../../../utils/CMP';
-import { ECSWorld, getECSWorld } from '../../ECS';
+import type { ECSWorld } from '../../ECS';
+import { getECSWorld } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import {
   DEFAULT_LOD_HYSTERESIS,

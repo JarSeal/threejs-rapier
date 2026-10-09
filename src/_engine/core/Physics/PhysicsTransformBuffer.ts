@@ -1,4 +1,5 @@
-import { PhysRotation, PhysVector, type PoseArray } from './PhysicsAPITypes';
+import type { PhysRotation, PhysVector } from './PhysicsAPITypes';
+import type { PoseArray } from './PhysicsAPITypes';
 
 /** Float32 fields per slot: position(3) + quaternion(4) + linvel(3) + angvel(3). */
 export const PHYSICS_TRANSFORM_FIELD_COUNT = 13;

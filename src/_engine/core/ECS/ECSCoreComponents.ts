@@ -1,11 +1,13 @@
 import * as THREE from 'three/webgpu';
-import { OrbitControls } from 'three/examples/jsm/Addons.js';
+import type { OrbitControls } from 'three/examples/jsm/Addons.js';
 
-import { ColliderAPI, RigidBodyAPI } from '../Physics/PhysicsAPITypes';
+import type { ColliderAPI, RigidBodyAPI } from '../Physics/PhysicsAPITypes';
 import type { PhysicsSimTierData, PhysicsTierPolicyMemberData } from '../Physics/PhysicsTierTypes';
 import type { PhysicsWireframeColors } from '../Config';
-import { CoreComponentType as CoreType, EntityDebugData, ManagedByData } from './ECSRegistry';
-import { AppComponentData, AppComponentType as AppType } from '../../../AppECSRegistry';
+import type { EntityDebugData, ManagedByData } from './ECSRegistry';
+import { CoreComponentType as CoreType } from './ECSRegistry';
+import type { AppComponentData } from '../../../AppECSRegistry';
+import { AppComponentType as AppType } from '../../../AppECSRegistry';
 import type { CharacterObject } from '../Character/CharacterTypes';
 import type { LodData } from '../Lod/LodTypes';
 import type { InstancedMeshSlotData } from '../Instancing/InstancedMeshPoolTypes';

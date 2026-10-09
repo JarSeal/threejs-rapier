@@ -15,6 +15,7 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "verbatimModuleSyntax": true,
     "noEmit": true,
     "typeRoots": ["./src/types", "./node_modules/@types"],
     // Only these @types are global; the rest come in through imports. Without the list, every

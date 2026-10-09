@@ -111,7 +111,10 @@ and commands.
 - **Messages are plain data:** no class instances or functions in a worker or network message, so
   a recording replays and a network can carry it.
 - **Type imports are written `import type`** across the simulation's boundary, so a type can't pull
-  the renderer, three or the DOM into the physics worker or a server.
+  the renderer, three or the DOM into the physics worker or a server. It must be the top-level
+  form: `import { type X }` alone still loads its module (as `import {}`). The lint
+  (`consistent-type-imports`, `no-import-type-side-effects`) and the compiler
+  (`verbatimModuleSyntax`) enforce it in every file, and `yarn lint --fix` writes it.
 - **Components are data,** not closures, so a save game or a network can serialize them.
 - **One physics build for every peer:** Rapier's compat and deterministic builds give different
   results, so switching between them is deliberate and changes every stored determinism hash once.

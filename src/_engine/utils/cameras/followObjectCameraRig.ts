@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../core/ECS';
 import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
-import { XYZObject } from '../commontTypes';
+import type { XYZObject } from '../commontTypes';
 import { smoothDampVec3 } from '../helpers';
 
 const DEFAULT_OFFSET = { x: 0, y: 5, z: 10 };

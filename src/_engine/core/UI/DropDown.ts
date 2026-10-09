@@ -1,4 +1,5 @@
-import { CMP, classes, TCMP } from '../../utils/CMP';
+import type { TCMP } from '../../utils/CMP';
+import { CMP, classes } from '../../utils/CMP';
 import './DropDown.scss';
 
 export type DropDownOption = { value: string; label: string };

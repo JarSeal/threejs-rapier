@@ -1,7 +1,7 @@
 import type Rapier from '@dimforge/rapier3d-compat';
 
 import * as RapierAPI from './EngineRapier';
-import { EngineAPIType } from './PhysicsAPITypes';
+import type { EngineAPIType } from './PhysicsAPITypes';
 
 // Define the engines (key) and their init functions
 export const ENGINES: Record<

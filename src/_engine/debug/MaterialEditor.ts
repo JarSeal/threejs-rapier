@@ -1,5 +1,6 @@
 import { IS_DEBUG_ENV } from '../core/Config';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
 type MaterialEditorModule = typeof import('../core/Debug/Editors/Material/_dbg__MaterialEditor');
 let materialEditor: DebugModuleRef<MaterialEditorModule> | null = null;

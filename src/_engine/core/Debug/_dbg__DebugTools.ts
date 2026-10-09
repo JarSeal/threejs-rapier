@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { getRenderer, getRendererOptions } from '../../core/Renderer';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import {
@@ -31,8 +31,9 @@ import {
 } from '../Helpers';
 import { updateOnScreenTools } from '../../debug/OnScreenTools';
 import { addToast } from '../../core/UI/Toaster';
-import { type SceneAsset } from '../../schemas/sceneSchema';
-import { DEBUG_CAMERA_ID, DebugToolsState } from '../../debug/DebugToolsManager';
+import type { SceneAsset } from '../../schemas/sceneSchema';
+import type { DebugToolsState } from '../../debug/DebugToolsManager';
+import { DEBUG_CAMERA_ID } from '../../debug/DebugToolsManager';
 import { getECSWorld, getEntityIdByAppId } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { isDebugCameraActive, type DebugCamLSProps } from '../CameraManager';

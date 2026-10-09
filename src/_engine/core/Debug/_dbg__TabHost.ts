@@ -2,7 +2,7 @@ import { CMP, type TCMP } from '../../utils/CMP';
 import styles from './DebuggerGUI.module.scss';
 import { lsRemoveItem } from '../../utils/LocalAndSessionStorage';
 import { lerror } from '../../utils/Logger';
-import { type AnyDebuggerTabDef } from '../../debug/DebuggerGUI';
+import type { AnyDebuggerTabDef } from '../../debug/DebuggerGUI';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import { _buildDebuggerPane } from './_dbg__DebuggerPaneBuilder';

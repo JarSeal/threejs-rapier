@@ -1,5 +1,6 @@
 import { IS_DEBUG_ENV } from '../core/Config';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import type { EnvBallOpts } from '../core/Debug/_dbg__EnvBall';
 
 type EnvBallModule = typeof import('../core/Debug/_dbg__EnvBall');

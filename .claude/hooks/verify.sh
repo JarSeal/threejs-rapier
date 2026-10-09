@@ -24,7 +24,19 @@ fi
 # Nothing changed in the code (src/, the Hub, the dev tools; new files included) — skip.
 [[ -z "$(git status --porcelain -- src hub devTools vite.config.ts vitest.config.ts)" ]] && exit 0
 
-yarn lint --fix >/dev/null 2>&1
+# Autofix, then report what's left: --fix exits 1 with the errors it couldn't fix (warnings don't
+# block: --quiet), 2 when ESLint itself failed
+LINT_OUT=$(yarn -s lint --fix --quiet 2>&1)
+LINT_STATUS=$?
+if [[ $LINT_STATUS -eq 1 ]]; then
+  echo "Lint errors. Fix before finishing:" >&2
+  echo "$LINT_OUT" | sed "s|$PWD/||" | head -30 >&2
+  exit 2
+elif [[ $LINT_STATUS -ne 0 ]]; then
+  echo "Lint failed to run:" >&2
+  echo "$LINT_OUT" | tail -10 >&2
+  exit 2
+fi
 
 # The root project, then the Hub's browser TS (hub/tsconfig.json)
 if ! OUT=$(yarn tsc --noEmit 2>&1 && yarn tsc -p hub --noEmit 2>&1); then

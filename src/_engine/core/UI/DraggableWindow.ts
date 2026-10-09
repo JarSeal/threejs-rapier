@@ -1,5 +1,7 @@
-import { CMP, TCMP } from '../../utils/CMP';
-import { lsGetItem, lsSetItem, StorageValue } from '../../utils/LocalAndSessionStorage';
+import type { TCMP } from '../../utils/CMP';
+import { CMP } from '../../utils/CMP';
+import type { StorageValue } from '../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lerror } from '../../utils/Logger';
 import { getWindowSize } from '../../utils/Window';
 import { getConfig, IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../Config';

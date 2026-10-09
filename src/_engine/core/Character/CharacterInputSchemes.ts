@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import type { KeyBinding, KeyHeldBinding, KeyUpDownBinding } from '../Input/KeyboardInput';
 import { getMainCamera } from '../CameraManager';
 import { getECSWorld } from '../ECS';

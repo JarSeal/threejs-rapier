@@ -1,4 +1,5 @@
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
 export type ToolTypes = 'SWITCH' | 'PLAY' | 'UNDO' | 'VIEW';
 

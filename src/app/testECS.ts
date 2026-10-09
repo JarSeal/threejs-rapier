@@ -1,5 +1,6 @@
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
-import { createMeshEntity, MeshProps } from '../_engine/core/MeshManager';
+import type { MeshProps } from '../_engine/core/MeshManager';
+import { createMeshEntity } from '../_engine/core/MeshManager';
 import { ECSWorld, getECSWorld } from '../_engine/core/ECS';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';

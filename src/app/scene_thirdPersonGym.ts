@@ -9,12 +9,14 @@ import { characterTestObstacles } from '../_engine/utils/world/characterTestObje
 import { importAssetAsync } from '../_engine/core/Import/ImportRegistry';
 import { spawnImportedAsset } from '../_engine/core/Import/SpawnImported';
 import type { ImportedAssetManifest } from '../_engine/core/Import/ImportTypes';
-import { ComponentType, Transform } from '../_engine/core/ECS/ECSCoreComponents';
+import type { Transform } from '../_engine/core/ECS/ECSCoreComponents';
+import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { getQuatFromAngle } from '../_engine/utils/helpers';
 import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
-import { ECSWorld, getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
+import type { ECSWorld } from '../_engine/core/ECS';
+import { getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
 import { getScene, registerOnSceneExit } from '../_engine/core/Scene';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 import { getCameraByAppId } from '../_engine/core/CameraManager';

@@ -1,12 +1,11 @@
 import Rapier from '@dimforge/rapier3d-compat';
 import type { Collider, RigidBody, RigidBodyType } from '@dimforge/rapier3d-compat';
 import { getPhysicsEngine } from './PhysicsUtils';
-import {
+import type {
   ColliderAPI,
   ColliderParams,
   CollisionEventRecord,
   ContactForceEventRecord,
-  ContactForceEventSnapshot,
   EventQueue,
   HeightFieldData,
   InteractionGroupsAPI,
@@ -26,17 +25,20 @@ import {
   RigidBodyAttachState,
   RigidBodyParams,
   RigidBodyPose,
-  RigidBodyTypeAPI,
   ShapeCastHitAPI,
   ShapeParams,
   ShapeType,
   TempContactForceEvent,
   WorldAPI,
+} from './PhysicsAPITypes';
+import {
+  ContactForceEventSnapshot,
+  RigidBodyTypeAPI,
   type PhysicsBodyActivity,
   type PhysicsQueryObserver,
 } from './PhysicsAPITypes';
 import type { RayDebugOpts } from '../RayDebugTypes';
-import { LoopState } from '../MainLoop';
+import type { LoopState } from '../MainLoop';
 import { lwarn } from '../../utils/Logger';
 import { existsOrThrow } from '../../utils/assert';
 

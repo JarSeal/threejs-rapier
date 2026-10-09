@@ -1,4 +1,5 @@
-import { CMP, TCMP, TStyle } from '../../utils/CMP';
+import type { TCMP, TStyle } from '../../utils/CMP';
+import { CMP } from '../../utils/CMP';
 
 type ToastType = 'info' | 'warning' | 'alert';
 type Direction = 'up' | 'down' | 'left' | 'right';

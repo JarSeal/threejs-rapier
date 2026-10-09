@@ -1,11 +1,11 @@
-import {
+import type {
   ColliderAPI,
   EngineAPIType,
   PhysicsEngine,
-  PhysicsProtocolType,
   PhysicsState,
   RigidBodyAPI,
 } from './PhysicsAPITypes';
+import { PhysicsProtocolType } from './PhysicsAPITypes';
 import { ENGINES } from './ENGINES';
 
 let curEngineObj: unknown = null;

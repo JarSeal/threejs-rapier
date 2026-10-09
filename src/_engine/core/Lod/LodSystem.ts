@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 import { ECSWorld, getECSWorld } from '../ECS';
-import { ComponentData, ComponentType } from '../ECS/ECSCoreComponents';
+import type { ComponentData } from '../ECS/ECSCoreComponents';
+import { ComponentType } from '../ECS/ECSCoreComponents';
 import type { IComponentStorage } from '../ECS/ECSComponentStorage';
 import { reconcileObject3DVisibility } from '../ECS/ECSCoreSystems';
 import { getActiveCamera, getMainCamera } from '../CameraManager';
@@ -11,7 +12,8 @@ import { decMaterialRef, getMaterialRegistry, incMaterialRef } from '../Material
 import { preWarmMesh, setMeshGeometry, setMeshMaterial } from '../MeshManager';
 import { getConservativeGeometryRadius } from '../Spatial/SpatialIndexSystem';
 import { lwarn } from '../../utils/Logger';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
+import type { DebugModuleRef } from '../../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../../utils/helpers';
 import { getInstancedLodBounds } from './LodBounds';
 import { clearLodObjectFade, enableLodDither, LOD_FADE_OPAQUE, setLodObjectFade } from './LodFade';
 import type { LodData, LodResolvedLevel, LodTarget } from './LodTypes';

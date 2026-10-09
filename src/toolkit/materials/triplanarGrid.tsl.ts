@@ -17,7 +17,7 @@ import {
   select,
 } from 'three/tsl';
 // The real generic `Node<T>` typings (the `three/tsl` `Node` is a loose local shim)
-import { type Node, type NodeMaterial } from 'three/webgpu';
+import type { Node, NodeMaterial } from 'three/webgpu';
 import {
   blendProjectionGradients,
   blendProjections,

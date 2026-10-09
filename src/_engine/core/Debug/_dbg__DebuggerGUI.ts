@@ -1,14 +1,15 @@
-import { CMP, TCMP } from '../../utils/CMP';
+import type { TCMP } from '../../utils/CMP';
+import { CMP } from '../../utils/CMP';
 import styles from './DebuggerGUI.module.scss';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../../utils/Window';
 import { getHUDRootCMP } from '../../core/HUD';
 import { DEFAULT_DEBUG_DRAWER_TAB_ORDER, getConfig, isDebugEnvironment } from '../../core/Config';
 import { lwarn } from '../../utils/Logger';
-import {
-  type DebugGUIOpts,
-  type AnyDebuggerTabDef,
-  type UpdateDebuggerTabOpts,
+import type {
+  DebugGUIOpts,
+  AnyDebuggerTabDef,
+  UpdateDebuggerTabOpts,
 } from '../../debug/DebuggerGUI';
 import { createDebuggerSceneLoader } from './_dbg__DebuggerSceneLoader';
 import { getSvgIcon } from '../UI/icons/SvgIcon';

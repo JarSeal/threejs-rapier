@@ -1,5 +1,5 @@
-import { ENGINES } from './ENGINES';
-import { LoopState } from '../MainLoop';
+import type { ENGINES } from './ENGINES';
+import type { LoopState } from '../MainLoop';
 import type { RayDebugOpts } from '../RayDebugTypes';
 
 export type PhysicsEngine = keyof typeof ENGINES;

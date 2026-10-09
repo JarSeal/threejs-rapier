@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
 
 import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../AppECSRegistry';
-import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import type { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { lerror, lwarn } from '../utils/Logger';
 import { IS_DEBUG_ENV } from './Config';
-import { DebugModuleRef, loadDebugModule, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModule, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import type { IComponentStorage } from './ECS/ECSComponentStorage';
@@ -26,12 +27,8 @@ import {
   readPhysicsSnapshotStamp,
   setBodyMovedListener,
 } from './PhysicsAPI';
-import {
-  ColliderParams,
-  RigidBodyAPI,
-  RigidBodyParams,
-  type PhysicsInterpolationMode,
-} from './Physics/PhysicsAPITypes';
+import type { ColliderParams, RigidBodyAPI, RigidBodyParams } from './Physics/PhysicsAPITypes';
+import type { PhysicsInterpolationMode } from './Physics/PhysicsAPITypes';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
 
 let debugPhysicsDraw: DebugModuleRef<typeof import('./Debug/_dbg__PhysicsDebugDraw')> | null = null;

@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Pane, type ButtonApi } from 'tweakpane';
-import { getECSWorld, ECSWorld, getEntityIdByAppId, getStableAppId } from '../../ECS';
+import type { ECSWorld } from '../../ECS';
+import { getECSWorld, getEntityIdByAppId, getStableAppId } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import { CMP } from '../../../utils/CMP';
 import {
@@ -26,11 +27,10 @@ import {
   createClearListLSButton,
   createClearTabLSButton,
 } from '../_dbg__ClearLSButtons';
+import type { CameraDebugLSData, DebugCamLSProps } from '../../CameraManager';
 import {
   getActiveCameraId,
   getAllCamerasAsArray,
-  CameraDebugLSData,
-  DebugCamLSProps,
   applyCameraProjection,
 } from '../../CameraManager';
 import { getWindowSize } from '../../../utils/Window';
