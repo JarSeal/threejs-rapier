@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../../.schemas/scene.schema.json",
+  "id": "exampleDebugTab",
+  "sceneFile": "./examples/debugTab/exampleDebugTab.ts",
+  "name": "Example: Your own debug tab",
+  "description": "A ring of boxes and a debug drawer tab of the scene's own (debug env): the number of boxes and their colour, saved in the browser, and a button that shuffles them.",
+  "backgroundColor": "#1c212b",
+  "cameras": ["exampleDebugTabCamera"],
+  "lights": ["exampleDebugTabAmbient", "exampleDebugTabSun"]
+}

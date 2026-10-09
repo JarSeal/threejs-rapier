@@ -13438,6 +13438,92 @@
       "id": "topDownTestScene",
       "sceneFile": "./scene_topDownTest.ts"
     },
+    "exampleDebugTab": {
+      "name": "Example: Your own debug tab",
+      "description": "A ring of boxes and a debug drawer tab of the scene's own (debug env): the number of boxes and their colour, saved in the browser, and a button that shuffles them.",
+      "backgroundColor": "#1c212b",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 100,
+            "position": {
+              "x": 0,
+              "y": 7,
+              "z": 11
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 45,
+            "appId": "exampleDebugTabCamera"
+          },
+          "entityOpts": {
+            "appId": "exampleDebugTabCamera",
+            "debugData": {
+              "name": "Debug tab example camera"
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.6,
+            "appId": "exampleDebugTabAmbient"
+          },
+          "entityOpts": {
+            "appId": "exampleDebugTabAmbient",
+            "debugData": {
+              "name": "Debug tab example ambient light"
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 5,
+              "y": 10,
+              "z": 4
+            },
+            "targetPos": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowCameraNearFar": [
+              1,
+              30
+            ],
+            "shadowCameraFrustum": [
+              -8,
+              8,
+              8,
+              -8
+            ],
+            "appId": "exampleDebugTabSun"
+          },
+          "entityOpts": {
+            "appId": "exampleDebugTabSun",
+            "debugData": {
+              "name": "Debug tab example sun"
+            }
+          }
+        }
+      ],
+      "id": "exampleDebugTab",
+      "sceneFile": "./examples/debugTab/exampleDebugTab.ts"
+    },
     "exampleEcs": {
       "name": "Example: Custom component & system",
       "description": "A SPIN component of the app's own and the system that turns every entity that has it: a row of shapes, each turning about its own axis at its own speed, one of them hovering too.",
@@ -14250,6 +14336,33 @@
       },
       "__sourcePath": "src/app/cameras/topDownTestCamera.camera.json"
     },
+    "exampleDebugTabCamera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 100,
+        "position": {
+          "x": 0,
+          "y": 7,
+          "z": 11
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 45,
+        "appId": "exampleDebugTabCamera"
+      },
+      "entityOpts": {
+        "appId": "exampleDebugTabCamera",
+        "debugData": {
+          "name": "Debug tab example camera"
+        }
+      },
+      "__sourcePath": "src/app/examples/debugTab/exampleDebugTabCamera.camera.json"
+    },
     "exampleEcsCamera": {
       "camProps": {
         "active": true,
@@ -14743,6 +14856,57 @@
         }
       },
       "__sourcePath": "src/app/lights/topDownTestSun.light.json"
+    },
+    "exampleDebugTabAmbient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#ffffff",
+        "intensity": 0.6,
+        "appId": "exampleDebugTabAmbient"
+      },
+      "entityOpts": {
+        "appId": "exampleDebugTabAmbient",
+        "debugData": {
+          "name": "Debug tab example ambient light"
+        }
+      },
+      "__sourcePath": "src/app/examples/debugTab/exampleDebugTabAmbient.light.json"
+    },
+    "exampleDebugTabSun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 5,
+          "y": 10,
+          "z": 4
+        },
+        "targetPos": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowCameraNearFar": [
+          1,
+          30
+        ],
+        "shadowCameraFrustum": [
+          -8,
+          8,
+          8,
+          -8
+        ],
+        "appId": "exampleDebugTabSun"
+      },
+      "entityOpts": {
+        "appId": "exampleDebugTabSun",
+        "debugData": {
+          "name": "Debug tab example sun"
+        }
+      },
+      "__sourcePath": "src/app/examples/debugTab/exampleDebugTabSun.light.json"
     },
     "exampleEcsAmbient": {
       "lightProps": {
