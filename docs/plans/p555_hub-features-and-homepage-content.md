@@ -1,7 +1,6 @@
 Status: draft | not-implemented
 Category: Instructions, Hub
 Epic: p550_aekasha-hub-epic.md
-Blocked by: p554_hub-examples-start-scene-and-example-scenes.md
 
 # Hub Features & Homepage Content
 
@@ -112,7 +111,8 @@ The `lod` page carries the most since §1's additions:
 - **"Read more"** links `docs/techniques/asset-optimization.md#impostor-atlases` and
   `#alpha-cut-textures` next to the CLAUDE.md sections.
 - **The example:** p554's `exampleLod` for the code, and `lodShowcase` for seeing every feature at
-  once (p554 §5's open question 5 decides how it's linked).
+  once (p554 §5's question 5: the LOD example page ends with `::: scene lodShowcase` as the full
+  demo).
 
 ### 2.2 The `cards` directive
 

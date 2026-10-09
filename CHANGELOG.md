@@ -6,7 +6,44 @@ Earlier releases are only recorded in the git history.
 
 ## 2026-10-08 — aekasha-hub
 
-### App 1.8.1 (Preschooler)
+### Engine 4.14.0 (Afternoon)
+
+**Added**
+
+- `?startScene=<sceneId>`: next to `?isDebug=true` or `?isProdTest=true`, the page boots into that scene. It wins over the Debug tools' start scene and over the scene `src/index.ts` asks for, on the first load only. An id without its scene data and scene file warns (also as a debug toast) and loads the usual start scene. Production builds never read it. `getStartSceneQueryParam()` (`core/Config.ts`) returns it.
+- Snapshots (`core/Snapshot.ts`): `takeSnapshotAsync({ width, height, scene?, camera?, postFx?, hideDebugHelpers?, transparent?, samples? })` renders a scene through a camera off screen and reads it back as RGBA8 (sRGB as the canvas shows it, top row first), for thumbnails, the Hub's scene images and save game pictures. By default it's what the canvas shows (the current view's scene and camera, through the scene's PostFX), without the viewports and with the debug helpers hidden. `snapshotToBlobAsync` encodes one as PNG, WebP or JPEG, and `readRenderTargetRGBA8Async` is its readback.
+- `renderFrameNow()` (`core/MainLoop.ts`): draws the current view's frame outside the loop, after something cleared the canvas (a PostFX snapshot resizes the renderer).
+- `addDebugToastWhenReady` (`debug/DebuggerGUI.ts`): a debug toast added before the debug toaster exists waits for it, for messages from the boot.
+
+**Fixed**
+
+- `WORKER_THREAD` physics: a `THREE.Quaternion` as a rigid body's or a collider's `rotation` reached the worker without its x / y / z / w (structured clone drops class fields), so the body spawned unrotated. It's sent as a plain object now.
+
+**Changed**
+
+- The texture preview's GPU readback uses `readRenderTargetRGBA8Async`.
+
+### Toolkit 1.4.0 (Crescent)
+
+**Added**
+
+- The toolkit's first model, the Ækasha symbol (`toolkit/models/aekashaSymbol/`, id `aekashaSymbol`): the Æ glyph of the favicon extruded with a small bevel, 1 unit high, centred and facing +z, Draco-compressed (its asset JSON keeps the pipeline's output Draco). `devTools/toolkit/buildAekashaSymbol.ts` builds the GLB from `src/public/favicon.svg`.
+
+### App 1.9.0 (Preschooler)
+
+**Added**
+
+- Example scenes for the Hub (`src/app/examples/<name>/`, named "Example: …"), each with its own camera, lights and asset ids, and `#region` markers around the code its Hub page shows:
+  - `exampleQuickStart`: a hovering checkerboard cube, a camera and two lights, the smallest complete scene.
+  - `examplePhysics`: a static ground with a box, a sphere, a capsule and a cylinder dropping on it; Space drops more (the oldest go past 80).
+  - `exampleToolkit`: the toolkit's Æ symbol, hovering, with the triplanar checkerboard material.
+  - `exampleSkyBox`: a `DAY_NIGHT` sky box with a two-minute day; Space plays and pauses it, ← → move the time and ↑ ↓ change the speed.
+  - `exampleEcs`: a `SPIN` component and its `APP_LOGIC` system (`examples/ecs/SpinComponent.ts`, `SpinSystem.ts`), registered in `AppECSRegistry.ts` and `AppECSPlugins.ts`.
+  - `exampleLod`: 180 torus knots in one instanced LOD pool, the knot's generated chain then a flat octahedral impostor (baked at load).
+  - `exampleDebugTab`: a scene-scoped debug tab with persisted settings the scene builds from, and a button.
+  - `exampleHubHero`: the Hub homepage's render, a `SPACE` sky box, a large toolkit asteroid in an emissive ring, smaller ones turning beside it, and a bloom PostFX. It has no Hub page.
+- `createExampleHud` (`examples/exampleHud.ts`), the examples' HUD line.
+- A scene-scoped "Hub" debug tab (`examples/_dbg__exampleHub.ts`) for every scene under `src/app/examples/` and for `lodShowcase`, with **Save Hub image**: a snapshot of what the canvas shows (1600 × 1000, the hero 1560 × 960) written next to the scene as `<sceneId>.hub.png` through the dev files (downloaded, with the path to put it at, without them). The Hub images of every example are saved.
 
 **Changed**
 
@@ -16,7 +53,7 @@ Earlier releases are only recorded in the git history.
 
 **Added**
 
-- The Ækasha Hub: the engine's instructions, examples and documentation as a static site, with its sources in `hub/` and its generator in `devTools/hub/`. This first version is the site itself, its code blocks, its search and the API documentation; the example scenes and the feature pages come in later branches.
+- The Ækasha Hub: the engine's instructions, examples and documentation as a static site, with its sources in `hub/` and its generator in `devTools/hub/`. This first version is the site itself, its code blocks, its search, the API documentation and the examples; the feature pages come in a later branch.
   - Pages: a folder under `hub/pages/` per URL, with an `index.html` (the title and the `aek:` menu metadata in its `<head>`, the page's markup in its `<body>`) and a Markdown file for each of its slots. The nav is built from the pages' metadata, at build time.
   - Markdown (markdown-it): heading anchors and an "On this page" table of contents, `hub:` links between pages that are checked at build time (a dead link or `#hash` fails the build with its file and line), `::: tip|note|warning|danger` callouts and a directive registry for later ones, and images converted to WebP.
   - The design shell: a top nav with dropdowns, breadcrumbs, a footer, a dark and a light theme (saved, else the system's), a mobile menu, keyboard navigation, self-hosted Inter and Lucide icons, the Hub's own favicons (the Æ in its accent blue, in `hub/_assets/favicons/`; the app's stay as they were), and a homepage with a hero and the slots for its later content.
@@ -28,10 +65,15 @@ Earlier releases are only recorded in the git history.
   - `api:` links on any Hub page (`[loadScene](api:loadScene)`, `api:ECSWorld.addSystem`, `api:PhysicsAPI.createRigidBody` for a name two modules export), checked at build time: an unknown name fails the build and suggests close ones, an ambiguous one lists the candidates. A JSDoc `{@link X}` lands on the same anchor; one that doesn't resolve is shown as text, with a warning at its line.
   - Search finds every module, export and class or interface member by name, with its kind and module.
   - The TypeDoc model is cached in `.cache/hub/typedoc.json` and reused while the engine's and the toolkit's sources are unchanged. In `yarn dev`, an engine or toolkit save rebuilds nothing: the next API page opened shows "Rebuilding the API documentation…" while TypeDoc runs in a child process, then reloads into the new page. Other Hub pages don't wait for it.
+  - Examples: a page per example scene (Quick start with the dev environment set-up, Physics, Toolkit, Sky box & day-night, Custom component & system, LOD & instancing, Your own debug tab), each showing the scene's own code through its regions, and the Examples page listing them as cards.
+  - `::: scene <sceneId>` panels: the scene's Hub image, the directive's text, and in `yarn dev` "Open in debug" / "Open in prod test" buttons (`?startScene`); the public Hub shows a note on running it locally instead. An unknown scene id fails the build, a missing image warns.
+  - `::: cards <page path>`: a card per child page (its image, else its icon, its label and description). A page's image is `aek:image` in its head, a scene's Hub image (`scene:<sceneId>`) or an image file. Scene images are converted to WebP at the sizes the layout uses, and in `yarn dev` saving one rebuilds the Hub by itself.
+  - The homepage hero is the engine's render (`exampleHubHero`'s Hub image), through `<img data-aek-scene="<sceneId>">`.
 - `yarn dev` serves the Hub at `/hub/` (`devTools/hubPlugin.ts`, dev server only; `AEK_HUB=false` turns it off). It builds on the first request, rebuilds on every save under `hub/` and in its other sources, and refreshes only the open Hub tabs whose page changed (a stylesheet change without a reload). It never reloads the app's tabs. A page with an error is served as an error page with the file and line, and comes back by itself when it's fixed.
 - `yarn hub:build [--out <dir>] [--no-api]` builds the public site into `dist-hub/`: relative links (it works at a domain root and under `/hub/`), a `404.html`, a Netlify `_headers` file, and `?v=<content hash>` on every asset. An error fails it. `--no-api` skips the API documentation (no TypeDoc run, `api:` links unchecked) for fast content work. `yarn hub:preview [--base /hub/]` serves the build as a static host would.
-- `docs/techniques/hub-authoring.md`: how to write Hub pages, their code blocks, snippet includes and region markers, `api:` links, and what search indexes.
-- CLAUDE.md: the Hub's section, the issue-file convention (`**Title:**` on line 1, then `Key: value` lines with `Status:` first), the rule that a change to an engine or toolkit feature or public API updates its Hub content in the same branch, and that a `#region` marker in engine, toolkit or app code is a Hub include (renaming it breaks a page).
+- `docs/techniques/hub-authoring.md`: how to write Hub pages, their code blocks, snippet includes and region markers, `api:` links, scene panels, cards and Hub images, and what search indexes.
+- `devTools/toolkit/buildAekashaSymbol.ts` (`npx tsx`): builds the toolkit's Æ symbol GLB from the favicon's glyph. New dev dependency `linkedom` 0.18.13 (its `DOMParser` for three's `SVGLoader` in Node).
+- CLAUDE.md: the Hub's section, the issue-file convention (`**Title:**` on line 1, then `Key: value` lines with `Status:` first), the rule that a change to an engine or toolkit feature or public API updates its Hub content in the same branch, that a `#region` marker in engine, toolkit or app code is a Hub include (renaming it breaks a page), `?startScene`, snapshots, the example scenes and their Hub tab, and the toolkit's model.
 
 **Changed**
 

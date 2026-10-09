@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-5 implemented
+Status: implemented (Phases 1-6)
 Category: Instructions, Examples, Scene
 Epic: p550_aekasha-hub-epic.md
 Blocks: p555_hub-features-and-homepage-content.md (its example links and cards)
@@ -347,9 +347,23 @@ As built:
   already missing `MutualGravity` and the asteroid geometry and material, which aren't this
   plan's.
 
-### Phase 6 — Versioning and marking the plan done
+### Phase 6 — Versioning and marking the plan done — done
 
 §4.
+
+As built:
+
+- Engine 4.13.0 → 4.14.0, toolkit 1.3.1 → 1.4.0, app 1.8.0 → 1.9.0 (the branch's 1.8.1 patch, the
+  `dynamic-box` region, folds into it), in the branch's `aekasha-hub` changelog entry. The engine
+  entry also lists the `WORKER_THREAD` rotation fix (Phase 3) and `renderFrameNow` /
+  `addDebugToastWhenReady`.
+- Left for later, both done from the browser:
+  - `exampleLod`'s impostor (`lodExampleKnotImpostor`) isn't exported yet, so the scene bakes it
+    at load (§2.2): export it from the LOD tab, move its files next to the scene and list it in
+    `exampleLod.scene.json`'s `impostors`.
+  - `lodShowcase` has no Hub image (`src/app/lodShowcase.hub.png`), so the LOD page's
+    `::: scene lodShowcase` panel warns in `hub:build`: save it from the scene's Hub tab, from a
+    camera stop (also p555's featured card, §5's question 5).
 
 ## 4. Versioning
 

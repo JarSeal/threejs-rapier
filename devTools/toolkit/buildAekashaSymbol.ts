@@ -11,7 +11,7 @@ import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /**
- * Builds the toolkit's Ækasha symbol model (docs/plans/p554_hub-examples-start-scene-and-example-scenes.md
+ * Builds the toolkit's Ækasha symbol model (docs/plans/_DONE_p554_hub-examples-start-scene-and-example-scenes.md
  * section 2.3) from the Æ glyph in `src/public/favicon.svg`: the glyph's path extruded with a
  * small bevel, 1 unit high, centred on the origin and facing +z, written as a Draco-compressed
  * GLB next to its `aekashaSymbol.importedAsset.json`. The asset pipeline keeps it Draco (the
