@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Testing, Dev tooling
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p606_layering-inversion-and-public-entry.md (no Stage B or C plan starts without it)
@@ -107,7 +107,7 @@ test bridge (Phase 2) that ships in no production build.
 
 ## 4. Phases
 
-### Phase 1: Vitest and the first tests
+### Phase 1: Vitest and the first tests — done
 
 1. Add `vitest`; `yarn test` and `yarn test:watch`; `vitest.config.ts` reusing the Vite config's
    resolve settings.
@@ -116,6 +116,34 @@ test bridge (Phase 2) that ships in no production build.
    unmap round trips, the frame basis at the poles); the schemas (every asset JSON in `src/`
    parses, a set of bad fixtures doesn't).
 3. The Stop hook runs `yarn test` when `src/` changed (after lint and `tsc`).
+
+As built:
+
+- `vitest` 5.0.3 (exact pin; peer `vite ^6.4`, Node ^22.12). `vitest.config.ts` is standalone, not
+  merged with `vite.config.ts`: that has no `resolve` settings, and its plugins (gatherer, Hub, dev
+  files, visualizer) must not run under a test. It defines `__PROJECT_METADATA__` (from
+  `getProjectMetadata`), which `core/Config.ts` reads at load; `tsconfig.json` includes it.
+- `core/ECS.ts` can't load in Node as is: `core/Config.ts:304` reads `window.location.search` at
+  module scope (the p606 finding). `ECS.test.ts` stubs only that, per file (`vi.hoisted` +
+  `vi.stubGlobal`), not in a global setup file, so a new browser global at load fails the test.
+  Everything else in its import graph loads in Node (type-only imports are elided).
+- The schema tests are `devTools/gatherAppData.test.ts`: every gathered JSON in `src/` through the
+  gatherer's own `validateGatheredJson` (so no second suffix table), and bad cases made by breaking
+  one field of a repo asset, each checked against its issue path. No fixture files: a `*.scene.json`
+  fixture under `src/` would be gathered.
+- `ImpostorFormat.test.ts` too (§2 lists it, step 2 didn't).
+- Found and fixed: `docs/issues/ecs-generation-wrap-after-4096-reuses.md` (a slot reused 4096
+  times gave entities that were never alive and couldn't be deleted): `deleteEntity` now wraps the
+  stored generation at 12 bits (`GEN_MASK`, `core/ECS.ts`). A runtime fix, so Phase 4 bumps the
+  engine's patch version.
+- For p619: a light's bad field is reported on `lightProps` alone (a plain union the gatherer's
+  `expandUnionIssues` can't narrow); and `computeSkyRotation`'s matrix has determinant -1 (the
+  hour frame is left-handed), so its JSDoc's "rotation" is loose (correct maths).
+- `*.test.ts` is excluded from TypeDoc (`typedocOptions.exclude`) and from the Hub's API hash and
+  stale check (`EXCLUDED_FILE_REGEX`, `devTools/hub/api/extract.ts`), so a test save doesn't
+  rebuild the API docs.
+- The Stop hook runs the tests when `src/`, `devTools/` or `vitest.config.ts` changed (not for a
+  Hub-only change). 188 tests, about 0.6 s.
 
 ### Phase 2: the scene runner
 
@@ -136,8 +164,8 @@ test bridge (Phase 2) that ships in no production build.
 1. CLAUDE.md: the commands, the "no test suite" sentence replaced, the verification line every
    p600 plan uses. The run-aekasha-js skill points at the runner.
 2. The Hub: the commands on the getting-started page (`hub/pages/`), `yarn hub:build`.
-3. `CHANGELOG.md` Project entry (no part bumped: tooling, and the bridge is dev-only); mark the
-   plan done.
+3. `CHANGELOG.md` entry: Project (the tooling; the bridge is dev-only) and Engine (a patch bump
+   for Phase 1's ECS generation fix); mark the plan done.
 
 ## 5. Risks and open questions
 
