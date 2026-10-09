@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * The scene runner (`yarn verify:scenes`, p601): loads every scene of the generated data in every
  * configuration of `scenes.config.ts`, through the dev-only test bridge (`window.__AEK_TEST__`,
@@ -46,13 +45,11 @@ import {
   type VerifyConfigDef,
   type VerifyConfigName,
 } from './scenes.config';
+import { out, PROGRESS_LOG_WATCH } from './progressLog';
 
 /** Bump when the baseline file's shape changes: an old one is then ignored */
 const BASELINE_FORMAT_VERSION = 1;
 const CACHE_DIR = path.join(ROOT, '.cache/verify/scenes');
-/** Every verify run's output, emptied when one starts, so `tail -f .cache/verify/progress.log`
- * watches whichever run is going */
-const PROGRESS_LOG = path.join(ROOT, '.cache/verify/progress.log');
 const GENERATED_DATA = path.join(ROOT, 'src/_engine/generatedAppData.json');
 /** `DEBUG_PHYSICS_API_BOOT_LS_KEY` (core/Config.ts, which reads `window` at load: not importable here) */
 const PHYSICS_BOOT_LS_KEY = 'AEK_debugPhysicsApiBoot';
@@ -64,24 +61,6 @@ const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
-
-let isProgressLogStarted = false;
-
-/** Prints a line and appends it to the progress log (a convenience: a failed write is ignored) */
-const out = (line: string, isError = false) => {
-  if (isError) console.error(line);
-  else console.log(line);
-  try {
-    if (!isProgressLogStarted) {
-      fs.mkdirSync(path.dirname(PROGRESS_LOG), { recursive: true });
-      fs.writeFileSync(PROGRESS_LOG, '');
-      isProgressLogStarted = true;
-    }
-    fs.appendFileSync(PROGRESS_LOG, `${line}\n`);
-  } catch {
-    // Watching is optional
-  }
-};
 
 type Backend = 'webgpu' | 'webgl';
 
@@ -674,7 +653,7 @@ const main = async () => {
       `${requested === 'webgl' ? `WebGL2 (SwiftShader${args.webgl ? '' : ', WSL2'})` : 'WebGPU'}` +
       `${args.update ? ', recording baselines' : ''}`
   );
-  out(`${DIM}Watch it: tail -f ${path.relative(ROOT, PROGRESS_LOG)}${RESET}\n`);
+  out(`${DIM}Watch it: ${PROGRESS_LOG_WATCH}${RESET}\n`);
 
   const ctx: LoadContext = {
     browser,

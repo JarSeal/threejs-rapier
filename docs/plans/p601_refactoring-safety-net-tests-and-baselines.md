@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Testing, Dev tooling
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p606_layering-inversion-and-public-entry.md (no Stage B or C plan starts without it)
@@ -251,12 +251,43 @@ As built (step 4):
   wall clock and `Math.random` remain. For the toolkit: `MutualGravity` could read per-step poses
   (`readBodyPositionsAtStep`, as the tier policy does) to be deterministic in the worker.
 
-### Phase 3: baselines
+### Phase 3: baselines — done
 
 1. `devTools/verify/baselines.ts`: reads the visualizer data, the TypeDoc model (built with the
    Hub's extractor when stale) and writes the three files. Its output goes to the same
    progress log as the scene runner's (`.cache/verify/progress.log`, emptied when a run starts).
 2. `yarn verify:baselines [--update]`. First baselines committed.
+
+As built:
+
+- `yarn verify:baselines [--update] [--no-build]` (`devTools/verify/baselines.ts`). It runs
+  `yarn build`'s bundle steps first (decoders, the production gather, `vite build`, then the dev
+  gather again in a `finally`), without `tsc` and the Hub; `--no-build` reuses `dist/` and
+  `dist-stats/`. A whole run takes 12-20 s (the TypeDoc conversion, about 6 s, only when its
+  inputs changed: `loadApiModel`, the Hub's cache).
+- `bundle.json`: `chunks` is every file in `dist/assets/` (JS, CSS, WASM, the GLB and PNG) keyed by
+  its name without Vite's 8-character hash, with its shipped bytes and gzip (level 9). `main` and
+  `mainGroups` are the visualizer's per-module rendered and gzip sizes in the entry chunk (from the
+  manifest's `isEntry`), summed per group: a package, `_engine`, `_engine/<folder>` (core's
+  subfolders apart), `toolkit`, `app` (`src/app/` and `src/`'s own files), `vite`. That's p600
+  §2.4's measure (before minification: the main chunk is 1.74 MB gzip there, 1.25 MB as shipped).
+- `api.json`: by source path, every export name with its kind (TypeDoc's names; a name declared
+  twice, a value and a type, joins them). `docs.json`: per folder (its own modules), per subtree
+  and in total, documented / total exports (the Hub's rule: re-exports don't count) and own
+  members of exported classes and interfaces. They reproduce p600 §2.5 (members 209 / 441; exports
+  1,290 / 2,036, the 2,029 there plus this branch's new ones).
+- The committed files carry no commit or date, so they change only when a number does.
+- It exits 1 when something needs a look: a chunk whose gzip grew by more than 1 % or 2 kB (never
+  under 100 B), a new chunk, an export added, removed, moved (same name and kind in another module)
+  or of another kind, a folder whose documented share dropped. A shrink, a gone chunk or better
+  coverage is listed and passes. The main chunk's groups are listed as the explanation of its
+  change, never a reason on their own. `--update` writes the current state.
+- Its output goes to the shared progress log too (`devTools/verify/progressLog.ts`, now also the
+  scene runner's).
+- Checked: recorded, a fresh build again reported every file unchanged (the stripped names and
+  gzip sizes are stable), and a faked set of changes (a 5 kB growth, a 50 B one, a new chunk, a
+  move, an added undocumented export, a coverage drop) gave exactly the expected findings, the
+  50 B one not flagged.
 
 ### Phase 4: docs and versioning
 
