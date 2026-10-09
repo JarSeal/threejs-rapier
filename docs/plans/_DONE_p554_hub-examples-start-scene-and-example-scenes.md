@@ -1,7 +1,7 @@
 Status: implemented (Phases 1-6)
 Category: Instructions, Examples, Scene
-Epic: p550_aekasha-hub-epic.md
-Blocks: p555_hub-features-and-homepage-content.md (its example links and cards)
+Epic: \_DONE_p550_aekasha-hub-epic.md
+Blocks: \_DONE_p555_hub-features-and-homepage-content.md (its example links and cards)
 Related: \_DONE_p342_dev-file-server.md (the Hub images are written through `writeDevFiles`), \_DONE_p300_asset-optimization-pipeline-plan.md (the Æ symbol GLB), p450 "Toolkit and asset housekeeping" (`docs/templates/todo-plan-prompts.txt`; the toolkit's public asset folder)
 
 # Hub Examples, `?startScene` & Example Scenes

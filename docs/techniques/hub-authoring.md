@@ -22,13 +22,13 @@ hub/_assets/ (SCSS, TS, icons, fonts) ──┘
 
 ## Run it
 
-| Command                                   | What it does                                                                                                                                                                                                                                                                                                     |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `yarn dev`, then open `/hub/`             | Builds the Hub on the first `/hub` request, then rebuilds it on every save (see [Refreshing in dev](#refreshing-in-dev)).                                                                                                                                                                                        |
-| `yarn hub:build [--out <dir>] [--no-api]` | Builds the public site into `dist-hub/`. An error prints its file and line, writes nothing and exits 1. `yarn build` runs it last. `--no-api` leaves out the API docs, for fast content work: TypeDoc doesn't run, the Documentation page says they aren't built, and `api:` links aren't checked (one warning). |
-| `yarn hub:preview [--base /hub/]`         | Serves `dist-hub/` on port 8090 the way a static host does: directory URLs, and `404.html` for a missing path. `--base /hub/` serves it under a path, as the app's site does with `AEK_HUB_IN_DIST`.                                                                                                             |
-| `AEK_HUB=false`                           | Turns off the dev server's `/hub/`, and `yarn build` skips the Hub build.                                                                                                                                                                                                                                        |
-| `AEK_HUB_IN_DIST=true yarn build`         | Also copies the Hub into `dist/hub/`, so the app's site serves it at `/hub/`. It's off by default, so the Hub isn't in production unless you ask for it.                                                                                                                                                         |
+| Command                                   | What it does                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yarn dev`, then open `/hub/`             | Builds the Hub on the first `/hub` request, then rebuilds it on every save (see [Refreshing in dev](#refreshing-in-dev)).                                                                                                                                                                                                                           |
+| `yarn hub:build [--out <dir>] [--no-api]` | Builds the public site into `dist-hub/`. An error prints its file and line, writes nothing and exits 1. `yarn build` runs it last. `--no-api` leaves out the API docs, for fast content work: TypeDoc doesn't run, the Documentation page says they aren't built, and neither `api:` links nor `hub:` links to API pages are checked (one warning). |
+| `yarn hub:preview [--base /hub/]`         | Serves `dist-hub/` on port 8090 the way a static host does: directory URLs, and `404.html` for a missing path. `--base /hub/` serves it under a path, as the app's site does with `AEK_HUB_IN_DIST`.                                                                                                                                                |
+| `AEK_HUB=false`                           | Turns off the dev server's `/hub/`, and `yarn build` skips the Hub build.                                                                                                                                                                                                                                                                           |
+| `AEK_HUB_IN_DIST=true yarn build`         | Also copies the Hub into `dist/hub/`, so the app's site serves it at `/hub/`. It's off by default, so the Hub isn't in production unless you ask for it.                                                                                                                                                                                            |
 
 ## Add a page
 
@@ -166,8 +166,12 @@ A feature page names the CLAUDE.md Architecture sections it covers in its head, 
 ```
 
 - In dev, it renders a line with a link to each section, opening the editor at its heading. In `yarn hub:build`, it renders nothing: CLAUDE.md is the contributors' notes, not the public's.
-- Both check the names against CLAUDE.md (when the build runs in the repo). A renamed section fails the build until `aek:covers` follows it.
 - The directive takes no content.
+
+The build checks the coverage both ways (when it runs in the repo, where CLAUDE.md is):
+
+- A name in `aek:covers` that CLAUDE.md doesn't have fails the build, so a renamed section fails it until `aek:covers` follows.
+- An Architecture section that no page covers is a warning at its line in CLAUDE.md. Sections that aren't features (the folder split, plans, the bootstrap flow, the Hub itself, the build config notes) are listed in `hub.config.ts`'s `coverageIgnore`. A new subsystem section goes into a feature page's `aek:covers`, or into `coverageIgnore` when it isn't a feature.
 
 ## Callouts
 
@@ -527,4 +531,4 @@ The same checks run in dev and in `yarn hub:build`. In dev, an error shows the e
 
 ## Keeping it current
 
-A change that adds, changes or removes an engine or toolkit feature or public API updates its Hub content in the same branch: the feature page, the example page and its scene, and the snippets they include. A `#region` marker in engine, toolkit or app code means a page includes that code, so renaming or removing it breaks the page. Run `yarn hub:build` before you commit. It catches the links and includes your change broke. When a change makes an example scene look different, save its Hub image again.
+A change that adds, changes or removes an engine or toolkit feature or public API updates its Hub content in the same branch: the feature page, the example page and its scene, and the snippets they include. A `#region` marker in engine, toolkit or app code means a page includes that code, so renaming or removing it breaks the page. Run `yarn hub:build` before you commit. It catches the links and includes your change broke, and warns about a new CLAUDE.md Architecture section that no feature page covers. When a change makes an example scene look different, save its Hub image again.

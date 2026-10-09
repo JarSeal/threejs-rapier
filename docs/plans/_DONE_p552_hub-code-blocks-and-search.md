@@ -1,6 +1,6 @@
 Status: implemented (Phases 1-4)
 Category: Dev tooling, Hub
-Epic: p550_aekasha-hub-epic.md
+Epic: \_DONE_p550_aekasha-hub-epic.md
 Blocks: \_DONE_p553_hub-api-documentation.md (its search entries), \_DONE_p554_hub-examples-start-scene-and-example-scenes.md (its snippets)
 
 # Hub Code Blocks & Search

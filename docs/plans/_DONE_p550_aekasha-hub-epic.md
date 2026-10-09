@@ -1,6 +1,6 @@
-Status: draft | epic — not-implemented
+Status: implemented (epic: p551-p555)
 Category: Instructions, Examples, Dev tooling
-Blocks: \_DONE_p551_hub-site-generator-and-dev-server.md, \_DONE_p552_hub-code-blocks-and-search.md, \_DONE_p553_hub-api-documentation.md, \_DONE_p554_hub-examples-start-scene-and-example-scenes.md, p555_hub-features-and-homepage-content.md
+Blocks: \_DONE_p551_hub-site-generator-and-dev-server.md, \_DONE_p552_hub-code-blocks-and-search.md, \_DONE_p553_hub-api-documentation.md, \_DONE_p554_hub-examples-start-scene-and-example-scenes.md, \_DONE_p555_hub-features-and-homepage-content.md
 Related: \_DONE_p342_dev-file-server.md (the dev-only Vite plugin pattern; the example scenes' Hub images are written through it), \_DONE_p300_asset-optimization-pipeline-plan.md (what `yarn assets` makes of the Æ symbol's Draco GLB), `docs/templates/todo-plan-prompts.txt` (the original prompt, "Instruction/example pages and example scenes")
 
 # Ækasha Hub — Epic
@@ -221,7 +221,7 @@ the existing `readme.md` rule.
 | \_DONE_p552_hub-code-blocks-and-search.md (implemented) | Code blocks (highlighting, line numbers and highlights, copy, groups, snippet includes) and search | — |
 | \_DONE_p553_hub-api-documentation.md (implemented) | Documentation: the API from TypeDoc's JSON, in the Hub's style | — |
 | \_DONE_p554_hub-examples-start-scene-and-example-scenes.md (implemented) | `?startScene=`, the example scenes, the Æ symbol model, the example pages, the hero image | — |
-| p555_hub-features-and-homepage-content.md | The feature pages and the homepage's final content | — |
+| \_DONE_p555_hub-features-and-homepage-content.md (implemented) | The feature pages and the homepage's final content | — |
 
 Order: p551, then p552, then p553 and p554 in either order, then p555. p554's Phase 1
 (`?startScene`) is engine-only and can land at any time.

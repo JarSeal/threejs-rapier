@@ -23,6 +23,8 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 
 ## Features
 
+Each feature has a page in the Ækasha Hub's Features section (`/hub/features/`: run `yarn dev` and open `http://localhost:8080/hub/features/`), with how it works, its key APIs, the issues that affect it and its example scene.
+
 ### Engine (`src/_engine/`)
 
 - **Rendering**: Three.js `WebGPURenderer` with automatic WebGL fallback, configurable tone mapping, color space and shadow maps.
@@ -383,7 +385,7 @@ The engine, toolkit and example app each have their own semantic version and cod
 
 ## Documentation
 
-- **Ækasha Hub**: run `yarn dev` and open `http://localhost:8080/hub/` for the getting-started guide, examples, known issues and the changelog, all searchable (⌘K / Ctrl+K), or build it as a static site with `yarn hub:build`. To add or edit its pages, see [writing Hub pages](docs/techniques/hub-authoring.md).
+- **Ækasha Hub**: run `yarn dev` and open `http://localhost:8080/hub/` for the getting-started guide, a page per feature, examples, known issues and the changelog, all searchable (⌘K / Ctrl+K), or build it as a static site with `yarn hub:build`. To add or edit its pages, see [writing Hub pages](docs/techniques/hub-authoring.md).
 - **API reference**: the Hub's Documentation section (`/hub/documentation/`): every engine and toolkit export with its signature, JSDoc and source link, searchable and linked from the other Hub pages. `yarn docs` still writes TypeDoc's own HTML to `docs-api/`.
 - **Guides**: [`docs/techniques/`](docs/techniques/), eg. [asset optimization](docs/techniques/asset-optimization.md).
 - **Design docs**: [`docs/plans/`](docs/plans/). Files prefixed `_DONE_` describe features that are already implemented.

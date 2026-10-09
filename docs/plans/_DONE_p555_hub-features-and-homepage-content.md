@@ -1,6 +1,6 @@
-Status: in progress | Phases 1-2 implemented
+Status: implemented (Phases 1-3)
 Category: Instructions, Hub
-Epic: p550_aekasha-hub-epic.md
+Epic: \_DONE_p550_aekasha-hub-epic.md
 
 # Hub Features & Homepage Content
 
@@ -238,11 +238,31 @@ As built:
 - Known: `yarn hub:build --no-api` fails on the feature pages' `hub:documentation/engine/…`
   folder links (Phase 1), since those pages exist only with the API built. For Phase 3.
 
-### Phase 3 — Coverage check, docs and versioning
+### Phase 3 — Coverage check, docs and versioning — done
 
 §2.5. CLAUDE.md's Hub section mentions `aek:covers` and the check. `readme.md` links the Hub's
 Features from its own Features. `CHANGELOG.md` Project entry. Mark the plan done, and the epic
 (p550) when its children are done.
+
+As built:
+
+- The check is `checkClaudeMdCoverage` (`claudeMd.ts`), run in `buildHub` right after page
+  discovery. The ignore list is `coverageIgnore` in `hub.config.ts` (`HubConfig`). An uncovered
+  section is a warning at its CLAUDE.md line, an ignore entry that names no section is a warning,
+  and an unknown `aek:covers` name is an error. That last check moved here from `::: claude-md`
+  (Phase 1), so a page with `aek:covers` but no directive is checked too; the directive now
+  leaves an unknown name out. CLAUDE.md joins the build's files, so a new section warns on save
+  in dev. With every page's `aek:covers` from Phase 1, the check reports nothing.
+- Phase 2's known `--no-api` failure: without an API model (`--no-api`, or the dev plugin's
+  `last` before the first conversion), `hub:` links to API pages (`isApiPagePath`) aren't checked,
+  like `api:` links (`ApiSectionResult.areApiPagesUnchecked`); the one warning says so. This also
+  fixes the dev Hub's first start without a cached model, which showed the feature pages as error
+  pages until TypeDoc had run.
+- CLAUDE.md had none of Phases 1-2 yet: its Hub section now has the feature pages, `aek:group`,
+  `aek:covers` and the check, `repo:` links, `::: claude-md`, the `cards` filters and the
+  generated homepage. `docs/techniques/hub-authoring.md` has the check too.
+- `CHANGELOG.md`: the branch's `aekasha-hub` entry (Project) has the whole plan, not only Phase
+  3: Phases 1-2 hadn't added theirs.
 
 ## 4. Versioning
 
