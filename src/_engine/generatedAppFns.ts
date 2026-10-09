@@ -159,6 +159,14 @@ export const sceneFileObjects: {
       }
     ).scene({ sceneData, assets });
   },
+  exampleLod: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/lod/exampleLod.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
   examplePhysics: async ({ sceneData, assets }) => {
     const module = await import('../app/./examples/physics/examplePhysics.ts');
     await (

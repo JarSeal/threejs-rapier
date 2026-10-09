@@ -13610,6 +13610,66 @@
       "id": "exampleEcs",
       "sceneFile": "./examples/ecs/exampleEcs.ts"
     },
+    "exampleLod": {
+      "name": "Example: LOD & instancing",
+      "description": "A field of 180 torus knots (16,384 triangles each) in one instanced LOD pool: the knot, its generated chain's simplified levels, then an octahedral impostor, one quad each, for the farthest. The LOD tab's level overlay shows which level each knot draws.",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 400,
+            "position": {
+              "x": 0,
+              "y": 7,
+              "z": 14
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 0,
+              "z": -40
+            },
+            "type": "PERSPECTIVE",
+            "fov": 50,
+            "appId": "exampleLodCamera"
+          },
+          "entityOpts": {
+            "appId": "exampleLodCamera",
+            "debugData": {
+              "name": "LOD example camera"
+            }
+          }
+        }
+      ],
+      "skyboxes": [
+        {
+          "base": {
+            "type": "COLOR",
+            "color": "#000000"
+          },
+          "atmosphere": {},
+          "suns": [
+            {
+              "elevation": 45,
+              "azimuth": 160,
+              "glowIntensity": 0.4,
+              "light": {}
+            }
+          ],
+          "clouds": {
+            "coverage": 0.35
+          },
+          "ground": {},
+          "id": "exampleLod",
+          "debugData": {
+            "name": "LOD example sky",
+            "description": "The DAY_SKY preset: its sun light (with a shadow that follows the camera) lights the field."
+          }
+        }
+      ],
+      "id": "exampleLod",
+      "sceneFile": "./examples/lod/exampleLod.ts"
+    },
     "examplePhysics": {
       "name": "Example: Physics",
       "description": "A static ground with a box, a sphere, a capsule and a cylinder dropping onto it, each a mesh entity with a Rapier body from createPhysicsEntity. Space drops another one.",
@@ -14389,6 +14449,33 @@
         }
       },
       "__sourcePath": "src/app/examples/ecs/exampleEcsCamera.camera.json"
+    },
+    "exampleLodCamera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 400,
+        "position": {
+          "x": 0,
+          "y": 7,
+          "z": 14
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 0,
+          "z": -40
+        },
+        "type": "PERSPECTIVE",
+        "fov": 50,
+        "appId": "exampleLodCamera"
+      },
+      "entityOpts": {
+        "appId": "exampleLodCamera",
+        "debugData": {
+          "name": "LOD example camera"
+        }
+      },
+      "__sourcePath": "src/app/examples/lod/exampleLodCamera.camera.json"
     },
     "examplePhysicsCamera": {
       "camProps": {
@@ -23634,6 +23721,31 @@
         "description": "The SPACE preset (dense stars, two nebulae, no atmosphere) with a second, small blue sun. The primary sun's light frames its shadows on the origin, where the space demo's asteroids are."
       },
       "__sourcePath": "src/app/skyboxes/space.skybox.json"
+    },
+    "exampleLod": {
+      "base": {
+        "type": "COLOR",
+        "color": "#000000"
+      },
+      "atmosphere": {},
+      "suns": [
+        {
+          "elevation": 45,
+          "azimuth": 160,
+          "glowIntensity": 0.4,
+          "light": {}
+        }
+      ],
+      "clouds": {
+        "coverage": 0.35
+      },
+      "ground": {},
+      "id": "exampleLod",
+      "debugData": {
+        "name": "LOD example sky",
+        "description": "The DAY_SKY preset: its sun light (with a shadow that follows the camera) lights the field."
+      },
+      "__sourcePath": "src/app/examples/lod/exampleLod.skybox.json"
     },
     "exampleSkyBox": {
       "base": {

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../../.schemas/skyBox.schema.json",
+  "id": "exampleLod",
+  "preset": "DAY_SKY",
+  "debugData": {
+    "name": "LOD example sky",
+    "description": "The DAY_SKY preset: its sun light (with a shadow that follows the camera) lights the field."
+  }
+}
