@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-4 implemented
+Status: in progress | Phases 1-5 implemented
 Category: Instructions, Examples, Scene
 Epic: p550_aekasha-hub-epic.md
 Blocks: p555_hub-features-and-homepage-content.md (its example links and cards)
@@ -319,7 +319,7 @@ As built:
   warns at the tag's line.
 - The search index is 1.03 MB, over its 1 MB warning.
 
-### Phase 5 — Hub content and docs
+### Phase 5 — Hub content and docs — done
 
 - The Examples landing page: what each example shows, as cards.
 - CLAUDE.md:
@@ -328,6 +328,24 @@ As built:
   - The toolkit model and its build script.
 - `readme.md`: URL flags (`startScene`) and the toolkit's Features list (the model).
 - `docs/techniques/hub-authoring.md`: the `scene` directive and Hub images.
+
+As built:
+
+- The cards are a directive built here, `::: cards <page path>` (`devTools/hub/cards.ts`), not
+  p555's: a card per child page in the nav (its `aek:image`, else its `aek:icon`, nav label and
+  `aek:description`), no content, out of the search (`hubSearchSkip`). It covers p555 §2.2's
+  `examples` source; p555 adds the `features` source, the `featured` filter and the grouping.
+  Every page's `aek:image` is now resolved before any page renders (`build.ts`), and
+  `HubRenderContext` has the page `tree`. `getPageImageSources` (`scenes.ts`) gives either form
+  of `aek:image` as webp sources; a scene's 800 px output is shared with its panel.
+- The Examples page: the intro, "The examples" (`all-examples.md`: the cards and the
+  `?startScene` URL), then the quick start. The quick start is a section of the page, so it has
+  no card.
+- CLAUDE.md: `?startScene` next to the URL flags (Commands), the toolkit model under the
+  three-folder split's `src/toolkit/`, and "Scenes and examples" in the Hub section.
+- `readme.md` also points from its Examples to the Hub's example scenes. Its toolkit list was
+  already missing `MutualGravity` and the asteroid geometry and material, which aren't this
+  plan's.
 
 ### Phase 6 — Versioning and marking the plan done
 

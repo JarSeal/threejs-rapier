@@ -65,15 +65,16 @@ Every page needs its parent page: `examples/physics/` needs `examples/index.html
 
 The `<head>` is for metadata only. Nothing else in it reaches the built page, because the shell has its own `<head>`.
 
-| Head tag          | Meaning                                                                                                                 |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `<title>`         | Required. The page's title, in the browser tab (`Example: Physics · Ækasha Hub`) and the breadcrumbs.                   |
-| `aek:menu`        | The label in the nav and the breadcrumbs. Defaults to the title.                                                        |
-| `aek:order`       | The position among its siblings in the nav. Lower comes first, and ties are sorted by label. Defaults to 0.             |
-| `aek:tags`        | Comma-separated search terms.                                                                                           |
-| `aek:description` | One sentence. It becomes `<meta name="description">`, and it's used for search and cards.                               |
-| `aek:icon`        | An icon name from `hub/_assets/icons/` (without `.svg`). Only top-level sections show it in the nav.                    |
-| `aek:featured`    | `true` to feature the page on the homepage. It's parsed, but nothing reads it until the homepage's content plan (p555). |
+| Head tag          | Meaning                                                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `<title>`         | Required. The page's title, in the browser tab (`Example: Physics · Ækasha Hub`) and the breadcrumbs.                             |
+| `aek:menu`        | The label in the nav and the breadcrumbs. Defaults to the title.                                                                  |
+| `aek:order`       | The position among its siblings in the nav. Lower comes first, and ties are sorted by label. Defaults to 0.                       |
+| `aek:tags`        | Comma-separated search terms.                                                                                                     |
+| `aek:description` | One sentence. It becomes `<meta name="description">`, and it's used for search and cards.                                         |
+| `aek:icon`        | An icon name from `hub/_assets/icons/` (without `.svg`). Only top-level sections show it in the nav.                              |
+| `aek:featured`    | `true` to feature the page on the homepage. It's parsed, but nothing reads it until the homepage's content plan (p555).           |
+| `aek:image`       | The page's picture on its card ([Cards](#cards)): `scene:<sceneId>` for a scene's Hub image, or an image path from the repo root. |
 
 The nav is built from these tags alone, so there's no separate menu list to keep in sync. A misspelt `aek:` name gives a warning.
 
@@ -159,7 +160,7 @@ Nested.
 ::::
 ```
 
-The other directives are `code-group` ([Code groups](#code-groups)), and later `scene` (p554) and `cards` (p555). A new one is added through `registerHubDirective(name, { open, close })` in `devTools/hub/markdown.ts`, without touching the parser.
+The other directives are `code-group` ([Code groups](#code-groups)), `scene` ([Scene panels](#scene-panels)) and `cards` ([Cards](#cards)); p555 adds more. A new one is added through `registerHubDirective(name, { open, close })` in `devTools/hub/markdown.ts`, without touching the parser.
 
 ## Code blocks
 
@@ -300,6 +301,81 @@ For images shared between pages, put them in `hub/_assets/images/` and use the `
 />
 ```
 
+For a scene's render, see [Scene images in a page's markup](#scene-images-in-a-pages-markup).
+
+## Scenes and examples
+
+A page can show the app's scenes: a render of the scene, saved from the engine, and in dev the buttons that open it. The example scenes in `src/app/examples/` and their pages under `hub/pages/examples/` are built this way.
+
+### Scene panels
+
+```md
+::: scene examplePhysics
+A static ground with a box, a sphere, a capsule and a cylinder dropping onto it.
+:::
+```
+
+- The panel shows the scene's Hub image, then the directive's content (ordinary Markdown).
+- In dev, it ends with **Open in debug** and **Open in prod test** buttons. They open `/?isDebug=true&startScene=<sceneId>` and `/?isProdTest=true&startScene=<sceneId>` in a new tab.
+- In `yarn hub:build`, it ends with a note on running the scene locally instead. The public Hub runs no engine.
+- The id is checked against the app's generated data (`src/_engine/generatedAppData.json`), the same data `?startScene` reads. An unknown id fails the build in both modes. Any app scene works, not only the examples: the LOD page ends with `::: scene lodShowcase`.
+- A scene without a saved image gives a warning. In dev, the panel says how to save one.
+
+### Hub images
+
+A scene's Hub image is a PNG beside its scene file, `src/app/<scene file's folder>/<sceneId>.hub.png`, and it's committed. The build converts it to WebP at the widths the page shows it.
+
+To save one:
+
+1. Open the scene in debug (its panel's **Open in debug** button, or `?isDebug=true&startScene=<sceneId>`).
+2. Frame the shot with the scene's own camera. The image is what the canvas shows through the active camera, with PostFX, and without the HUD, viewports or debug helpers.
+3. Press `h`, open the drawer's **Hub** tab and press **Save Hub image**.
+
+- The size is fixed: 1600 × 1000 for a card and a scene panel, 1560 × 960 for the homepage hero (`exampleHubHero`).
+- The PNG is written through the dev file server, and a PNG with the same pixels isn't written. The app doesn't reload, and the dev Hub rebuilds the pages that show the image.
+- Where the dev files can't write (another device on the LAN, `AEK_DEV_FILES=false`), the PNG is downloaded and a toast names the path to put it at.
+- The **Hub** tab is there in every scene whose file is under `src/app/examples/`, and in the other scenes a page shows (`OTHER_HUB_SCENES` in `src/app/examples/_dbg__exampleHub.ts`). Add a scene there when a page starts showing it.
+
+### Scene images in a page's markup
+
+In a page's `index.html`, `data-aek-scene` shows a scene's Hub image:
+
+```html
+<img
+  class="hubHeroImage"
+  data-aek-scene="exampleHubHero"
+  src="{{asset:images/hero-placeholder.webp}}"
+  sizes="(max-width: 64rem) 100vw, 45vw"
+  alt=""
+  width="585"
+  height="360"
+/>
+```
+
+The build replaces `src`, `srcset`, `width` and `height` with the scene's WebP image, and adds the class `hubSceneRender`, which fades the opaque render's edges. Your other attributes stay. Until the PNG is saved, the `src` you wrote is used, with a warning.
+
+### Cards
+
+```md
+::: cards examples
+:::
+```
+
+- It renders a card for each child page of the page at that path, in nav order. A card links its page and shows its `aek:image` (or its `aek:icon` without one), its nav label and its `aek:description`.
+- The text comes from each page's head, so there's nothing to keep in sync. Write a description that reads well on its own.
+- The directive takes no content.
+- The cards are left out of the search: each page they link has its own results.
+
+### Adding an example
+
+1. Make the scene in `src/app/examples/<name>/`: `<id>.scene.json` with `name: "Example: …"` and a `description`, the scene file and its own camera, lights and assets. Give the assets ids of their own: `createGeometry` returns an id that's already registered with its old params.
+2. Mark the code the page shows with `// #region <name> (shown in the Hub: hub/pages/examples/<slug>/)`. Keep debug code out of the regions: a region can't leave lines out.
+3. Add the page, `hub/pages/examples/<slug>/index.html`, with `aek:image` set to `scene:<id>`, a `::: scene <id>` panel and the code included with `<<<`.
+4. Open the scene in debug and save its Hub image.
+5. Run `yarn hub:build`.
+
+The page's card on the Examples page comes from its head.
+
 ## Markup helpers
 
 A page's markup (its `index.html` body, not its Markdown) has these placeholders:
@@ -352,16 +428,17 @@ What happens, and how to reproduce it …
 
 While `yarn dev` runs, every save under `hub/` rebuilds the whole Hub (tens of milliseconds) and compares it with the last build. Only the tabs that need it refresh:
 
-| You save                                                    | Open Hub tabs                                                                                                                                                                                                                                                                                                                                      |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| An `.md` or a page's `index.html`                           | The tabs of every page whose HTML changed reload (a nav label change reaches them all).                                                                                                                                                                                                                                                            |
-| The SCSS                                                    | The stylesheet is swapped in place, without a reload.                                                                                                                                                                                                                                                                                              |
-| The Hub's TS, an icon, a font or an image in `hub/_assets/` | Every Hub tab reloads.                                                                                                                                                                                                                                                                                                                             |
-| `CHANGELOG.md`, `package.json`, a `docs/issues/*.md`        | The Version or Issues pages reload (a new engine version also reaches every page's footer).                                                                                                                                                                                                                                                        |
-| A file a page includes with `<<<`                           | The pages that include it reload.                                                                                                                                                                                                                                                                                                                  |
-| `hub/hub.config.ts` or the generator (`devTools/hub/`)      | Vite restarts the dev server, and open Hub tabs reload once it's back.                                                                                                                                                                                                                                                                             |
-| An engine or toolkit `.ts`, `tsconfig.json`                 | Nothing is rebuilt: the API docs are only marked out of date. The next API page you open (the Documentation page and the Engine and Toolkit pages under it) shows "Rebuilding the API documentation…" while TypeDoc reads the sources in a child process (about 6 s), then reloads into the updated page. Other Hub pages load as usual meanwhile. |
-| Anything else in the app                                    | Nothing: the Hub isn't rebuilt.                                                                                                                                                                                                                                                                                                                    |
+| You save                                                     | Open Hub tabs                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An `.md` or a page's `index.html`                            | The tabs of every page whose HTML changed reload (a nav label change reaches them all).                                                                                                                                                                                                                                                            |
+| The SCSS                                                     | The stylesheet is swapped in place, without a reload.                                                                                                                                                                                                                                                                                              |
+| The Hub's TS, an icon, a font or an image in `hub/_assets/`  | Every Hub tab reloads.                                                                                                                                                                                                                                                                                                                             |
+| `CHANGELOG.md`, `package.json`, a `docs/issues/*.md`         | The Version or Issues pages reload (a new engine version also reaches every page's footer).                                                                                                                                                                                                                                                        |
+| A file a page includes with `<<<`                            | The pages that include it reload.                                                                                                                                                                                                                                                                                                                  |
+| A scene's Hub image, or a gather that changes the scene list | The pages that show the scene (its panel, card or `data-aek-scene` image) reload.                                                                                                                                                                                                                                                                  |
+| `hub/hub.config.ts` or the generator (`devTools/hub/`)       | Vite restarts the dev server, and open Hub tabs reload once it's back.                                                                                                                                                                                                                                                                             |
+| An engine or toolkit `.ts`, `tsconfig.json`                  | Nothing is rebuilt: the API docs are only marked out of date. The next API page you open (the Documentation page and the Engine and Toolkit pages under it) shows "Rebuilding the API documentation…" while TypeDoc reads the sources in a child process (about 6 s), then reloads into the updated page. Other Hub pages load as usual meanwhile. |
+| Anything else in the app                                     | Nothing: the Hub isn't rebuilt.                                                                                                                                                                                                                                                                                                                    |
 
 App tabs are never reloaded by a Hub save, and Hub tabs aren't reloaded by a scene gather. The Hub's dev client listens only to its own event (`aek:hub`).
 
@@ -388,10 +465,17 @@ The same checks run in dev and in `yarn hub:build`. In dev, an error shows the e
 | `#L…: … has lines 1-N`                                 | The file got shorter. Fix the range, or use a region. |
 | `Unknown api:x (did you mean …)`                       | A misspelt or renamed export. Use a suggested name.   |
 | `Ambiguous api:x: api:A.x, api:B.x`                    | Two modules export it. Use one of the listed names.   |
+| `Unknown scene "x": …generatedAppData.json has …`      | A misspelt or renamed scene id. Use a listed one.     |
+| `The app's scenes can't be read from …`                | Run `yarn gatherAppData`.                             |
+| `::: cards: no page at hub/pages/…`                    | Fix the page path after `cards`.                      |
+| `aek:image: no such file from the repo root: …`        | Fix the path, or use `scene:<sceneId>`.               |
+| `aek:image: not a PNG, JPEG or WebP: …`                | Convert the image to one of those.                    |
 | Warning: `Slot "…" has no ….md: it stays empty`        | Add the `.md`, or remove the slot.                    |
 | Warning: `Unknown <meta name="aek:…">`                 | A misspelt metadata name.                             |
 | Warning: `Unknown code language "…"`                   | Use a listed language, or `text`.                     |
 | Warning: `Unknown "…" in the code block's meta`        | A misspelt fence option.                              |
+| Warning: `The scene "x" has no Hub image yet (…)`      | Save it from the scene's Hub tab.                     |
+| Warning: `::: cards takes no content`                  | Move the text out of the directive.                   |
 | Warning: `The search index is …, over 1 MB`            | Index less: fewer or shorter pages, fewer fields.     |
 | Warning: `{@link X} links nowhere (…)`                 | In the JSDoc: fix the name, export it, or use code.   |
 
@@ -405,4 +489,4 @@ The same checks run in dev and in `yarn hub:build`. In dev, an error shows the e
 
 ## Keeping it current
 
-A change that adds, changes or removes an engine or toolkit feature or public API updates its Hub content in the same branch: the feature page, the example page and its scene, and the snippets they include. A `#region` marker in engine, toolkit or app code means a page includes that code, so renaming or removing it breaks the page. Run `yarn hub:build` before you commit. It catches the links and includes your change broke.
+A change that adds, changes or removes an engine or toolkit feature or public API updates its Hub content in the same branch: the feature page, the example page and its scene, and the snippets they include. A `#region` marker in engine, toolkit or app code means a page includes that code, so renaming or removing it breaks the page. Run `yarn hub:build` before you commit. It catches the links and includes your change broke. When a change makes an example scene look different, save its Hub image again.
