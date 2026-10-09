@@ -2,7 +2,7 @@ Status: stub — not-implemented
 Category: Refactoring, Documentation, Physics
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage C)
 Blocked by: p605_coding-standards-and-documentation-tooling.md, p610_character-and-input-action-architecture.md
-Blocks: p621_hub-docs-readme-and-claude-md-final.md
+Blocks: p621_hub-docs-readme-and-claude-md-final.md, p511_network-transport-and-replication.md (the transport interface)
 
 # Review: Physics — Stub
 

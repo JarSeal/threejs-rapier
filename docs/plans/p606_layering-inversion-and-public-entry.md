@@ -1,9 +1,8 @@
 Status: stub — not-implemented
 Category: Architecture, Refactoring
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage B, engine major)
-Blocked by: p602_architecture-and-target-structure.md
-Blocks: p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md
-Related: p604_multiplayer-viability-study.md (the headless-core rules)
+Blocks: p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p510_headless-simulation-runtime.md
+Related: \_DONE_p604_multiplayer-viability-study.md (the headless-core rules)
 
 # Layering Inversion and Public Entry — Stub
 
@@ -24,6 +23,12 @@ rule (p602 D1, D3, D9, D10).
   `AppECSRegistry` imports and their `as any` storage reads.
 - **Config flows in:** `core/Config.ts` stops importing `../../CONFIG`; `InitEngine` receives it.
   Module-load reads of `window.location` and `import.meta.env` move into `InitEngine` (p604 §4.6).
+- **The headless boundary holds by construction** (p604 §4.6): type-only imports become
+  `import type` (p605's lint keeps them so), starting with the `LoopState` imports from `MainLoop`
+  in `EngineRapier.ts`, `physicsWorker.ts` and `PhysicsAPITypes.ts`, which only esbuild's elision
+  keeps out of the worker today. p604 ran the worker in Node from a recorded message stream (its
+  Phase 1 describes the method); the same bundle check (no three, `MainLoop`, `Config` or `PhysicsAPI`
+  among the worker's inputs) is this plan's regression test for the physics side.
 - **Generated code moves out:** `generatedAppData.json` and `generatedAppFns.ts` to `src/generated/`,
   handed to the engine through `InitEngine({ data })` (p602 D9; `devTools/gatherAppData.ts`
   writes the new paths).

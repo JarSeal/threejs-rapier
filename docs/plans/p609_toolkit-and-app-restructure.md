@@ -19,7 +19,7 @@ ready-made pieces by category, the app as one folder per scene.
 - **Toolkit categories** (from the p450 prompt): `ecs` (effects, and the gameplay pieces p608
   moved in), `geometry` with `generate/` and `scatter/`, `materials/<name>/`,
   `textures/<name>/`, `models/<category>/<name>/`, `skyboxes/<name>/`; each with its own entry
-  (`aekasha-toolkit/*`).
+  (`aekasha/toolkit/*`, p602 D1).
 - **Remove the deprecated re-exports** `toolkit/ecs/InstancedMeshPool*.ts` (kept until the
   toolkit's next major: this one).
 - **The app:** one folder per scene (`src/app/scenes/<sceneId>/`, p602 D7), consistent scene file

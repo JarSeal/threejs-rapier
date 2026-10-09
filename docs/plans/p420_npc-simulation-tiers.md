@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Characters, AI
-Blocked by: p603_gameplay-architecture-contracts.md (soft: the actor, controller and brain contracts the tiers are written in)
-Related: p350_lod-system-research.md (§6 physics simulation tiers, §8 roadmap), \_DONE_p352_physics-simulation-tiers.md (generic rigid bodies; it refuses tier changes on characters and leaves them to this plan), p353_macro-streaming-grid.md (cells around the player), \_DONE_p351_impostor-billboard-lod.md (`CROWD` rendering), p102_physics-world-bounds.md, p604_multiplayer-viability-study.md (the determinism rules an `ABSTRACT` simulation would follow)
+Blocked by: p610_character-and-input-action-architecture.md (the actor, controller and brain contracts in code, defined by p603), p421_kinematic-character-controller.md (soft: the NPC default controller), p424_ai-brains-and-navigation.md (soft: the AI brain and the navmesh `REDUCED` moves on)
+Related: \_DONE_p603_gameplay-architecture-contracts.md (C1-C4: the tiers below in its terms), p425_game-events-missions-and-save-games.md (where `ABSTRACT` NPC state is saved), p422_animation-state-graph-and-ik.md (animation cost per tier), p350_lod-system-research.md (§6 physics simulation tiers, §8 roadmap), \_DONE_p352_physics-simulation-tiers.md (generic rigid bodies; it refuses tier changes on characters and leaves them to this plan), p353_macro-streaming-grid.md (cells around the player), \_DONE_p351_impostor-billboard-lod.md (`CROWD` rendering), p102_physics-world-bounds.md, \_DONE_p604_multiplayer-viability-study.md (the determinism rules an `ABSTRACT` simulation would follow)
 
 # NPC Simulation Tiers — Stub
 
@@ -24,6 +24,21 @@ player and loses when it moves away.
 AI writes the character's intent (`CharacterIntent`: `moveX`/`moveZ`, `moveForward`, `faceYaw`,
 `jump`, ...) whichever body is attached. Because `CharacterObject.controller` is pluggable, a
 cheaper mover can be another controller that reads the same intent.
+
+### In p603's terms
+
+- **The NPC is an actor** (C1): an entity with an `ACTOR` component whose brain is an AI brain
+  (C4, p424). The actor stays for the NPC's whole life; the tiers change its controller and its
+  representation, never its brain or its intent schema (`CharacterIntent`, C3).
+- **A tier change is a controller swap** (C2's `attach` / `detach`): `FULL` attaches a character
+  controller with its body (the kinematic one, p421, as the NPC default; the dynamic one where an
+  NPC must tumble or be pushed), `REDUCED` a navmesh mover controller (p424) with a kinematic proxy
+  or no body, `CROWD` a presentation-only mover with no body, and `ABSTRACT` no controller at all.
+- **The brain decides at every tier**, but not at the same rate: it gets the `step` and skips steps
+  itself (p603 §7 risk 3), or the brain system schedules it per tier (this plan's question). At
+  `ABSTRACT` it works on the schedule and the coarse graph, not on an intent.
+- **Saves:** `ABSTRACT` state, the brain's `{ kind, params }` and the current tier go through the
+  save service (p425).
 
 | Tier       | Where (rough)          | Representation                                                                                                                  | Physics                       |
 | ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
@@ -66,12 +81,12 @@ Each tier needs:
 1. **Make `FULL` cheaper.** Skip or throttle the floor ray while grounded and idle, batch the
    worker casts into the STEP message, and add a per-character tick-rate option. This is useful
    on its own, even without NPCs.
-2. **NPC data entity and tier manager.** Add NPC component types and a tier-selection system
-   (distance plus relevance, hysteresis, budgets). Attach and detach a `DynamicCharacter` on
-   `FULL` promotion and demotion, while the NPC entity itself stays.
+2. **NPC actor and tier manager.** NPC actors (p603 C1) with an AI brain, and a tier-selection
+   system (distance plus relevance, hysteresis, budgets). Attach and detach a character controller
+   (C2) on `FULL` promotion and demotion, while the actor itself stays.
 3. **`ABSTRACT` simulation.** Schedules and tasks on a coarse world graph, and "where should
    they be now?" worked out on promotion.
-4. **`REDUCED` tier.** A navmesh mover as a second character controller. This needs navmesh
+4. **`REDUCED` tier.** A navmesh mover as another character controller, on p424's navmesh
    generation and pathfinding (eg. recast-navigation-js); the engine has neither today.
 5. **`CROWD` tier.** Instanced or impostor rendering. This overlaps p350's impostor work (p351).
 
@@ -88,12 +103,15 @@ Each tier needs:
 - **Large-world float precision.** Rapier uses 32-bit floats, so positions start to jitter a few
   km from the origin. Is an origin rebase needed?
 - **Kinematic or dynamic `FULL` bodies?** Most AAA engines move NPCs with kinematic sweep
-  controllers and use a dynamic body only as a ragdoll. Should NPCs get a kinematic controller
-  (Rapier's `KinematicCharacterController` is only a commented-out signature in `Physics/PhysicsAPITypes.ts`) and keep
-  `DynamicCharacter` for the player and for tumbling?
-- **Determinism.** Characters aren't deterministic yet (wall clock, `Math.random`, async casts).
-  Does `ABSTRACT` simulation need to be deterministic or replayable, eg. for save games?
-- **Save data.** `ABSTRACT` NPC state is game state. Where is it saved?
+  controllers and use a dynamic body only as a ragdoll. p603 points NPCs at the kinematic
+  controller (p421, on Rapier's `KinematicCharacterController`, only a commented-out signature in
+  `Physics/PhysicsAPITypes.ts` today) and keeps `DynamicCharacter` for the player and for
+  tumbling; this plan confirms it with Phase 0's numbers.
+- **Determinism.** Characters aren't deterministic yet (wall clock, `Math.random`, async casts);
+  p610 moves them to the step clock and the seeded RNG (p604 §4). Does `ABSTRACT` simulation need
+  to be deterministic or replayable, eg. for save games?
+- **Save data.** `ABSTRACT` NPC state is game state, saved through p425's save service; what it
+  holds is this plan's question.
 
 ## Prior art
 
