@@ -1,6 +1,7 @@
 Status: draft | research — not-implemented
 Category: ECS
 Epic: https://trello.com/c/EQQXOyRL/105-ecs-entity-component-system
+Related: p612_review-ecs-loop-config-init.md (implements this plan's main-camera cache, in the p600 refactoring epic)
 
 # Component Query Caching — Research & Recommendation
 

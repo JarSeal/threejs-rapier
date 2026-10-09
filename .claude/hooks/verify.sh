@@ -21,12 +21,13 @@ if [[ -n "$(git status --porcelain -- package.json)" ]]; then
   fi
 fi
 
-# Nothing changed in src/ (including new files) — skip.
-[[ -z "$(git status --porcelain -- src)" ]] && exit 0
+# Nothing changed in the code (src/, the Hub, the dev tools; new files included) — skip.
+[[ -z "$(git status --porcelain -- src hub devTools vite.config.ts)" ]] && exit 0
 
 yarn lint --fix >/dev/null 2>&1
 
-if ! OUT=$(yarn tsc --noEmit 2>&1); then
+# The root project, then the Hub's browser TS (hub/tsconfig.json)
+if ! OUT=$(yarn tsc --noEmit 2>&1 && yarn tsc -p hub --noEmit 2>&1); then
   TS_ERRORS=$(echo "$OUT" | grep -E 'error TS' | head -30)
   if [[ -n "$TS_ERRORS" ]]; then
     echo "Type errors. Fix before finishing:" >&2

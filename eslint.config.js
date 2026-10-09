@@ -6,8 +6,9 @@ import { FlatCompat } from '@eslint/eslintrc';
 const compat = new FlatCompat();
 
 export default [
-  // Generated/vendored files (DRACO/Basis decoders copied by devTools/copyDecoders.ts, TypeDoc output)
-  { ignores: ['src/public/draco/', 'src/public/basis/', 'docs-api/'] },
+  // Generated/vendored files (DRACO/Basis decoders copied by devTools/copyDecoders.ts, TypeDoc
+  // output, the Hub's build)
+  { ignores: ['src/public/draco/', 'src/public/basis/', 'docs-api/', 'dist-hub/'] },
 
   // Old .eslintrc config (old style for plugins that don't support flat config)
   ...compat.config({

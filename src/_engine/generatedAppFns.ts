@@ -2,10 +2,10 @@
 // ALSO, DO NOT MODIFY THE 'generatedAppData.json' FILE)!
 import * as testTslMatFn from '../app/materials/testTslMat.tsl.ts';
 import * as asteroidFn from '../toolkit/materials/asteroid.tsl.ts';
-import * as checkerBoardFn from '../toolkit/materials/checkerBoard.tsl.ts';
 import * as triplanarCheckerboardFn from '../toolkit/materials/triplanarCheckerboard.tsl.ts';
 import * as triplanarGridFn from '../toolkit/materials/triplanarGrid.tsl.ts';
 import * as ambientOcclusionPostFxFn from '../app/postFx/ambientOcclusion.tsl.ts';
+import * as heroBloomPostFxFn from '../app/examples/hubHero/heroBloom.tsl.ts';
 import { type SceneData } from './core/Scene.ts';
 import { type ScenePrimitiveAssets } from './core/SceneLoader.ts';
 
@@ -143,6 +143,70 @@ export const sceneFileObjects: {
       }
     ).scene({ sceneData, assets });
   },
+  exampleDebugTab: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/debugTab/exampleDebugTab.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
+  exampleEcs: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/ecs/exampleEcs.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
+  exampleHubHero: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/hubHero/exampleHubHero.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
+  exampleLod: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/lod/exampleLod.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
+  examplePhysics: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/physics/examplePhysics.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
+  exampleQuickStart: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/quickStart/exampleQuickStart.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
+  exampleSkyBox: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/skyBox/exampleSkyBox.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
+  exampleToolkit: async ({ sceneData, assets }) => {
+    const module = await import('../app/./examples/toolkit/exampleToolkit.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
 };
 
 export const tslMaterialFileObjects = {
@@ -151,11 +215,6 @@ export const tslMaterialFileObjects = {
   },
   asteroid: {
     colorNode: asteroidFn.colorNode,
-  },
-  checkerBoard: {
-    colorNode: checkerBoardFn.colorNode,
-    roughnessNode: checkerBoardFn.roughnessNode,
-    normalNode: checkerBoardFn.normalNode,
   },
   triplanarCheckerboard: {
     colorNode: triplanarCheckerboardFn.colorNode,
@@ -169,5 +228,8 @@ export const tslMaterialFileObjects = {
 export const postFxFileObjects = {
   ambientOcclusion: {
     fxNode: ambientOcclusionPostFxFn.fxNode,
+  },
+  heroBloom: {
+    fxNode: heroBloomPostFxFn.fxNode,
   },
 };

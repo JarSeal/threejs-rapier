@@ -1,0 +1,253 @@
+// The search dialog (p552 §2.4, `_search.ts`): a native modal <dialog>, centred near the top on
+// wide screens and the whole screen on a phone
+
+// The page stays put behind the dialog
+html:has(.hubSearch[open]) {
+  overflow: hidden;
+}
+
+.hubSearch {
+  width: min(42rem, 100% - 2rem);
+  max-width: none;
+  max-height: min(40rem, 100dvh - 6rem);
+  margin: 5rem auto auto;
+  padding: 0;
+  background: var(--hub-panel);
+  border: 1px solid var(--hub-border-strong);
+  border-radius: calc(var(--hub-radius) * 1.5);
+  box-shadow: var(--hub-shadow);
+  color: var(--hub-text);
+
+  &[open] {
+    display: flex;
+  }
+
+  &::backdrop {
+    background: rgb(3 6 12 / 60%);
+    backdrop-filter: blur(3px);
+  }
+}
+
+// Fills the dialog, so a click on the dialog element itself is a click on the backdrop
+.hubSearchPanel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  // Not as wide as its longest line: the snippets wrap, and the Close button stays in view
+  min-width: 0;
+  min-height: 0;
+}
+
+.hubSearchField {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.75rem 0 1rem;
+  border-bottom: 1px solid var(--hub-border);
+
+  > .hubIcon {
+    color: var(--hub-accent);
+  }
+}
+
+.hubSearchInput {
+  flex: 1;
+  min-width: 0;
+  height: 3.5rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--hub-text);
+  font: inherit;
+  font-size: 1.0625rem;
+
+  &::placeholder {
+    color: var(--hub-text-muted);
+  }
+
+  // The field is the focus ring's place: the input's own would sit inside it
+  &::-webkit-search-cancel-button {
+    display: none;
+  }
+}
+
+.hubSearchField:focus-within {
+  border-bottom-color: var(--hub-accent);
+}
+
+.hubSearchClose {
+  padding: 0.2rem 0.55rem;
+  background: none;
+  border: 1px solid var(--hub-border);
+  border-radius: 4px;
+  color: var(--hub-text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--hub-border-strong);
+    color: var(--hub-text);
+  }
+}
+
+.hubSearchResults {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 0.5rem;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.hubSearchGroup {
+  padding: 0.25rem 0 0.5rem;
+
+  & + & {
+    border-top: 1px solid var(--hub-border);
+  }
+}
+
+.hubSearchGroupLabel {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  padding: 0.6rem 0.75rem 0.35rem;
+  background: var(--hub-panel);
+  color: var(--hub-text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.hubSearchResult {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.55rem 0.75rem;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--hub-radius) var(--hub-radius) 0;
+  color: var(--hub-text);
+  // Paths and identifiers are long words
+  overflow-wrap: anywhere;
+  text-decoration: none;
+
+  // The selection shows where the pointer is (`_search.ts`), not the link colour
+  &:hover {
+    color: var(--hub-text);
+  }
+
+  &[aria-selected='true'] {
+    background: var(--hub-accent-soft);
+    border-left-color: var(--hub-accent);
+  }
+
+  mark {
+    background: none;
+    color: var(--hub-accent);
+    font-weight: 600;
+  }
+}
+
+.hubSearchCrumbs {
+  overflow: hidden;
+  color: var(--hub-text-muted);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hubSearchTitle {
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+// An API result (p553): its kind, coloured like the API pages' (`.hubApiKind`), and its name
+.hubSearchKind {
+  margin-right: 0.5rem;
+  padding-block: 0;
+  font-size: 0.6875rem;
+  vertical-align: 0.1em;
+}
+
+.hubSearchTitle code {
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: var(--hub-font-mono);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.hubSearchSnippet {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--hub-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.hubSearchStatus {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  color: var(--hub-text-muted);
+  font-size: 0.875rem;
+
+  .hubSearchResults:not(:empty) + & {
+    padding-block: 0.5rem;
+    border-top: 1px solid var(--hub-border);
+    font-size: 0.75rem;
+  }
+}
+
+.hubSearchHints {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.35rem;
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--hub-border);
+  color: var(--hub-text-muted);
+  font-size: 0.75rem;
+
+  kbd {
+    display: inline-block;
+    min-width: 1.4rem;
+    margin-right: 0.2rem;
+    padding: 0 0.3rem;
+    border: 1px solid var(--hub-border);
+    border-radius: 4px;
+    font-family: var(--hub-font);
+    text-align: center;
+  }
+}
+
+// Touch screens have no keys to hint at
+@media (hover: none) {
+  .hubSearchHints {
+    display: none;
+  }
+}
+
+// A phone: the whole screen, the field at the top
+@media (max-width: 640px) {
+  .hubSearch {
+    width: 100%;
+    max-height: none;
+    height: 100dvh;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+}

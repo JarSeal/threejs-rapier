@@ -1,0 +1,164 @@
+// The page frame under the header: the main column, the TOC column, breadcrumbs, the footer
+@use 'tokens' as *;
+
+.hubLayout {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4rem;
+  width: 100%;
+  max-width: var(--hub-docs-width);
+  margin: 0 auto;
+  padding: 2.5rem var(--hub-gutter) 5rem;
+
+  @media (min-width: $toc-column) {
+    grid-template-columns: minmax(0, 1fr) 14rem;
+  }
+}
+
+.hubMain {
+  min-width: 0;
+}
+
+.hubContent {
+  max-width: var(--hub-content-width);
+}
+
+.hubAside {
+  display: none;
+
+  @media (min-width: $toc-column) {
+    display: block;
+  }
+}
+
+// The homepage lays out its own sections, full width
+.hubPage_home {
+  .hubLayout {
+    display: block;
+    max-width: none;
+    padding: 0;
+  }
+
+  .hubContent {
+    max-width: none;
+  }
+
+  .hubAside {
+    display: none;
+  }
+}
+
+.hubBreadcrumbs {
+  margin-bottom: 1.75rem;
+
+  ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--hub-text-muted);
+    font-size: 0.875rem;
+  }
+
+  li + li::before {
+    content: '›';
+    margin-right: 0.4rem;
+  }
+
+  a {
+    color: var(--hub-text-muted);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--hub-text);
+    }
+  }
+
+  [aria-current='page'] {
+    color: var(--hub-text);
+  }
+}
+
+.hubToc {
+  position: sticky;
+  top: calc(var(--hub-header-height) + 2.5rem);
+  max-height: calc(100vh - var(--hub-header-height) - 4rem);
+  overflow-y: auto;
+  font-size: 0.875rem;
+
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-left: 1px solid var(--hub-border);
+  }
+
+  a {
+    display: block;
+    margin-left: -1px;
+    padding: 0.3rem 0 0.3rem 0.9rem;
+    border-left: 1px solid transparent;
+    color: var(--hub-text-muted);
+    line-height: 1.4;
+    text-decoration: none;
+
+    &:hover {
+      border-left-color: var(--hub-accent);
+      color: var(--hub-text);
+    }
+  }
+
+  .hubTocItem_h3 a {
+    padding-left: 1.8rem;
+  }
+}
+
+.hubTocTitle {
+  margin: 0 0 0.75rem;
+  color: var(--hub-text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.hubFooter {
+  border-top: 1px solid var(--hub-border);
+  color: var(--hub-text-muted);
+  font-size: 0.8125rem;
+
+  p {
+    margin: 0;
+  }
+
+  a {
+    color: var(--hub-text-muted);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--hub-text);
+    }
+  }
+
+  .hubIcon {
+    margin-right: 0.35em;
+  }
+}
+
+.hubFooterInner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 2rem;
+  max-width: var(--hub-page-width);
+  margin: 0 auto;
+  padding: 1.25rem var(--hub-gutter);
+}
+
+.hubFooterSep {
+  margin: 0 0.6rem;
+  opacity: 0.6;
+}

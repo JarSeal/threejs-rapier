@@ -48,6 +48,23 @@ import warningIcon from './svg/exclamation-triangle-fill.svg?raw';
 import xIcon from './svg/x.svg?raw';
 import xBoldIcon from './svg/x-bold.svg?raw';
 
+/**
+ * @license Bootstrap Icons, Copyright 2019-2024 The Bootstrap Authors
+ * SPDX-License-Identifier: MIT (LICENSE-bootstrap-icons.txt)
+ */
+
+/**
+ * Every icon in `svg/` follows Bootstrap Icons' form: `<svg xmlns width="16" height="16"
+ * fill="currentColor" class="bi bi-<file name>" viewBox="0 0 16 16">` and paths without
+ * transforms or fixed colours, so it takes the text colour. A line icon has `fill="none"` and
+ * `stroke="currentColor"` on its paths (1 wide, 0.75 for inner detail). Files without a key below
+ * aren't in the bundle (`github.svg` and `three-js.svg` are the Hub's brand marks, copied into
+ * `hub/_assets/icons/`).
+ *
+ * Most of them are Bootstrap Icons' own (https://icons.getbootstrap.com, MIT, the licence in
+ * `LICENSE-bootstrap-icons.txt`); the rest are drawn for the engine in the same form. A new one
+ * from Bootstrap Icons is copied as it is, under its own file name.
+ */
 const icons = {
   aekasha: aekashaIcon,
   alert: alertIcon,

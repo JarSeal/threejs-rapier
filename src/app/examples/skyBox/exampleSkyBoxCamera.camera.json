@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../.schemas/camera.schema.json",
+  "camProps": {
+    "type": "PERSPECTIVE",
+    "fov": 50,
+    "near": 0.1,
+    "far": 500,
+    "position": { "x": 7, "y": 2.2, "z": 9 },
+    "lookAtPoint": { "x": 0, "y": 2.5, "z": 0 },
+    "active": true
+  },
+  "entityOpts": {
+    "appId": "exampleSkyBoxCamera",
+    "debugData": { "name": "Sky box example camera" }
+  }
+}

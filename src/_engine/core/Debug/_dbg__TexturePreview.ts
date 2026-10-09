@@ -6,6 +6,7 @@ import {
   withBakeRendererState,
 } from '../Lod/Impostors/ImpostorBake';
 import { getTextureDepth, getTextureSize } from './_dbg__AssetStats';
+import { readRenderTargetRGBA8Async } from '../Snapshot';
 
 /**
  * The debugger's GPU texture previews (p299 D6). A KTX2 texture can't be drawn into a 2D canvas
@@ -125,23 +126,9 @@ const readTile = (
   return new ImageData(out, width, height);
 };
 
-/**
- * Reads an RGBA8 render target's level 0 back as it is stored (sRGB stays encoded), top row
- * first on both backends: WebGPU pads its rows to 256 bytes, WebGL reads them bottom-up.
- */
-export const readRenderTargetImageAsync = async (target: THREE.RenderTarget) => {
-  const renderer = getBakeRenderer('readRenderTargetImageAsync');
-  if (
-    target.texture.type !== THREE.UnsignedByteType ||
-    target.texture.format !== THREE.RGBAFormat
-  ) {
-    throw new Error(`readRenderTargetImageAsync: '${target.texture.name}' isn't an RGBA8 target.`);
-  }
-  const { width, height } = target;
-  const isBottomUp = Boolean((renderer.backend as { isWebGLBackend?: boolean }).isWebGLBackend);
-  const data = await renderer.readRenderTargetPixelsAsync(target, 0, 0, width, height);
-  return readTile(data as ArrayLike<number>, width, 0, width, height, isBottomUp);
-};
+/** An RGBA8 render target's level 0 as `ImageData` (`readRenderTargetRGBA8Async`, top row first) */
+export const readRenderTargetImageAsync = async (target: THREE.RenderTarget) =>
+  new ImageData(await readRenderTargetRGBA8Async(target), target.width, target.height);
 
 /**
  * Renders `source` at one mip level on the GPU and reads it back, one tile per layer.

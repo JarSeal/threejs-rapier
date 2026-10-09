@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../.schemas/camera.schema.json",
+  "camProps": {
+    "type": "PERSPECTIVE",
+    "fov": 50,
+    "near": 0.1,
+    "far": 400,
+    "position": { "x": 0, "y": 7, "z": 14 },
+    "lookAtPoint": { "x": 0, "y": 0, "z": -40 },
+    "active": true
+  },
+  "entityOpts": {
+    "appId": "exampleLodCamera",
+    "debugData": { "name": "LOD example camera" }
+  }
+}

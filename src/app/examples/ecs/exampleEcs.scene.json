@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../../.schemas/scene.schema.json",
+  "id": "exampleEcs",
+  "sceneFile": "./examples/ecs/exampleEcs.ts",
+  "name": "Example: Custom component & system",
+  "description": "A SPIN component of the app's own and the system that turns every entity that has it: a row of shapes, each turning about its own axis at its own speed, one of them hovering too.",
+  "backgroundColor": "#1c212b",
+  "cameras": ["exampleEcsCamera"],
+  "lights": ["exampleEcsAmbient", "exampleEcsSun"]
+}

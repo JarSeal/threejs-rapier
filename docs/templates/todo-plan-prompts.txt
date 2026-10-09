@@ -180,38 +180,55 @@ If for some reason this plan or some of its features can't or shouldn't be creat
 
 ************************************
 
-Create "Instruction/example pages and example scenes" plan in docs/plans/p550_instruction-and-helper-pages-and-scenes.md
+Create "Debugger UI overhaul" plan in docs/plans/p800_debugger-ui-overhaul.md
 
-Category: Instructions, Examples
+Category: Refactoring, documentation
 
 UNDER_CONSTRUCTION
-We should create a system for instructions and example code on the core functionalities, features, and systems of the Aekasha engine. We don't have a router in our project but we should build a minimal router to the core code (at least for the debug mode or as a dynamic import so it doesn't go into the production code unless the developer wants it to). This means that we could access the instructions/help/example pages from the url: localhost:8080/hub/[what-ever-path-we-want-but-not-in-production-unless-imported-by-the-developer]/index.html
+This is an epic plan and will probably require several plans.
 
-This part will be called "Ækasha Hub".
+We should create our own components to replace Tweakpane (and possibly stats-gl) and we should provide them also for the app to be imported and used. We probably shouldn't create our own color picker, but we should pick the best library that is flexible (maybe we want to add our own features). All of the Tweakpane's features should be integrated into our own "Form and data display system" (number inputs, folders with nestin, color picker, sliders, dropdowns, checkboxes, radio buttons, text, text areas, position/rotation/vectors, quaternions, etc.), and they should have proper and optimized listener features. We should then also gather all of our current basic UI components (toaster, dialog, window, percentagePie etc.) and have them have a logical folder structure and coherent coding style and usage pattern.
 
-The built pages that are served from there are static html pages with CSS (/hub/_assets/[name-of-the-file].css), possible javascript for the UI (/hub/_assets/[name-of-the-file.js]), and UI icons (/hub/_assets/icons/[different SVG files]). If possible we should be able develop the javascript with Typescript and the CSS with SCSS files and after each save they would be built and the page refreshed. They need to also build into the project's root level folder called "dist-hub" so we can also publish those static files to a public address (such as netlify or something like that). We also need to copy the favicons there. Preferably these files should only build when some of these files are edited/created/deleted or when doing a full build (yarn build), not when the engine, toolkit, or app code changes.
+The visual style needs to be reworked as well. The visual style should come from the Hub (dark and light mode) and it should have the same feel, theme, and look, but should respect the tighter space more. Fonts should be "subtle", readable and nice, and should be included in the project (if new fonts are introduced, they should probably be used also in the Hub. I am not sure, but experiment with some fonts and if they work for both then good and if not then pick something that serves the overall Aekasha feeling). Subtle animations should be used to make the UI feel professional and to hint the user about UI patterns and guidance. The blue accent color should be used sparingly but knowing that it can really help the user to spot up UI elements of importance. Error, warning, and success colors should also be defined (toaster etc.) and they should also be used sparingly in the design.
 
-What I would love to have is that I would have the page data (maybe as Markup language) + TS/SCSS in some source folder and when the site is built it would also "somehow magically" produce/build a data JS file of all of the contents (title, path, content, and maybe tags that would be defined either in the page file's head section or in the content header). We could then use that data (that is loaded for every page, but preferably cached by the browser so we load it only once) to implement a search. That data should also have the page structure with relative links so we can render the main menu on each page (with active menu item recognized). One thing that we definately need on the pages is to show codeblocks with copy to clipboard, line number, line highlighting, TS/JS/JSON syntax highlighting, (what else?) features so we can insert code blocks into the pages. We should also have all of the version informations in the data as well.
+In addition to existing components we should create (at least) these components:
+- Button: with options/features to have an icon, text becoming a spinner, what else? All the modern practices and then some.
+- Link: internal vs. external.
+- Range: basically a double slider that is highly customizable.
+- Tables (title, headers, colors, cells as buttons, hover highlighting a cell/row/column, responsiveness, what else?)
+- Graphs (basic static graphs, running profiler graphs, 100% stacked/segmented bar chart)
+- Lists (static, draggable items, searchable/filterable)
+- Spinner(s) and progress bar loader(s)
+- What else would be good to provide as an UI component for the users/developers? What are some new and modern game UI components out there?
 
-We should also create each example scene as an actual demo scene into the engine with a prefix in the name "Example: ". We should also in this plan implement a feature for the engine to overwrite the debug and the prodTest start scene with an url parameter: ?startScene=[sceneId]. We can then have a link from the example pages to view the actual scene in the debug mode or the prodTest mode. These links should not be available in the dist-hub build (because we are going to serve those in the Internet and without the engine, at least at this point).
+The on-screen tools should provide.
 
-We need to add a rule to CLAUDE.md that when creating/editing/deleting engine code/features we should always also update the Aekasha Hub content. This should also be taken into account when creating plans. If found beneficial, then the second last phase (if the last phase is versioning, changelog addition, and marking the plan done) should be to update the Hub content and build relevant example(s). It should also ask if an example scene should be built.
+We should make it easy to build a game or 3D app UI with these HTML/Javascript components and they should be easily overwritten with styles (a developer pattern and a HUB guide should be made). Also a guide to how to create your own scene debugger drawer tab should be made. The usage should implement the SPB (Smallest Possible Build) strategy. An example page of all of the HTML UI components should be constructed for the Hub.
 
-The content of these pages should be as follows (this structure should be in the menu as well):
-- Homepage: /hub [Introduction to the engine and some key features of the engine]
-  -- Examples: /hub/examples [A quick start guide to get the dev environment up and running + a simple cube with a checkerboard material hovering in the air]
-    -- Physics: /hub/examples/physics [A simple static plane and some primitive shapes dropping on the ]
-    -- Toolkit: /hub/examples/toolkit [A simple hovering Aekasha symbol (we need to create a Draco encoded 3D model of the Ækasha symbol into the toolkit assets and use that, if you can do it, please do it, and if not, provide me instructions on how to do it from the SVG file) with the triplanar checkerboard material]
-    -- (All other kind of examples, maybe at this phase we will have 5-7 different example pages)
-  -- Features: /hub/features [An intro text + a list of all of the key features]
-    -- (All of the key features as their own pages with a link to a possible example page + links to relevant documentation + link to a possible issue)
-  -- Documentation: /hub/documentation [This section should be all of the exported engine functions' JsDocs, basically the engine's API documentation. I would love for this section to have the same style as the rest of the pages, if possible]
-  -- Issues: /hub/issues [This section could list the open issues from the docs/issues]
-    -- (All of the possible issues as their own page with docs/issues/*.md file as the content)
-  -- Version: /hub/version [This section would show the version information + CHANGELOG.md content]
+We should add a section to the Hub's main navigation bar called "Project" and it can be a (Aekasha blue) button with an icon on the right side of the navigation. These pages and button should only be visible in the local dev server runs (not included in the Hub's build). This section has a main page explaining the core philosophies and code conventions for the current project (Aekasha development and the app development should be two different sections). As sub pages (for now) it should have a small style guide for the engine explaining the different colors, text styles, fonts, spacing, margins, icons and their usage, clear design patterns, etc. - a small design document for the Aekasha engine and also a component library to display the different components it uses. This component library is for developing Aekasha but serves a purpose for glancing what kind of components the app/game developer could use for their UI. The developer could the easily copy the Aekashas design document and create their own design document for their project (app or a game). Later we could also add road maps for showing implemented and not-implemented plans for Aekasha and also for the app itself (create a plan for these, Aekasha docs should somehow differ from the app's docs or maybe they should have their own folders, eg. docs/ for Aekasha and docsApp/ for the app?). In the Hub's home page, the right side of the hero (where it says BUILD / EXPLORE / CREATE) we could have quick links to the app's project Hub section. The /hub/documentation/code-blocks/ should move to /hub/project/Aekasha/ (somewhere there in the design/code conventions section).
 
-This will most likely need several plans to implement and that is okay.
+One more thing to focus here is semantics and accessibility. The UI should follow good HTML and accessibility standards and should help - not just disabled - but also keyboard driven users. If some standards should not be followed, it should have a very good reason. The main mantra here is "USER FIRST"! The goal is to have a professional, yet cool UI and a welcoming, "Can't wait to get back to Aekasha!" type of UI vibe.
 
-If for some reason this plan or some of its features can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+This complete overhaul should replace all of the debugger UI code, get rid of the Tweakpane library and possibly even replace the stats-gl library.
+
+************************************
+
+Create "HUB SEO optimization" plan in docs/plans/p180_hub-seo-optimization.md
+
+Category: HUB
+
+UNDER_CONSTRUCTION
+The Hub should have proper SEO optimization. Also the app's index.html should have SEO optimization but some of the header tags should probably be commented out so that the developer can then easily add or remove what SEO features is needed and what is not.
+
+************************************
+
+Create "Custom versioning syntax" plan in docs/plans/p185_custom-versioning-syntax.md
+
+Category: Versioning
+
+UNDER_CONSTRUCTION
+We should add a syntax for describing and recognizing custom engines (and why not for the toolkits and apps as well) from the version number. Suggest a way to mark custom engines: maybe one way would be to add an underscore at the end of the version, something like "v4.13.0_my-game-1.0"? You know better, but something to tell that this is a custom engine and we could see that from which version it was made out of.
+
+We should also add versioning for the Hub.
 
 ************************************

@@ -23,6 +23,8 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 
 ## Features
 
+Each feature has a page in the Ækasha Hub's Features section (`/hub/features/`: run `yarn dev` and open `http://localhost:8080/hub/features/`), with how it works, its key APIs, the issues that affect it and its example scene.
+
 ### Engine (`src/_engine/`)
 
 - **Rendering**: Three.js `WebGPURenderer` with automatic WebGL fallback, configurable tone mapping, color space and shadow maps.
@@ -40,6 +42,7 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 - **Cameras and lights**: ECS-managed perspective and orthographic cameras, all Three.js light types, frustum culling for objects and lights, and a follow-camera rig.
 - **PostFX**: an ordered, per-scene chain of TSL passes (`*.postFx.json` + `*.tsl.ts`), switchable per pass at runtime, with ambient occlusion (GTAO) included.
 - **Viewports**: extra render rectangles with their own scene and camera (picture-in-picture, minimaps, item previews), placed by the DOM and working with or without PostFX.
+- **Snapshots**: render any scene through any camera into an image off screen, at any size (thumbnails, example images, save game pictures); by default what the canvas shows, through its PostFX, without the HUD, viewports or debug helpers.
 - **Instanced mesh pools**: one `InstancedMesh` draws many instances, each of them an ECS entity with its own `Transform`. Instances can be moved, despawned (their slot is reused) and indexed in a spatial domain. An instanced LOD pool keeps one `InstancedMesh` per level and moves each instance to its level's, one draw call per level.
 - **Lines**: pooled thin and thick lines with screen-space dashes and ECS binding.
 - **Spatial index**: uniform grids with an oversized tier for "what's near this point/volume" queries. Each ECS world can hold several named domains, each with its own cell size, capacity and update policy (rebuilt every frame, only when its members change, or on demand), and an entity can join several of them. A scene can register its own domains and settings (in code or in its scene JSON), dropped when it exits, and the default grid is built per scene only when something is indexed. Instanced-pool instances can be indexed too.
@@ -56,6 +59,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 - **ECS effects**: `HoverEffect` (bobbing), `FollowTool` (follow a target) and `SunShadowFit` (fits a directional light's shadow to the camera's view).
 - **TSL materials**: checkerboard, triplanar checkerboard and triplanar grid materials.
 - **Procedural geometry**: seeded noise terrain, foliage generation and scattering on surfaces.
+- **Models**: the Ækasha symbol, the Æ glyph extruded with a soft bevel, as a Draco-compressed GLB with its asset JSON, ready for `importAssetAsync`.
 
 ### Debug suite (debug builds only)
 
@@ -103,7 +107,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 ### Install and run
 
 ```bash
-git clone https://github.com/JarSeal/threerapier.git my-game
+git clone https://github.com/JarSeal/aekasha-js.git my-game
 cd my-game
 yarn
 yarn dev            # http://localhost:8080
@@ -122,7 +126,9 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 | `yarn build`                          | Type-check and production build to `dist/` (bundle treemap in `dist-stats/`). Fails on a shipped asset with no optimized output or over its budget. |
 | `yarn build:test`                     | Production build with `VITE_APP_ENV=test`.                                                                                                          |
 | `yarn lint`                           | ESLint with Prettier.                                                                                                                               |
-| `yarn docs`                           | TypeDoc API docs for the engine and toolkit, written to `docs-api/`.                                                                                |
+| `yarn docs`                           | TypeDoc's own HTML API docs for the engine and toolkit, written to `docs-api/`.                                                                     |
+| `yarn hub:build`                      | Builds the Ækasha Hub (guides, examples, API reference, issues, changelog) into `dist-hub/`. `yarn build` runs it too.                              |
+| `yarn hub:preview [--base /hub/]`     | Serves `dist-hub/` locally (port 8090) the way a static host would.                                                                                 |
 | `yarn gatherAppData`                  | Runs the JSON → generated data pipeline by hand.                                                                                                    |
 | `yarn setupAssetTools [--force]`      | Downloads the KTX2 texture encoder into `.tools/` (Linux, WSL2, macOS).                                                                             |
 | `yarn assets [--only <id\|glob>]`     | Optimizes the asset JSONs' textures and models (KTX2, meshopt), with a cache.                                                                       |
@@ -131,11 +137,12 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 
 ### URL flags (development and test builds)
 
-| Flag               | Effect                                                                    |
-| ------------------ | ------------------------------------------------------------------------- |
-| `?isDebug=true`    | Full debug tooling.                                                       |
-| `?isProdTest=true` | Production behavior with a subset of the debug tools.                     |
-| `?physicsProbe=N`  | Freezes physics N steps after each scene load and logs a state hash diff. |
+| Flag                    | Effect                                                                                                                           |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `?isDebug=true`         | Full debug tooling.                                                                                                              |
+| `?isProdTest=true`      | Production behavior with a subset of the debug tools.                                                                            |
+| `?startScene=<sceneId>` | With either of the above, starts in that scene instead of the usual start scene (eg. `?isDebug=true&startScene=examplePhysics`). |
+| `?physicsProbe=N`       | Freezes physics N steps after each scene load and logs a state hash diff.                                                        |
 
 ---
 
@@ -159,10 +166,13 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 │   ├── index.ts            # App entry: renderer, scene loader, first scene
 │   ├── public/aek-assets/  # Optimized asset outputs (generated, committed)
 │   └── index.html
-├── devTools/               # Data gatherer, asset pipeline, version checks, release tagging
+├── hub/                    # The Ækasha Hub's sources: pages (HTML + Markdown), shell, styles
+├── devTools/               # Data gatherer, asset pipeline, Hub generator, version checks,
+│                           # release tagging
 ├── docs/
+│   ├── issues/             # Known issues and their workarounds (also on the Hub)
 │   ├── plans/              # Feature plans and specs (priority-ordered)
-│   └── techniques/         # How-to guides (eg. asset optimization)
+│   └── techniques/         # How-to guides (eg. asset optimization, writing Hub pages)
 ├── .schemas/               # Generated JSON Schemas for editor autocomplete
 ├── assets.config.json      # Asset optimization defaults, profiles and rules
 ├── assets.lock.json        # Asset pipeline cache index (generated, committed)
@@ -210,7 +220,7 @@ Each file is validated against its schema, and the `$schema` line gives you auto
   "name": "My scene",
   "cameras": ["mainCamera"],
   "lights": ["ambientLight"],
-  "materials": ["checkerBoard"],
+  "materials": ["triplanarCheckerboard"],
   "meshes": ["testMesh"],
   "skyboxes": ["basicSkybox"],
 }
@@ -223,7 +233,7 @@ Each file is validated against its schema, and the `$schema` line gives you auto
   "props": {
     "appId": "testMesh",
     "geo": "testSphere",
-    "mat": "checkerBoard",
+    "mat": "triplanarCheckerboard",
     "castShadow": true,
     "position": { "x": 4, "y": 1, "z": 2 },
   },
@@ -352,7 +362,9 @@ const config: AppConfig = {
 };
 ```
 
-The example scenes in [`src/app/`](src/app/) cover more: a physics and joints test, a physics simulation tiers demo (686 crates and a plough), a large procedural world with instancing and culling, a third-person character gym, a top-down character scene (world-fixed controls, hills, and sun shadows fitted to the view), and an ECS stress test.
+The Ækasha Hub's Examples section (`/hub/examples/`) walks through seven example scenes, each in [`src/app/examples/`](src/app/examples/) and named "Example: …" in the scene dropdowns: the quick start, physics, the toolkit's model and materials, the sky box and day-night, a component and system of your own, LOD and instancing, and a debug tab of your own. Each page opens its scene with `?startScene`.
+
+The other example scenes in [`src/app/`](src/app/) cover more: a physics and joints test, a physics simulation tiers demo (686 crates and a plough), a large procedural world with instancing and culling, a third-person character gym, a top-down character scene (world-fixed controls, hills, and sun shadows fitted to the view), and an ECS stress test.
 
 ---
 
@@ -373,7 +385,8 @@ The engine, toolkit and example app each have their own semantic version and cod
 
 ## Documentation
 
-- **API reference**: run `yarn docs` and open `docs-api/index.html` (covers the engine and the toolkit).
+- **Ækasha Hub**: run `yarn dev` and open `http://localhost:8080/hub/` for the getting-started guide, a page per feature, examples, known issues and the changelog, all searchable (⌘K / Ctrl+K), or build it as a static site with `yarn hub:build`. To add or edit its pages, see [writing Hub pages](docs/techniques/hub-authoring.md).
+- **API reference**: the Hub's Documentation section (`/hub/documentation/`): every engine and toolkit export with its signature, JSDoc and source link, searchable and linked from the other Hub pages. `yarn docs` still writes TypeDoc's own HTML to `docs-api/`.
 - **Guides**: [`docs/techniques/`](docs/techniques/), eg. [asset optimization](docs/techniques/asset-optimization.md).
 - **Design docs**: [`docs/plans/`](docs/plans/). Files prefixed `_DONE_` describe features that are already implemented.
 - **Contributor and agent guide**: [`.claude/CLAUDE.md`](.claude/CLAUDE.md).

@@ -1,0 +1,166 @@
+// `::: cards <page path>` (p554 Phase 5, p555 §2.2): a grid of links to child pages, each with
+// its image (or icon), label and description
+.hubCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 2rem;
+  padding: 0;
+  list-style: none;
+}
+
+.hubCard {
+  margin: 0;
+}
+
+.hubCardLink {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--hub-panel);
+  border: 1px solid var(--hub-border);
+  border-radius: var(--hub-radius);
+  color: var(--hub-text);
+  text-decoration: none;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+
+  &:hover {
+    background: var(--hub-panel-hover);
+    border-color: var(--hub-border-strong);
+  }
+
+  &:hover .hubCardTitle {
+    color: var(--hub-accent);
+  }
+}
+
+// The scenes' renders are 16:10; another image is cut to it
+.hubCardImage {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-bottom: 1px solid var(--hub-border);
+  border-radius: 0;
+}
+
+.hubCardIcon {
+  display: flex;
+  padding: 1.25rem 1.25rem 0;
+  color: var(--hub-accent);
+
+  svg {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+}
+
+.hubCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.hubCardTitle {
+  font-weight: 600;
+  line-height: 1.35;
+  transition: color 0.15s;
+}
+
+.hubCardText {
+  color: var(--hub-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+// `::: cards <path> featured` (p555 Phase 2), on the homepage. The columns follow the grid's own
+// width (its parent is the container), since the homepage's main column narrows beside the side
+// column.
+:has(> .hubCards_featured) {
+  container: hubCardsFeatured / inline-size;
+}
+
+// With images (the featured examples): a row of three image cards
+.hubCards_featured:not(.hubCards_icons) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+
+  @container hubCardsFeatured (max-width: 34rem) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hubCardText {
+    font-size: 0.875rem;
+  }
+}
+
+// With icons (the featured features): icon columns, not boxes
+.hubCards_featured.hubCards_icons {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2rem 0;
+
+  @container hubCardsFeatured (max-width: 48rem) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @container hubCardsFeatured (max-width: 26rem) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .hubCardLink {
+    padding: 0.25rem 1.5rem 0.25rem 1.25rem;
+    background: none;
+    border: 0;
+    border-left: 1px solid var(--hub-border);
+    border-radius: 0;
+    transition: border-color 0.15s;
+
+    &:hover,
+    &:focus-visible {
+      background: none;
+      border-left-color: var(--hub-accent);
+    }
+  }
+
+  .hubCardIcon {
+    flex-shrink: 0;
+    justify-content: center;
+    align-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    background: var(--hub-accent-soft);
+    border-radius: var(--hub-radius);
+
+    svg {
+      width: 1.375rem;
+      height: 1.375rem;
+    }
+  }
+
+  .hubCardBody {
+    padding: 1rem 0 0;
+  }
+
+  .hubCardText {
+    font-size: 0.875rem;
+  }
+
+  // One column: the icon beside the text, a row per feature
+  @container hubCardsFeatured (max-width: 26rem) {
+    .hubCardLink {
+      flex-direction: row;
+      gap: 1rem;
+      padding: 1rem 0 1rem 1rem;
+    }
+
+    .hubCardBody {
+      padding: 0;
+    }
+  }
+}

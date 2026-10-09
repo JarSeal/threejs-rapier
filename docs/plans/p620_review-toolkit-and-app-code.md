@@ -1,0 +1,30 @@
+Status: stub — not-implemented
+Category: Refactoring, Documentation, Toolkit, App
+Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage C)
+Blocked by: p605_coding-standards-and-documentation-tooling.md, p609_toolkit-and-app-restructure.md
+Blocks: p621_hub-docs-readme-and-claude-md-final.md
+
+# Review: Toolkit and App Code — Stub
+
+**This is a stub.** It fixes the scope, the inputs and the done criteria. Expand it into a full plan (grounding checked against the code, non-breaking phases, the Hub phase, versioning) when its blockers land: its details depend on p602's decisions.
+
+## Goal
+
+Applies p600 §5 (the per-file review standard) and p605's JSDoc style to every file in scope, and records the findings per file group in an "As found" list.
+
+## Scope
+
+- The toolkit (`geometry` 8 of 21 exports documented, its 13 interfaces none; `materials` 5 of 13, 0 of 14 internal functions commented), every piece with an example in its JSDoc and a Hub entry.
+- The app as the reference app: the scenes readable as examples (`scene_thirdPersonGym.ts`'s ~544-line `scene` function split), the app's own `_dbg__` modules on the engine's pattern.
+- The app is not part of the documented API (CLAUDE.md), so its bar is readability and correctness, not JSDoc coverage.
+
+## Inputs
+
+- p609, p600 §2.
+
+## Done when
+
+- Every file in scope reviewed against p600 §5, the findings fixed or filed (`docs/issues/` or a plan item).
+- JSDoc coverage of the scope's public exports at 100% (p601's `docs.json`), members included; the ratchet raised.
+- `yarn test`, `yarn verify:scenes` (snapshots and hashes unchanged unless stated), `yarn verify:baselines` (no unexplained growth), `yarn build`, `yarn hub:build`.
+- The Hub pages of the features in scope checked against the code; CLAUDE.md's nested files for them current.

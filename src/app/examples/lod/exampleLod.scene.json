@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../../.schemas/scene.schema.json",
+  "id": "exampleLod",
+  "sceneFile": "./examples/lod/exampleLod.ts",
+  "name": "Example: LOD & instancing",
+  "description": "A field of 180 torus knots (16,384 triangles each) in one instanced LOD pool: the knot, its generated chain's simplified levels, then an octahedral impostor, one quad each, for the farthest. The LOD tab's level overlay shows which level each knot draws.",
+  "cameras": ["exampleLodCamera"],
+  "skyboxes": ["exampleLod"]
+}

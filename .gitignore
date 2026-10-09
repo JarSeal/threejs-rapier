@@ -6,6 +6,8 @@
 yarn-error.log
 **/dist
 **/dist-stats
+# The Ækasha Hub's public build (yarn hub:build)
+dist-hub/
 # TypeDoc output (yarn docs); wiped and regenerated on every run
 docs-api/
 *.blend[0-9]

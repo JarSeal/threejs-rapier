@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../../.schemas/scene.schema.json",
+  "id": "exampleToolkit",
+  "sceneFile": "./examples/toolkit/exampleToolkit.ts",
+  "name": "Example: Toolkit",
+  "description": "Pieces of the toolkit together: the Ækasha symbol model (a Draco GLB imported from its asset JSON) with the triplanarCheckerboard material in two colours, hovering with HoverEffect over a ground with the triplanarGrid material.",
+  "backgroundColor": "#1c212b",
+  "cameras": ["exampleToolkitCamera"],
+  "lights": ["exampleToolkitAmbient", "exampleToolkitSun"],
+  "importedAssets": ["aekashaSymbol"],
+  "materials": ["triplanarCheckerboard", "triplanarGrid"]
+}

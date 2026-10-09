@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../../.schemas/scene.schema.json",
+  "id": "examplePhysics",
+  "sceneFile": "./examples/physics/examplePhysics.ts",
+  "name": "Example: Physics",
+  "description": "A static ground with a box, a sphere, a capsule and a cylinder dropping onto it, each a mesh entity with a Rapier body from createPhysicsEntity. Space drops another one.",
+  "backgroundColor": "#1c212b",
+  "cameras": ["examplePhysicsCamera"],
+  "lights": ["examplePhysicsAmbient", "examplePhysicsSun"]
+}

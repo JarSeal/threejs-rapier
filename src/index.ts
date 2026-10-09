@@ -3,9 +3,11 @@ import { createRenderer } from './_engine/core/Renderer';
 import { InitEngine } from './_engine/InitApp';
 import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 import { CMP } from './_engine/utils/CMP';
+import { IS_DEBUG_ENV } from './_engine/core/Config';
 
 InitEngine(async () => {
   // Init renderer
+  // #region create-renderer (shown in the Hub: hub/pages/features/rendering/)
   await createRenderer({
     antialias: true,
     forceWebGL: false,
@@ -19,6 +21,7 @@ InitEngine(async () => {
     // shadowMapType: THREE.BasicShadowMap,
     shadowMapType: THREE.VSMShadowMap,
   });
+  // #endregion create-renderer
 
   // Create sceneLoader
   createSceneLoader({
@@ -66,6 +69,12 @@ InitEngine(async () => {
       }
     },
   });
+
+  // The example scenes' Hub tab (debug env)
+  if (IS_DEBUG_ENV) {
+    const { registerExampleHubTabs } = await import('./app/examples/_dbg__exampleHub');
+    registerExampleHubTabs();
+  }
 
   // Load scene
   await loadScene({ sceneId: 'sceneTestECS' });

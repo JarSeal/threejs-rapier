@@ -1,0 +1,166 @@
+// Page content: headings, code, tables, callouts
+// `:where()`: element rules stay at the specificity of one class, so a component inside
+// the content (the homepage's hero, cards) styles its own elements with one class
+.hubContent {
+  :where(h1, h2, h3, h4) {
+    margin: 2.5rem 0 1rem;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+  }
+
+  :where(h1) {
+    margin-top: 0;
+    font-size: clamp(2.25rem, 4vw, 2.75rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+
+  :where(h2) {
+    font-size: 1.625rem;
+  }
+
+  :where(h3) {
+    margin-top: 2rem;
+    font-size: 1.25rem;
+  }
+
+  :where(h4) {
+    font-size: 1.0625rem;
+  }
+
+  :where(p, ul, ol) {
+    margin: 0 0 1.1rem;
+  }
+
+  :where(li + li) {
+    margin-top: 0.3rem;
+  }
+
+  :where(code) {
+    padding: 0.1em 0.35em;
+    background: var(--hub-code-bg);
+    border: 1px solid var(--hub-border);
+    border-radius: 4px;
+    font-family: var(--hub-font-mono);
+    font-size: 0.875em;
+  }
+
+  :where(pre) {
+    overflow-x: auto;
+    padding: 1rem 1.25rem;
+    background: var(--hub-code-bg);
+    border: 1px solid var(--hub-border);
+    border-radius: var(--hub-radius);
+    font-size: 0.875rem;
+    line-height: 1.6;
+
+    code {
+      padding: 0;
+      background: none;
+      border: 0;
+      font-size: inherit;
+    }
+  }
+
+  :where(img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--hub-radius);
+  }
+
+  :where(hr) {
+    margin: 2.5rem 0;
+    border: 0;
+    border-top: 1px solid var(--hub-border);
+  }
+}
+
+.hubAnchor {
+  margin-left: 0.25em;
+  color: var(--hub-text-muted);
+  text-decoration: none;
+  opacity: 0;
+
+  :is(h1, h2, h3, h4, h5, h6):hover > &,
+  &:focus {
+    opacity: 1;
+  }
+}
+
+.hubTable {
+  overflow-x: auto;
+
+  table {
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--hub-border);
+    text-align: left;
+  }
+}
+
+.hubCallout {
+  margin: 1.5rem 0;
+  padding: 0.75rem 1rem;
+  background: var(--hub-panel);
+  border-left: 3px solid var(--hub-accent);
+  border-radius: 4px;
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+.hubCalloutTitle {
+  margin-top: 0;
+  font-weight: 700;
+}
+
+.hubCallout_warning {
+  border-left-color: var(--hub-warning);
+}
+
+.hubCallout_danger {
+  border-left-color: var(--hub-danger);
+}
+
+// The dev plugin's error page (p551 Phase 2)
+.hubBuildErrors {
+  padding: 0;
+  list-style: none;
+
+  li {
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    background: var(--hub-panel);
+    border: 1px solid var(--hub-border);
+    border-left: 3px solid var(--hub-error);
+    border-radius: 6px;
+  }
+
+  code {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--hub-error);
+  }
+}
+
+// `::: claude-md` (p555): a feature page's dev-only line to its CLAUDE.md sections
+.hubDevNote {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.6rem 0.9rem;
+  border: 1px dashed var(--hub-border-strong);
+  border-radius: 6px;
+  color: var(--hub-text-muted);
+  font-size: 0.9375rem;
+
+  .hubIcon {
+    align-self: center;
+  }
+}

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Ækasha Hub</title>
+    <meta name="aek:menu" content="Hub" />
+    <meta name="aek:icon" content="house" />
+    <meta name="aek:tags" content="home, introduction, overview" />
+    <meta
+      name="aek:description"
+      content="Instructions, examples and API documentation for Ækasha, the WebGPU framework built on Three.js, Rapier and its own ECS."
+    />
+  </head>
+  <body>
+    <section class="hubHero hubThemeDark">
+      <div class="hubHeroInner">
+        <div class="hubHeroText">
+          <p class="hubEyebrow hubEyebrow_plain">Welcome to the</p>
+          <h1 class="hubHeroTitle">Ækasha <span class="hubGradientText">Hub</span></h1>
+          <div id="intro" class="hubHeroIntro"></div>
+          <nav class="hubHeroLinks" aria-label="Sections">
+            <a class="hubButton" href="hub:examples">{{icon:box}}Examples{{icon:arrow-right}}</a>
+            <a class="hubButton" href="hub:features">{{icon:star}}Features{{icon:arrow-right}}</a>
+            <a class="hubButton" href="hub:documentation"
+              >{{icon:book-open}}Documentation{{icon:arrow-right}}</a
+            >
+            <a class="hubButton" href="hub:issues">{{icon:bug}}Issues{{icon:arrow-right}}</a>
+            <a class="hubButton" href="hub:version">{{icon:tag}}Version{{icon:arrow-right}}</a>
+          </nav>
+        </div>
+        <!-- The exampleHubHero scene's render (saved from its Hub tab), the placeholder until then -->
+        <img
+          class="hubHeroImage"
+          data-aek-scene="exampleHubHero"
+          src="{{asset:images/hero-placeholder.webp}}"
+          sizes="(max-width: 64rem) 100vw, 45vw"
+          alt=""
+          width="585"
+          height="360"
+        />
+        <div class="hubHeroSide">
+          <p class="hubEyebrow">Build / Explore / Create</p>
+          <div id="generated-hero-side"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="hubHomeGrid">
+      <div class="hubHomeMain">
+        <section class="hubHomeSection">
+          <p class="hubEyebrow">Features</p>
+          <div id="featured-features"></div>
+          <a class="hubMoreLink" href="hub:features">View all features{{icon:arrow-right}}</a>
+        </section>
+        <section class="hubHomeSection">
+          <p class="hubEyebrow">Examples</p>
+          <div id="featured-examples"></div>
+          <a class="hubMoreLink" href="hub:examples">View all examples{{icon:arrow-right}}</a>
+        </section>
+      </div>
+      <aside class="hubHomeSide" aria-label="News and links">
+        <section class="hubPanel">
+          <p class="hubEyebrow">Latest</p>
+          <div id="generated-whats-new"></div>
+        </section>
+        <section class="hubPanel">
+          <p class="hubEyebrow">Quick links</p>
+          <div id="generated-quick-links"></div>
+        </section>
+        <section class="hubPanel hubBrandCard">
+          <p class="hubBrandCardTitle">Ækasha</p>
+          <p class="hubBrandCardText">Build. Explore. Create.</p>
+          {{icon:aekasha}}
+        </section>
+      </aside>
+    </div>
+  </body>
+</html>

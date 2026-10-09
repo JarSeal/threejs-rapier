@@ -6,6 +6,7 @@ import {
   SunShadowFitComponentData,
   SunShadowFitComponentType,
 } from './toolkit/ecs/effects/SunShadowFit';
+import { SpinComponentData, SpinComponentType } from './app/examples/ecs/SpinComponent';
 
 /**
  * App and toolkit components (app specific)
@@ -15,13 +16,16 @@ import {
  *   ...HoverToolComponentType,  // Imported from toolkit
  * }
  */
+// #region ecs-component-types (shown in the Hub: hub/pages/examples/ecs/)
 export const AppComponentType = {
   HEALTH: 'APP_HEALTH',
   INSTANCED_STRESS_TEST_DATA: 'APP_INSTANCED_STRESS_TEST_DATA',
   ...HoverToolComponentType,
   ...FollowToolComponentType,
   ...SunShadowFitComponentType,
+  ...SpinComponentType,
 } as const;
+// #endregion ecs-component-types
 
 /**
  * Data types from toolkit and other sources.
@@ -29,7 +33,12 @@ export const AppComponentType = {
  * type ToolKitComponentData = {};
  * type ToolKitComponentData = HoverComponentData & SomeOtherComponentData;
  */
-type ExtraComponentData = HoverComponentData & FollowComponentData & SunShadowFitComponentData;
+// #region ecs-component-data (shown in the Hub: hub/pages/examples/ecs/)
+type ExtraComponentData = HoverComponentData &
+  FollowComponentData &
+  SunShadowFitComponentData &
+  SpinComponentData;
+// #endregion ecs-component-data
 
 /** App specific components (extended by ExtraComponentData) */
 export interface AppComponentData extends ExtraComponentData {
@@ -44,15 +53,17 @@ export type AppComponentType = (typeof AppComponentType)[keyof typeof AppCompone
 
 /** Stages of ECS system invocation */
 export enum ECSSystemStage {
-  // --- Runs in updateMainLoop (Always runs if MasterPlay is true) ---
+  // --- Runs in updateMainLoop (Always runs if MasterPlay is true, also while the app is paused) ---
   MAIN = 'MAIN',
-
-  // --- Runs in updateAppLoop (Only if AppPlay is true) ---
   APP_PRE_PHYSICS = 'APP_PRE_PHYSICS', // Input handling, logic before physics
+
+  // --- Runs from stepPhysics (Only if AppPlay is true) ---
   // Runs once per fixed physics sub-step (0-N times per frame), right before that step, with
   // dt = the fixed timestep — for anything that has to move in lockstep with the simulation
   // (kinematic paths, character controllers). Only runs while physics is stepping.
   APP_PHYSICS_STEP = 'APP_PHYSICS_STEP',
+
+  // --- Runs in updateAppLoop (Only if AppPlay is true) ---
   APP_POST_PHYSICS = 'APP_POST_PHYSICS', // physicsToTransform (Syncing SAB to ECS)
   /**
    * Standard gameplay systems. Work in the ECS TRANSFORM domain here — TRANSFORM already holds
