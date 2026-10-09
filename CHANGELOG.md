@@ -4,6 +4,15 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-09 — architecture-and-gameplay-contracts
+
+### Project
+
+**Added**
+
+- The target architecture for the p600 refactoring (`docs/plans/_DONE_p602_architecture-and-target-structure.md`): a kernel and opt-in features installed explicitly through `InitEngine`, one `aekasha` alias root (`aekasha`, `aekasha/<feature>`, `aekasha/toolkit/*`), debug code next to its feature, a UI kit, a pure `utils/`, PascalCase module names, the generated data out of the engine, and the boundaries as lint rules. Stage B builds on these decisions; nothing in `src/` moves yet.
+- The move map, `npx tsx devTools/refactor/moveMap.ts [--check]` (`devTools/refactor/`): the target layout as rules (`moveRules.ts`) applied to the tracked tree. It writes `moveMap.json` (every engine and toolkit file's target, and the app files that move, for p608's codemod), `layoutReport.md` (the import graph checked against the target layout: 101 imports the layout doesn't allow, no cycles between features) and `entryExports.json` (each documented export under its target entry point, with who imports it today). It fails on a file no rule maps; `--check` exits 1 when an output is stale. Its import graph comes from the TypeScript AST.
+
 ## 2026-10-09 — mega-refactoring-safety-net
 
 ### Engine 4.15.0 (Afternoon)

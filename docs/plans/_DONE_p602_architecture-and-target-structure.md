@@ -1,4 +1,4 @@
-Status: draft | study — not-implemented
+Status: implemented (Phases 1-3)
 Category: Architecture, Refactoring
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p603_gameplay-architecture-contracts.md, p604_multiplayer-viability-study.md, p605_coding-standards-and-documentation-tooling.md, p606_layering-inversion-and-public-entry.md, p608_engine-folder-restructure.md
@@ -25,12 +25,13 @@ The facts behind the decisions are in p600 §2 (layering, folders, bundle, docs)
 
 ## 2. Decisions
 
-Each is **Recommended** until Phase 1 confirms it.
+Each was **Recommended** until Phase 1 confirmed it; the "As decided" list under each is what
+Stage B builds on (confirmed 2026-10-09).
 
 ### D1. The engine stays a folder behind path aliases
 
-- `aekasha` → `src/_engine/index.ts` and `aekasha/*` → the feature entries; `aekasha-toolkit/*` →
-  the toolkit. TS `paths` plus Vite `resolve.alias` (the first aliases the repo has; CLAUDE.md
+- `aekasha` → `src/_engine/index.ts`, `aekasha/<feature>` → the feature entries and
+  `aekasha/toolkit/*` → the toolkit. TS `paths` plus Vite `resolve.alias` (the first aliases the repo has; CLAUDE.md
   says there are none today).
 - **Not a workspace package yet.** A package (npm workspaces, publishable) would enforce the
   boundary physically, but the repo is a template people copy and modify, and the alias gives the
@@ -38,6 +39,16 @@ Each is **Recommended** until Phase 1 confirms it.
   import changes.
 - Folder names `_engine`, `toolkit`, `app` stay: the Hub's API URLs (`documentation/engine/…`),
   CLAUDE.md, the readme and every plan use them.
+
+**As decided:**
+
+- Confirmed, with one root for both: `aekasha`, `aekasha/<feature>`, `aekasha/toolkit/<category>`
+  (not `aekasha-toolkit/*`). If the engine is ever published, the package is renamed from
+  `aekasha-js` to `aekasha`, so the import paths still don't change.
+- `aekasha/toolkit/*` is listed before `aekasha/*` wherever the aliases are matched in order.
+- p606 sets the aliases everywhere code is resolved: `tsconfig.json`'s `paths` (which TypeDoc
+  and `tsx` read), Vite's `resolve.alias` (the workers' builds too), and `vitest.config.ts`
+  (standalone: it doesn't read `vite.config.ts`).
 
 ### D2. A kernel and opt-in features
 
@@ -79,6 +90,39 @@ src/_engine/
 - Big modules are split along the way (p614 splits `PhysicsAPI.ts` into world, rigid body,
   collider, query and joint modules under `features/physics/`), but p608 only moves.
 
+**As decided:**
+
+- Confirmed, with the spatial index as a feature that **owns light object culling**:
+  `core/ECS/LightObjectCullingSystem.ts` moves into `features/spatial/`. Without `spatial()`,
+  lights aren't culled by distance and the `spatialIndex` entity flag does nothing.
+- `core/Raycast.ts` (with `RayDebugTypes.ts`) casts three's `Raycaster` against `Object3D`s and
+  isn't physics: it goes to `kernel/render/`. The physics ray casts are `PhysicsAPI`'s `castRay*`
+  and stay in `features/physics/`; p600's roadmap row for p614 ("raycast") means those.
+- Workers go with their feature: `workers/assetsWorker.ts` and `workers/assets/` to
+  `kernel/assets/worker/`, `workers/physicsWorker.ts` and `workers/physics/` to
+  `features/physics/worker/`.
+- What the sketch above leaves out (Phase 2 places each in the move map): `styles/` goes to `ui/`
+  (`debugger.scss` to `debug/`); `types/` stays at the engine root; `3dModels/`'s Blender sources
+  go next to the code that uses their output (the 3D symbols to `debug/`, `characterObstacles.blend`
+  to the app); `core/PropertyLoader.ts` merges the debug overrides into camera and light props, so
+  it's a candidate for `debug/`.
+- **Kernel code imports features in more places than §4's risk 2 lists** (checked 2026-10-09,
+  runtime imports only):
+  - `core/MainLoop.ts` → physics (`stepPhysics`), PostFX, viewports;
+  - `core/Snapshot.ts` → PostFX;
+  - `core/Scene.ts`, `core/SceneLoader.ts`, `core/Assets/SceneAssetRelease.ts` → sky box, physics,
+    characters, lines, spatial;
+  - `core/Import/` → physics (`MeshColliderGeometry.ts`, `SpawnImported.ts`) and LOD
+    (`LodChainGLTF`, `LodChainRequests`);
+  - the assets worker → LOD (`LodSimplify`, `LodChainGLTF`);
+  - `core/ECS.ts`, `core/ECS/ECSCoreComponents.ts`, `core/Config.ts` → `Physics/PhysicsAPITypes`;
+  - `InitApp.ts` → every feature (D8's install list replaces it).
+
+  Each becomes a seam the feature fills from `install`: a fixed-step hook in the loop, a render
+  pipeline hook (PostFX, viewports, snapshots), scene enter / exit hooks, import extensions, the
+  assets worker's job kinds, and the physics config and component types moved into the feature
+  (declaration merging, p600 §3.1). p606 designs them.
+
 ### D3. The public entry points
 
 - `src/_engine/index.ts` (kernel) and `src/_engine/features/<name>/index.ts` (one per feature)
@@ -105,6 +149,10 @@ src/_engine/
   `PercentagePieHtml.ts`.
 - p800 (the debugger UI overhaul) replaces Tweakpane inside this structure later.
 
+**As decided:**
+
+- Confirmed: colocated. `utils/UI/PercentagePieHtml.ts` is the debug-only module in `utils/UI/`.
+
 ### D5. A UI kit apps use
 
 - `ui/` gathers `utils/CMP.ts`, `core/HUD.ts`, `core/UI/*` (DraggableWindow, DialogWindow,
@@ -114,6 +162,10 @@ src/_engine/
   (p990's item, p607).
 - The debugger is the kit's first consumer, not its owner. p800's components (buttons, tables,
   graphs, …) are added here.
+
+**As decided:**
+
+- Confirmed. The global styles are `styles/` (see D2's As decided).
 
 ### D6. `utils/` is pure
 
@@ -133,6 +185,19 @@ src/_engine/
     `world/characterTestObstacles.ts` → the app (only app scenes use them).
   - `materials/*Pattern.ts` (no importers) are deleted; `commontTypes.ts` merges into its one user.
 
+**As decided:**
+
+- Confirmed (both claims checked: the pattern files have no importers, and `commontTypes.ts`'s one
+  user is `followObjectCameraRig.ts`). `utils/jsIdentifier.ts` is pure and stays.
+- Found by Phase 2's move map:
+  - `utils/constants.ts` isn't pure (three's shadow map types and direction vectors): it's split
+    per export like `helpers.ts`, the three objects to `kernel/render/ThreeMath.ts`.
+  - `utils/stats/IntervalCounterStats.ts` stays in `utils/` (not `debug/`): it's pure, and the
+    ray and physics stats count with it at runtime.
+  - `utils/ECSStressTest.ts` goes to `kernel/ecs/debug/` (not the app): the ECS debug tab's
+    benchmark uses it.
+  - `utils/PromiseResolver.ts` imports `core/Config.ts` (`isDebugEnvironment`): p606 removes it.
+
 ### D7. Naming
 
 - **Files:** PascalCase for every module in the engine and the toolkit (`SkyTime.ts`,
@@ -144,6 +209,16 @@ src/_engine/
 - **No same-name-different-case files** (`helpers.ts` / `Helpers.ts`).
 - The app: one folder per scene (`src/app/scenes/<sceneId>/` with its `.scene.json`, `.ts` and
   `_dbg__` module), the shared asset JSONs in their type folders as today.
+
+**As decided:**
+
+- Confirmed, with one rule and one exception: every module in the engine and the toolkit is
+  PascalCase, except **a file named after an asset id**, which keeps the id (`asteroid.tsl.ts`
+  next to `asteroid.material.json`).
+- The renames, all in p608's codemod (none before it): about 50 engine modules (the 19 schemas,
+  the sky box's layers and `presets.ts` / `legacySkyBox.ts`, the worker modules, the camelCase
+  utils) and the toolkit's geometry modules and `triplanarProjection.ts`. The rule replaces p600
+  §3.6's "camelCase for data and helpers".
 
 ### D8. Installing a feature
 
@@ -159,11 +234,23 @@ src/_engine/
 - Toolkit modules and app plugins (today's `AppECSPlugins.ts`) use the same shape, so a
   third-party module (vehicles, networking) is one more entry in the list.
 
+**As decided:**
+
+- Confirmed: the explicit list is the only way, with no preset such as `defaultFeatures()` (a preset
+  would hide what the bundle holds). The template app's `src/index.ts` lists every feature, so a
+  copied template works, and deleting a line removes that feature.
+
 ### D9. Generated code moves out of the engine
 
 - `generatedAppData.json` and `generatedAppFns.ts` are app data: they move to `src/generated/`
   (still committed, still written by `gatherAppData`) and reach the engine
   through `InitEngine({ data })` (p606), so the engine imports no app path.
+
+**As decided:**
+
+- Confirmed. Today's importers of the generated files: `core/Scene.ts`, `core/SceneLoader.ts`,
+  `core/Material.ts`, `core/PostFX.ts`, the material editor, and the devTools (`gatherAppData.ts`,
+  `verify/baselines.ts`, `checkVersions.ts`).
 
 ### D10. Boundaries are lint rules
 
@@ -175,14 +262,19 @@ src/_engine/
 - The rules land in p606 as errors for the engine and as warnings for the app until p608's
   codemod has migrated it.
 
+**As decided:**
+
+- Confirmed. `eslint-plugin-import` 2.32.0 is a devDependency but `eslint.config.js` doesn't load
+  it yet; p606 adds it.
+
 ## 3. Phases
 
-### Phase 1: confirm the decisions
+### Phase 1: confirm the decisions — done
 
 Walk D1-D10 with the user, record each as confirmed or changed (with the reason) in an
 "As decided" list under each, and update p600 §3 where a decision changes a shared principle.
 
-### Phase 2: the move map
+### Phase 2: the move map — done
 
 1. `devTools/refactor/moveMap.json`: every file under `src/_engine/`, `src/toolkit/` and the app
    files that move, with its target path. Generated by a script from the current tree and the
@@ -192,9 +284,70 @@ Walk D1-D10 with the user, record each as confirmed or changed (with the reason)
 3. The list of public exports per entry point (from p601's `api.json`), so p606 can write the
    entries.
 
-### Phase 3: mark done
+**As built:**
+
+- `devTools/refactor/` (run `npx tsx devTools/refactor/moveMap.ts`, `--check` to verify the
+  outputs are current):
+  - `moveRules.ts` holds the decisions as rules (longest `from` wins, a folder rule applies D7's
+    PascalCase), and the exceptions as file rules with their reason. **The map is never edited by
+    hand:** p608 changes a rule and regenerates the map on a fresh `main`, and a new file without a
+    rule fails the run.
+  - `importGraph.ts` reads imports, re-exports, dynamic `import()`s and exports from the TypeScript
+    AST, so a name imported through a facade resolves to its declaring module, and an import of
+    names that are all types counts as type-only with or without `type`.
+  - `moveMap.ts` writes the three outputs below. It fails on an unmapped file, two files with one
+    target (also by case), a target onto a file that stays, a module name that isn't PascalCase,
+    and a split file's export without a target.
+- `moveMap.json`: 460 files (432 moves, 21 kept, 5 deleted, 1 merge, 1 split). By plan: p608
+  389, p609 69 (the toolkit categories and the app's scene folders), p606 2 (the generated data).
+  Each entry has `to`, `action`, `plan` and an optional `note`, and a split has a target per
+  export (`utils/helpers.ts`, `utils/constants.ts`).
+- `layoutReport.md` (item 2): **no cycles between features** (character → physics, instancing →
+  lod and spatial, lod → spatial). 101 imports the target layout doesn't allow:
+  - kernel → feature: 50 imports in 19 files (29 runtime, 18 type-only, 3 dynamic), the seams D2
+    lists;
+  - engine → app root files: 32 files, nearly all `AppECSRegistry.ts` (the stages), and the toolkit
+    → `AppECSRegistry.ts` in 6 (p600 §3.1: the engine owns its stages);
+  - engine → generated data: 5 (D9);
+  - `schemas/` → features: 4 (`impostorSchema.ts` → `ImpostorFormat`, `lodSchema.ts` → `LodTypes`,
+    `skyBoxSchema.ts` → the presets and the legacy conversion), and `_helperSchemas.ts` → the ECS
+    registry (a type). p606 either moves the code they need under `schemas/` or moves a feature's
+    schema into its feature;
+  - `ui/` → kernel: `DraggableWindow.ts` reads `Config.ts` and `MainLoop.ts`'s `addResizer`
+    (p606 / p617: the UI kit gets its own resize listener and its config handed in);
+  - `utils/` → kernel: `PromiseResolver.ts` (D6's As decided).
+
+  No static `_dbg__` import outside debug code. The report also lists the imports the codemod
+  rewrites for split, merged and deleted files, and the docs, Hub pages, configs and devTools
+  files that name a moving path (CLAUDE.md has 56 mentions).
+- `entryExports.json` (item 3): the 2,024 exports in `api.json` that aren't re-exports, under the
+  entry each lands in, each with who imports it today: `public` (the app, the toolkit, a Hub `api:`
+  link or the devTools; 339), `crossEntry` (only engine code of another entry; 336), `internal`
+  (only its own entry; 820, the `@internal` candidates) or `unreferenced` (529; part of it is API
+  the example app doesn't use). It's evidence for p606, not the decision.
+- Entry points: kernel and `utils/` → `aekasha`, each feature → `aekasha/<feature>`, `ui/` →
+  `aekasha/ui`, `debug/` → `aekasha/debug`, `schemas/` → `aekasha/schemas`, the toolkit →
+  `aekasha/toolkit/<category>`. p606 confirms or changes `aekasha/schemas` and where `utils/`
+  belongs.
+- Names the map chose: `InitApp.ts` → `kernel/init/InitEngine.ts`, `ViewManager.ts` →
+  `kernel/render/Views.ts`, `PhysicsManager.ts` → `features/physics/PhysicsEntity.ts`,
+  `LineManager.ts` → `features/lines/Lines.ts`, `GroupManager.ts` → `kernel/scene/Group.ts`,
+  `ENGINES.ts` → `backends/Engines.ts`, `DebugToolsManager.ts` → `debug/DebugTools.ts`, the
+  `debug/` framework's subfolders `profiler/`, `gpuMemory/`, `editors/` and `symbols/`. The
+  toolkit's `generateX.ts` become `geometry/generate/X.ts`. An app scene folder is named by the
+  scene id (`thirdPersonGym.scene.json`, id `thirdPersonGymScene` → `scenes/thirdPersonGymScene/`),
+  so the codemod rewrites each moved JSON's `sceneFile`.
+
+### Phase 3: mark done — done
 
 `CHANGELOG.md`: nothing (documents only). Mark the plan done; p606 and p608 cite its decisions.
+
+**As built:**
+
+- `CHANGELOG.md` has a Project entry after all (no part bumped, p600 §11): Phase 2 added tooling
+  (`devTools/refactor/`), not only documents.
+- The plans it blocked (p603, p604, p605, p606) lost their `Blocked by` line; p605's and p606's
+  stubs can now be expanded against the decisions above.
 
 ## 4. Risks and open questions
 
@@ -202,7 +355,10 @@ Walk D1-D10 with the user, record each as confirmed or changed (with the reason)
    are regenerated, and `api:` links that named a module path (`api:PhysicsAPI.createRigidBody`)
    are fixed in the same change. `yarn hub:build` lists every broken one.
 2. **Feature boundaries that aren't clean:** some kernel code calls into features today (the
-   scene loader resets the physics world, clears the sky box and releases spatial domains). These
-   become feature hooks (`onSceneExit`, `onSceneEnter`) in the install contract; p606 lists them.
+   scene loader resets the physics world, clears the sky box and releases spatial domains; the
+   loop steps physics and renders PostFX and the viewports; the importer builds physics colliders
+   and registers LOD chains; full list in D2's As decided). These become seams in the install
+   contract (scene enter / exit hooks, a fixed-step hook, a render pipeline hook, import
+   extensions); p606 designs them.
 3. **Plain PascalCase everywhere** renames 19 schema files and the sky box's camelCase modules:
    more churn in p608, for one rule without exceptions.

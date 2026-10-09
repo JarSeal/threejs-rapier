@@ -1,7 +1,6 @@
 Status: stub — not-implemented
 Category: Documentation, Dev tooling, Standards
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
-Blocked by: p602_architecture-and-target-structure.md
 Blocks: p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md (the standard they apply)
 Related: p604_multiplayer-viability-study.md (the simulation rules)
 

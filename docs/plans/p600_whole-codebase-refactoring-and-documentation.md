@@ -1,6 +1,6 @@
 Status: draft | epic — not-implemented
 Category: Refactoring, Documentation, Architecture, Build
-Blocks: \_DONE_p601_refactoring-safety-net-tests-and-baselines.md, p602_architecture-and-target-structure.md, p603_gameplay-architecture-contracts.md, p604_multiplayer-viability-study.md, p605_coding-standards-and-documentation-tooling.md, p606_layering-inversion-and-public-entry.md, p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p609_toolkit-and-app-restructure.md, p610_character-and-input-action-architecture.md, p611_sbp-tooling-profiles-and-marketing.md, p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md, p621_hub-docs-readme-and-claude-md-final.md
+Blocks: \_DONE_p601_refactoring-safety-net-tests-and-baselines.md, \_DONE_p602_architecture-and-target-structure.md, p603_gameplay-architecture-contracts.md, p604_multiplayer-viability-study.md, p605_coding-standards-and-documentation-tooling.md, p606_layering-inversion-and-public-entry.md, p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p609_toolkit-and-app-restructure.md, p610_character-and-input-action-architecture.md, p611_sbp-tooling-profiles-and-marketing.md, p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md, p621_hub-docs-readme-and-claude-md-final.md
 Related: p990_follow-ups-from-done-plans.md (its bundle size items move to p607), p200_component-query-caching.md (its main-camera cache lands in p612), p420_npc-simulation-tiers.md (fits p603's actor model), p500_restore-physics-snapshot.md (p604's rollback prerequisite), p302_material-and-texture-system-refactor.md (p613 leaves what it rewrites), p240_client-device-capability-sniffer.md (SBP-aware: its benchmark is a lazy chunk), `docs/templates/todo-plan-prompts.txt` (the original prompt, and the p800, p450, p070 and p770 prompts this epic sequences)
 
 # Whole Codebase Refactoring and Documentation — Epic
@@ -210,14 +210,15 @@ Every child plan follows these; p602 turns §3.1-§3.5 into exact decisions.
 ### 3.2 Public API
 
 - One entry point (`aekasha`, a TS path alias plus a Vite alias), with per-feature entry modules
-  (`aekasha/physics`, `aekasha/skybox`, …) so an import names what it costs. Only the entry points
+  (`aekasha/physics`, `aekasha/skybox`, …) so an import names what it costs, and the toolkit under
+  the same root (`aekasha/toolkit/*`, p602 D1). Only the entry points
   are documented; everything else is `@internal`.
 - The app and the toolkit import only entry points (a lint rule after p606).
 
 ### 3.3 Feature modules
 
-- A feature is installed by being used: importing its entry point and calling it, or an explicit
-  install in `InitEngine` (p602 picks one). Never by a module-level side effect.
+- A feature is installed explicitly, by listing it in `InitEngine`'s `features` (p602 D8; no
+  preset). Never by a module-level side effect.
 - Each feature owns its ECS registrations, its systems, its debug module and its Hub page.
 
 ### 3.4 Simulation vs presentation
@@ -232,7 +233,7 @@ Every child plan follows these; p602 turns §3.1-§3.5 into exact decisions.
 ### 3.5 Debug code
 
 - One gate and one pattern: the feature's public module stays thin, its debug implementation
-  lives in an `_dbg__` module next to the feature (p602 decides colocated vs central), and it is
+  lives in an `_dbg__` module next to the feature (colocated, p602 D4), and it is
   reached through one loader, compiled out of shipping builds (§4.1).
 - p800 (the debugger UI overhaul, not planned yet) replaces Tweakpane later, so p600 moves and
   documents debug code but doesn't polish its panels.
@@ -243,8 +244,8 @@ Every child plan follows these; p602 turns §3.1-§3.5 into exact decisions.
   (definitions), `get*` / `set*`, `load*Async` / `*Async` for promises, `on*` listeners that
   return their remover, `is*` / `has*` predicates.
 - Options objects for anything with more than two parameters or any optional one.
-- Files: PascalCase for modules exporting a feature or class, camelCase for data and helpers
-  (p602 writes the full rule and the renames).
+- Files: PascalCase for every module; the one exception is a file named after an asset id
+  (`asteroid.tsl.ts`). p602 D7 has the rule and the renames.
 
 ### 3.7 What a move must keep
 
@@ -422,7 +423,7 @@ standards, the structure and the SBP strategy to it would make every session pay
 | Stage | Plan                                                      | What                                                                                                                   | Blocked by              |
 | ----- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | A     | \_DONE_p601_refactoring-safety-net-tests-and-baselines.md | Vitest, the scene runner (snapshots, console errors, determinism hashes), bundle / API / coverage baselines            | —                       |
-| A     | p602_architecture-and-target-structure.md                 | The decisions: folder map, public entry, feature-module contract, debug placement, naming, boundaries                  | —                       |
+| A     | \_DONE_p602_architecture-and-target-structure.md          | The decisions: folder map, public entry, feature-module contract, debug placement, naming, boundaries                  | —                       |
 | A     | p603_gameplay-architecture-contracts.md                   | Actors, controllers, intents, brains, animation, world systems; the stub plans                                         | p602                    |
 | A     | p604_multiplayer-viability-study.md                       | The verdict, the constraints, an optional two-client spike                                                             | p602                    |
 | A     | p605_coding-standards-and-documentation-tooling.md        | Coding standards, JSDoc style, eslint-plugin-jsdoc + TypeDoc validation as a ratchet, the CLAUDE.md split              | p602                    |
@@ -460,7 +461,8 @@ other once their blockers land, and can run in parallel branches.
     one long-lived branch.
 - **Stage C** plans are patch or minor bumps per part (documentation and internal refactors are
   patches; a new public API is a minor).
-- Every child plan is its own branch and PR, and runs `yarn checkVersions --against main`.
+- Every child plan is its own branch and PR, and runs `yarn checkVersions --against main`. The
+  exception is Stage A's document plans, which may share a branch (p602 and p603 do).
 
 ## 12. Risks and open questions
 
