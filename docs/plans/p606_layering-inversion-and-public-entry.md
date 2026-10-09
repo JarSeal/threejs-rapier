@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Architecture, Refactoring
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage B, engine major)
-Blocked by: p601_refactoring-safety-net-tests-and-baselines.md, p602_architecture-and-target-structure.md
+Blocked by: p602_architecture-and-target-structure.md
 Blocks: p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md
 Related: p604_multiplayer-viability-study.md (the headless-core rules)
 

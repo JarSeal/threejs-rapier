@@ -173,6 +173,23 @@ The build checks the coverage both ways (when it runs in the repo, where CLAUDE.
 - A name in `aek:covers` that CLAUDE.md doesn't have fails the build, so a renamed section fails it until `aek:covers` follows.
 - An Architecture section that no page covers is a warning at its line in CLAUDE.md. Sections that aren't features (the folder split, plans, the bootstrap flow, the Hub itself, the build config notes) are listed in `hub.config.ts`'s `coverageIgnore`. A new subsystem section goes into a feature page's `aek:covers`, or into `coverageIgnore` when it isn't a feature.
 
+## Local-only content
+
+```md
+::: dev-only
+
+## Check your changes
+
+`yarn test` runs the unit tests.
+:::
+```
+
+- What's inside shows only in the dev server's Hub (`yarn dev`, `/hub/`), in a dashed box marked "Local only". `yarn hub:build` skips its lines before parsing them, so nothing of it is in the built Hub: no text, heading, "On this page" entry, search result or image.
+- Use it for what only people working on the repo need: its test and verify commands, the test bridge.
+- The text after the name is the box's title (inline Markdown, default "Working on the repo").
+- `yarn hub:build` doesn't check the links inside it. The dev server does, and shows their errors on the page.
+- Another directive gets the same behaviour with `devOnly: true` in its `registerHubDirective` definition.
+
 ## Callouts
 
 ```md
@@ -196,7 +213,7 @@ Nested.
 ::::
 ```
 
-The other directives are `code-group` ([Code groups](#code-groups)), `scene` ([Scene panels](#scene-panels)), `cards` ([Cards](#cards)) and `claude-md` ([CLAUDE.md sections](#claudemd-sections)). A new one is added through `registerHubDirective(name, { open, close })` in `devTools/hub/markdown.ts`, without touching the parser.
+The other directives are `code-group` ([Code groups](#code-groups)), `scene` ([Scene panels](#scene-panels)), `cards` ([Cards](#cards)), `claude-md` ([CLAUDE.md sections](#claudemd-sections)) and `dev-only` ([Local-only content](#local-only-content)). A new one is added through `registerHubDirective(name, { open, close })` in `devTools/hub/markdown.ts`, without touching the parser.
 
 ## Code blocks
 

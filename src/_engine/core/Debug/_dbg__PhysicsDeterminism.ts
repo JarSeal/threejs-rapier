@@ -52,9 +52,22 @@ type ActiveRun = {
   rafId: number;
 };
 
+/** A finished probe run, as the `[PhysicsProbe] <sceneId> | <config> | <steps> | <hash>` line logs it */
+export type PhysicsProbeReport = {
+  sceneId: string;
+  /** `<workerTarget>/<transport> | <interpolation>` */
+  config: string;
+  steps: number;
+  hash: string;
+  bodyCount: number;
+  /** Characters aren't hashed */
+  characterCount: number;
+};
+
 /** Steps to probe on every scene enter; null = disarmed. */
 let armedSteps: number | null = null;
 let activeRun: ActiveRun | null = null;
+const reportListeners = new Set<(report: PhysicsProbeReport) => void>();
 
 // FNV-1a (32-bit) over each Float32's bit pattern and each key's char codes.
 const f32 = new Float32Array(1);
@@ -253,6 +266,25 @@ const report = (run: ActiveRun) => {
     bodies: bodies.map(({ key, values }) => ({ key, values })),
   };
   lsSetItem(LS_KEY, runs);
+
+  const result: PhysicsProbeReport = {
+    sceneId: run.sceneId,
+    config,
+    steps: run.steps,
+    hash,
+    bodyCount: bodies.length,
+    characterCount: characters.length,
+  };
+  for (const listener of reportListeners) listener(result);
+};
+
+/** Calls `fn` with every finished probe run (the scene runner's test bridge reads the hashes
+ * through this, not the log). Returns its remover. */
+export const onPhysicsProbeReport = (fn: (report: PhysicsProbeReport) => void) => {
+  reportListeners.add(fn);
+  return () => {
+    reportListeners.delete(fn);
+  };
 };
 
 const stopRun = () => {

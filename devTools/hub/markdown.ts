@@ -18,7 +18,8 @@ import type { HubBuildMode, HubHeading, HubPage } from './types';
  * - heading anchors: slugged ids (unique per page, slot ids included), a `#` link, and the
  *   page's heading list (the TOC and `hub-data.js`);
  * - directives `::: name args` … `:::`, from a registry other plans add to
- *   (`registerHubDirective`); the callouts `tip`, `note`, `warning` and `danger` are the first.
+ *   (`registerHubDirective`); the callouts `tip`, `note`, `warning` and `danger` are the first,
+ *   and `dev-only` (content the `public` build leaves out unparsed: `HubDirective.devOnly`).
  *   Nest one in another with a longer marker on the outer one (`::::`);
  * - `hub:` links (`[physics](hub:examples/physics#setup)`), resolved relative to the page and
  *   checked after every page is rendered (`HubMarkdownEnv.links`);
@@ -140,6 +141,12 @@ export type HubDirective = {
   open: (args: string, ctx: HubDirectiveContext) => string;
   /** The HTML after it */
   close: (args: string, ctx: HubDirectiveContext) => string;
+  /**
+   * Only in `dev`: in a `public` build its lines are skipped before they're parsed, so nothing in
+   * it reaches the page (no HTML, headings, TOC entry, search text or images) and its links aren't
+   * checked there (the dev server's page shows their errors)
+   */
+  devOnly?: boolean;
 };
 
 const directives = new Map<string, HubDirective>();
@@ -163,6 +170,17 @@ for (const [kind, defaultTitle] of Object.entries(CALLOUT_TITLES)) {
     close: () => '</aside>\n',
   });
 }
+
+/**
+ * `::: dev-only [title]` … `:::`: content for the people working on the repo (its test and verify
+ * commands), shown by the dev server's Hub only. The title is inline Markdown.
+ */
+registerHubDirective('dev-only', {
+  devOnly: true,
+  open: (args, { md, env, line }) =>
+    `<aside class="hubDevOnly">\n<p class="hubDevOnlyTitle">${env.icons.render('wrench', env.file, line)}<span>${md.renderInline(args || 'Working on the repo', env)}</span><span class="hubDevOnlyBadge">Local only</span></p>\n`,
+  close: () => '</aside>\n',
+});
 
 const MARKER = 0x3a; // ':'
 const MIN_MARKERS = 3;
@@ -207,6 +225,11 @@ const directiveRule = (state: StateBlock, startLine: number, endLine: number, si
       startLine + 1,
       `Unknown directive "${name}" (known: ${[...directives.keys()].join(', ')})`
     );
+  }
+
+  if (directives.get(name)?.devOnly && env.mode !== 'dev') {
+    state.line = nextLine + (isClosed ? 1 : 0);
+    return true;
   }
 
   const oldParent = state.parentType;

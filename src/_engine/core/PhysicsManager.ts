@@ -611,6 +611,8 @@ type WorldInterpolationState = {
   hasTarget: boolean;
   isClockAnchored: boolean;
   readout: PhysicsInterpolationReadout;
+  /** Renders the newest snapshot, no blend (setPhysicsInterpolationPinnedToNewest). */
+  isPinnedToNewest: boolean;
 };
 
 // Per world: entity ids (and so history keys) are only unique within one world.
@@ -637,6 +639,7 @@ const getWorldInterpolationState = (world: ECSWorld) => {
       hasTarget: false,
       isClockAnchored: false,
       readout: { lagMs: 0, rate: 1, delayMs: 0, intervalMs: 0, errorMs: 0, resets: 0 },
+      isPinnedToNewest: false,
     };
     worldInterpolationStates.set(world, state);
   }
@@ -655,6 +658,18 @@ const resetInterpolationHistory = (state: WorldInterpolationState) => {
   state.wasLastIntervalOutlier = false;
   state.hasTarget = false;
   state.isClockAnchored = false;
+};
+
+/**
+ * Debug and test only: while pinned, every interpolated body of `world` is drawn at the newest
+ * visible snapshot, with no blend toward it. The scene runner's test bridge pins it once the
+ * determinism probe has held physics, so a still frame shows the exact step the probe hashed,
+ * not a pose between the last two steps that depends on frame timing (p601).
+ * @param world (ECSWorld) the world
+ * @param isPinned (boolean) whether to pin
+ */
+export const setPhysicsInterpolationPinnedToNewest = (world: ECSWorld, isPinned: boolean) => {
+  getWorldInterpolationState(world).isPinnedToNewest = isPinned;
 };
 
 /** Live interpolation clock values of `world`, for the debug tab. Stable object, updated every
@@ -875,7 +890,8 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
       }
     }
   }
-  const renderClock = state.renderClock;
+  // Pinned: the newest snapshot as is (the servoed clock keeps running underneath)
+  const renderClock = state.isPinnedToNewest ? state.stamps[HISTORY_SLOTS - 1] : state.renderClock;
 
   const toMs = timestepRatio * 1000;
   const readout = state.readout;

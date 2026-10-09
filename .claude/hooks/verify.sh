@@ -22,7 +22,7 @@ if [[ -n "$(git status --porcelain -- package.json)" ]]; then
 fi
 
 # Nothing changed in the code (src/, the Hub, the dev tools; new files included) — skip.
-[[ -z "$(git status --porcelain -- src hub devTools vite.config.ts)" ]] && exit 0
+[[ -z "$(git status --porcelain -- src hub devTools vite.config.ts vitest.config.ts)" ]] && exit 0
 
 yarn lint --fix >/dev/null 2>&1
 
@@ -38,6 +38,16 @@ if ! OUT=$(yarn tsc --noEmit 2>&1 && yarn tsc -p hub --noEmit 2>&1); then
     echo "$OUT" | tail -10 >&2
   fi
   exit 2
+fi
+
+# The unit tests (vitest.config.ts), when what they test changed: not for a Hub-only change
+if [[ -n "$(git status --porcelain -- src devTools vitest.config.ts)" ]]; then
+  if ! TEST_OUT=$(yarn -s test 2>&1); then
+    echo "Unit tests failed. Fix before finishing:" >&2
+    echo "$TEST_OUT" | grep -E '(FAIL|×|AssertionError|Error:|❯ .*:[0-9]+:[0-9]+)' | head -30 >&2
+    echo "$TEST_OUT" | tail -5 >&2
+    exit 2
+  fi
 fi
 
 exit 0

@@ -40,6 +40,8 @@ let elapsed = 0;
 let discardNextElapsedDelta = true; // the first frame's delta is time since module load
 let mainLoopInitiated = false;
 let lastRenderTime = performance.now();
+// Debug and test only: when set, every frame advances by this many seconds (setFixedFrameDelta)
+let fixedFrameDelta: number | null = null;
 const resizers: { [key: string]: () => void } = {};
 
 /** Max FPS limiter: whether to skip rendering this frame. The reference time advances by
@@ -86,6 +88,21 @@ const loopState: LoopState = {
   isLoadingScene: false,
   isSceneSuspended: false,
 };
+
+/**
+ * Debug and test only: makes every frame advance by `seconds` of time, whatever the wall clock
+ * says (null: real time again). Physics stepping takes the same delta, so at the default 60 Hz
+ * timestep a 1/60 s frame is exactly one step, and everything driven by the loop's deltas (app
+ * systems, scene loopers, the elapsed time, the day-night cycle) is the same on every run for the
+ * same number of frames. The scene runner's test bridge sets it (p601).
+ * @param seconds (number | null) the frame delta in seconds, or null
+ */
+export const setFixedFrameDelta = (seconds: number | null) => {
+  fixedFrameDelta = seconds !== null && seconds > 0 ? seconds : null;
+};
+
+/** The fixed frame delta in seconds (setFixedFrameDelta), or null when frames run in real time */
+export const getFixedFrameDelta = () => fixedFrameDelta;
 
 /**
  * Returns the main loop delta time
@@ -241,7 +258,7 @@ const mainLoopForDebug = async () => {
 
   timer.update();
   latchPhysicsSnapshot();
-  const dt = timer.getDelta();
+  const dt = fixedFrameDelta ?? timer.getDelta();
 
   if (loopState.masterPlay) {
     delta = dt * loopState.playSpeedMultiplier;
@@ -314,7 +331,7 @@ const mainLoopForProduction = async () => {
   frameProbe?.begin(performance.now());
   timer.update();
   latchPhysicsSnapshot();
-  const dt = timer.getDelta();
+  const dt = fixedFrameDelta ?? timer.getDelta();
   if (loopState.masterPlay) {
     delta = dt * loopState.playSpeedMultiplier;
     requestAnimationFrame(mainLoop);
@@ -355,7 +372,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
   frameProbe?.begin(performance.now());
   timer.update();
   latchPhysicsSnapshot();
-  const dt = timer.getDelta();
+  const dt = fixedFrameDelta ?? timer.getDelta();
 
   if (loopState.masterPlay) {
     delta = dt * loopState.playSpeedMultiplier;

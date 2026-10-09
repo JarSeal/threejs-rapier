@@ -232,3 +232,19 @@ We should add a syntax for describing and recognizing custom engines (and why no
 We should also add versioning for the Hub.
 
 ************************************
+
+Create "Snapshot window" plan in docs/plans/p105_snapshot-window.md
+
+Category: Snapshot
+
+UNDER_CONSTRUCTION
+We should add a snapshot window that has different options and a button to take the snapshot:
+- size
+- save location
+- set default save location button
+- Take snapshot button
+- What else?
+
+The window can be opened from the AE menu dropdown or with shortcut Ctrl+Enter. If the window is open then using the shortcut again (Ctrl+Enter) would take the snapshot as well.
+
+************************************

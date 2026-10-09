@@ -149,6 +149,32 @@
   }
 }
 
+// `::: dev-only` (p601): content only the dev server's Hub shows, framed like the dev notes below
+.hubDevOnly {
+  margin: 1.5rem 0;
+  padding: 0.25rem 1.1rem 0.5rem;
+  border: 1px dashed var(--hub-border-strong);
+  border-radius: 6px;
+}
+
+.hubDevOnlyTitle {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  color: var(--hub-text-muted);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.hubDevOnlyBadge {
+  margin-left: auto;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--hub-border-strong);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
 // `::: claude-md` (p555): a feature page's dev-only line to its CLAUDE.md sections
 .hubDevNote {
   display: flex;

@@ -25,12 +25,12 @@
   },
   "typedocOptions": {
     "entryPoints": ["src/_engine/**/*.ts", "src/toolkit/**/*.ts"],
-    "exclude": ["**/_dbg__*", "**/generatedApp*"],
+    "exclude": ["**/_dbg__*", "**/generatedApp*", "**/*.test.ts"],
     "out": "docs-api",
     "theme": "default",
     "excludePrivate": true,
     "readme": "none"
   },
   "exclude": ["node_modules"],
-  "include": ["src/**/*", "devTools/**/*.ts", "vite.config.ts", "vite-env.d.ts"]
+  "include": ["src/**/*", "devTools/**/*.ts", "vite.config.ts", "vitest.config.ts", "vite-env.d.ts"]
 }

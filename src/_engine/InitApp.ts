@@ -61,6 +61,7 @@ import { registerEnvBallModule } from './debug/EnvBall';
 import { registerMaterialEditor } from './debug/MaterialEditor';
 import { registerGPUMemoryDebugGUI } from './debug/GPUMemory';
 import { registerProfiler } from './debug/Profiler';
+import { registerTestBridge } from './debug/TestBridge';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -144,6 +145,10 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     // Before appStartFn, so it is ready for the first scene load (it needs no renderer yet)
     initPostFX();
+
+    // The scene runner's window.__AEK_TEST__ (?aekTest=true; debug env and prod test mode).
+    // Before the first scene load, so it sees that load and its probe report
+    await registerTestBridge();
 
     await appStartFn();
 

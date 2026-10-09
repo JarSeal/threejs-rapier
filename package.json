@@ -1,11 +1,11 @@
 {
   "name": "aekasha-js",
-  "version": "4.14.0",
+  "version": "4.15.0",
   "description": "High-performance WebGPU application powered by the Ækasha framework.",
   "repository": "https://github.com/JarSeal/aekasha-js.git",
   "author": "JarSeal",
   "engine_metadata": {
-    "version": "4.14.0",
+    "version": "4.15.0",
     "codename": "Afternoon",
     "name": "Ækasha",
     "fullName": "Ækasha Framework",
@@ -57,6 +57,10 @@
     "dev:test": "yarn copyDecoders && yarn gatherAppData && VITE_APP_ENV=test vite serve --port 8080 --host",
     "dev:production": "yarn copyDecoders && yarn gatherAppData && vite serve --port 8080 --host",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify:scenes": "yarn copyDecoders && yarn gatherAppData && tsx ./devTools/verify/scenes.ts",
+    "verify:baselines": "tsx ./devTools/verify/baselines.ts",
     "build": "yarn copyDecoders && NODE_ENV=production yarn gatherAppData && tsc && tsc -p hub && vite build && yarn gatherAppData && yarn hub:build",
     "build:test": "yarn copyDecoders && NODE_ENV=production yarn gatherAppData && tsc && tsc -p hub && VITE_APP_ENV=test vite build && yarn gatherAppData && yarn hub:build",
     "docs": "typedoc",
@@ -95,6 +99,7 @@
     "linkedom": "0.18.13",
     "markdown-it": "14.3.1",
     "minisearch": "7.2.0",
+    "playwright-core": "1.63.0",
     "prettier": "3.2.5",
     "rollup-plugin-visualizer": "7.0.1",
     "sass": "1.104.0",
@@ -105,6 +110,7 @@
     "typescript": "5.4.5",
     "vite": "6.4.3",
     "vite-plugin-wasm": "3.4.1",
+    "vitest": "5.0.3",
     "zod": "4.4.3"
   },
   "engines": {

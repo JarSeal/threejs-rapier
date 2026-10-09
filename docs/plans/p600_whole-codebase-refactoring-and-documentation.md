@@ -1,6 +1,6 @@
 Status: draft | epic — not-implemented
 Category: Refactoring, Documentation, Architecture, Build
-Blocks: p601_refactoring-safety-net-tests-and-baselines.md, p602_architecture-and-target-structure.md, p603_gameplay-architecture-contracts.md, p604_multiplayer-viability-study.md, p605_coding-standards-and-documentation-tooling.md, p606_layering-inversion-and-public-entry.md, p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p609_toolkit-and-app-restructure.md, p610_character-and-input-action-architecture.md, p611_sbp-tooling-profiles-and-marketing.md, p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md, p621_hub-docs-readme-and-claude-md-final.md
+Blocks: \_DONE_p601_refactoring-safety-net-tests-and-baselines.md, p602_architecture-and-target-structure.md, p603_gameplay-architecture-contracts.md, p604_multiplayer-viability-study.md, p605_coding-standards-and-documentation-tooling.md, p606_layering-inversion-and-public-entry.md, p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p609_toolkit-and-app-restructure.md, p610_character-and-input-action-architecture.md, p611_sbp-tooling-profiles-and-marketing.md, p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md, p621_hub-docs-readme-and-claude-md-final.md
 Related: p990_follow-ups-from-done-plans.md (its bundle size items move to p607), p200_component-query-caching.md (its main-camera cache lands in p612), p420_npc-simulation-tiers.md (fits p603's actor model), p500_restore-physics-snapshot.md (p604's rollback prerequisite), p302_material-and-texture-system-refactor.md (p613 leaves what it rewrites), p240_client-device-capability-sniffer.md (SBP-aware: its benchmark is a lazy chunk), `docs/templates/todo-plan-prompts.txt` (the original prompt, and the p800, p450, p070 and p770 prompts this epic sequences)
 
 # Whole Codebase Refactoring and Documentation — Epic
@@ -56,7 +56,7 @@ work is split into the plans in §10.
 - `generatedAppFns.ts` statically imports the app's and toolkit's `.tsl.ts` files, and
   `SceneLoader`, `PostFX`, `Material` and `_dbg__MaterialEditor` import it.
 - **Toolkit → app root:** `toolkit/ecs/effects/{HoverEffect, SunShadowFit, FollowTool,
-  MutualGravity}.ts` import `AppECSRegistry`, which imports them back (and
+MutualGravity}.ts` import `AppECSRegistry`, which imports them back (and
   `app/examples/ecs/SpinComponent`). Three of them read their own storage through `as any`.
 - **Extending the ECS means editing app files:** component keys are strings merged into
   `ComponentType` in `ECSCoreComponents.ts`; a third-party module (vehicles, networking) has to
@@ -94,10 +94,10 @@ work is split into the plans in §10.
   or raw DOM; DraggableWindow, DialogWindow, DropDown and `SvgIcon` are engine-only.
 - **`core/` is half flat, half folders:** feature pairs (`Character.ts` + `Character/`, `ECS.ts` +
   `ECS/`, `PostFX.ts` + `PostFX/` holding one types file, `LineManager.ts` + `Lines/`, `Raycast.ts`
-  + `RayDebugTypes.ts`), physics over four flat files (`PhysicsAPI`, `PhysicsManager`,
-  `PhysicsTiers`, `PhysicsTierPolicy`) plus `Physics/`, and `Texture`, `TextureArray`,
-  `TextureAtlas` flat. `*Manager` on some modules only (Camera, Light, Mesh, Group, Line, Physics,
-  View) and plain names on the rest (Geometry, Material, Texture, Scene, Renderer).
+  - `RayDebugTypes.ts`), physics over four flat files (`PhysicsAPI`, `PhysicsManager`,
+    `PhysicsTiers`, `PhysicsTierPolicy`) plus `Physics/`, and `Texture`, `TextureArray`,
+    `TextureAtlas` flat. `*Manager` on some modules only (Camera, Light, Mesh, Group, Line, Physics,
+    View) and plain names on the rest (Geometry, Material, Texture, Scene, Renderer).
 - **The app:** about 25 scene files flat in `src/app/` with mixed naming (`scene01_v2.ts`,
   `scene_thirdPersonGym.ts`, `largeWorld.ts`) next to the asset-type folders.
 - **The toolkit:** `toolkit/ecs/InstancedMeshPool*.ts` are deprecated re-exports of
@@ -107,15 +107,15 @@ work is split into the plans in §10.
 
 The main chunk `index-*.js` is 214 modules, **6.60 MB rendered, 1.77 MB gzip**.
 
-| Module                  | Rendered | Gzip   |
-| ----------------------- | -------- | ------ |
-| `rapier.mjs`            | 2.24 MB  | 829 kB |
-| `three.webgpu.js`       | 2.23 MB  | 433 kB |
-| `three.core.js`         | 1.03 MB  | 202 kB |
-| GLTFLoader              | 116 kB   |        |
-| `core/PhysicsAPI.ts`    | 92 kB    |        |
-| `Physics/EngineRapier`  | 64 kB    |        |
-| `core/UI/DraggableWindow` | 33 kB  |        |
+| Module                    | Rendered | Gzip   |
+| ------------------------- | -------- | ------ |
+| `rapier.mjs`              | 2.24 MB  | 829 kB |
+| `three.webgpu.js`         | 2.23 MB  | 433 kB |
+| `three.core.js`           | 1.03 MB  | 202 kB |
+| GLTFLoader                | 116 kB   |        |
+| `core/PhysicsAPI.ts`      | 92 kB    |        |
+| `Physics/EngineRapier`    | 64 kB    |        |
+| `core/UI/DraggableWindow` | 33 kB    |        |
 
 - **Rapier is in the main chunk even with `WORKER_THREAD`** (the app's default): `ENGINES.ts:23`
   loads the backend with a dynamic `import()`, but `ENGINES.ts:3` imports EngineRapier statically
@@ -166,11 +166,10 @@ toolkit minus `_dbg__*` and `generatedApp*`):
   `probes?`, `config?`) and `CharacterBodyPlan` are pluggable, and `CharacterIntent` (move, turn,
   `faceYaw`, jump, run, crouch) is a device-free input boundary whose doc names AI, cutscenes and
   network code as writers. Hardwired: `createCharacter` always creates a physics entity,
-  `DynamicCharacter` is the only controller, the input schemes (TANK, WORLD_FIXED,
+  `DynamicCharacter` is the only controller, the input schemes (TANK, WORLD*FIXED,
   CAMERA_RELATIVE) are a closed keyboard-only union wired inside `createDynamicCharacter`,
-  `CharacterData` mixes state, `_` config and `__` internals, and the intent is humanoid-shaped
-  (no throttle, steer, brake). No hook for animation, IK or vehicles beyond
-  `onLocomotionStateChange`.
+  `CharacterData` mixes state, `*`config and`\_\_`internals, and the intent is humanoid-shaped
+(no throttle, steer, brake). No hook for animation, IK or vehicles beyond`onLocomotionStateChange`.
 - **Input:** `core/Input/*` is per-device binding registries (keyboard, mouse, touch); the gamepad
   is a TODO stub; there is no action layer and no input recording.
 - **Multiplayer bases:** a fixed-step accumulator (`stepPhysics`, `PhysicsAPI.ts:349`) with an
@@ -420,29 +419,29 @@ standards, the structure and the SBP strategy to it would make every session pay
 
 ## 10. Roadmap
 
-| Stage | Plan | What | Blocked by |
-| --- | --- | --- | --- |
-| A | p601_refactoring-safety-net-tests-and-baselines.md | Vitest, the scene runner (snapshots, console errors, determinism hashes), bundle / API / coverage baselines | — |
-| A | p602_architecture-and-target-structure.md | The decisions: folder map, public entry, feature-module contract, debug placement, naming, boundaries | — |
-| A | p603_gameplay-architecture-contracts.md | Actors, controllers, intents, brains, animation, world systems; the stub plans | p602 |
-| A | p604_multiplayer-viability-study.md | The verdict, the constraints, an optional two-client spike | p602 |
-| A | p605_coding-standards-and-documentation-tooling.md | Coding standards, JSDoc style, eslint-plugin-jsdoc + TypeDoc validation as a ratchet, the CLAUDE.md split | p602 |
-| B | p606_layering-inversion-and-public-entry.md | The engine stops importing the app; declaration-merged component types; the `aekasha` entry; boundary lint | p601, p602 |
-| B | p607_sbp-foundation-feature-modules.md | No side-effect registrations, `sideEffects`, lazy Rapier, `__AEK_DEBUG__`, lazy maps and loaders, the feature manifest | p606 |
-| B | p608_engine-folder-restructure.md | The folder map applied with a codemod; utils, UI and debug moved; demo code out of the engine | p606, p607, p299 merged |
-| B | p609_toolkit-and-app-restructure.md | Toolkit categories (p450's structure), app scenes in folders, deprecated re-exports removed | p608 |
-| B | p610_character-and-input-action-architecture.md | The input action layer, the controller contract, `createDynamicCharacter` split, intents | p603, p608 |
-| B | p611_sbp-tooling-profiles-and-marketing.md | `yarn sbp`, budgets, the banner profile and example, the lite-renderer study, marketing | p607, p608 |
-| C | p612_review-ecs-loop-config-init.md | ECS, main loop, config, `InitEngine`, views (+ p200's cache) | p608 |
-| C | p613_review-rendering-scene-assets.md | Renderer, scenes and loader, geometry / material / texture, assets, import, PostFX, viewports, snapshots | p608 |
-| C | p614_review-physics.md | PhysicsAPI split, EngineRapier, worker, tiers, raycast (+ the `RayCastOpts` removal) | p608, p610 |
-| C | p615_review-sky-box.md | The sky box | p608 |
-| C | p616_review-lod-spatial-instancing-lines.md | LOD, impostors, spatial index, instancing, lines | p608 |
-| C | p617_review-input-ui-hud.md | Input devices, the UI kit (usable by apps), HUD, icons | p608, p610 |
-| C | p618_review-debug-public-api.md | The debug entry points and their docs, debug structure (no panel polish: p800) | p608 |
-| C | p619_review-schemas-pipeline-devtools-hub.md | Schemas, the data pipeline, the asset pipeline, devTools, the Hub generator | p608 |
-| C | p620_review-toolkit-and-app-code.md | Toolkit and app code | p609 |
-| D | p621_hub-docs-readme-and-claude-md-final.md | Architecture, SBP and migration pages, readme, CLAUDE.md final, the epic closed | Stage C |
+| Stage | Plan                                                      | What                                                                                                                   | Blocked by              |
+| ----- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| A     | \_DONE_p601_refactoring-safety-net-tests-and-baselines.md | Vitest, the scene runner (snapshots, console errors, determinism hashes), bundle / API / coverage baselines            | —                       |
+| A     | p602_architecture-and-target-structure.md                 | The decisions: folder map, public entry, feature-module contract, debug placement, naming, boundaries                  | —                       |
+| A     | p603_gameplay-architecture-contracts.md                   | Actors, controllers, intents, brains, animation, world systems; the stub plans                                         | p602                    |
+| A     | p604_multiplayer-viability-study.md                       | The verdict, the constraints, an optional two-client spike                                                             | p602                    |
+| A     | p605_coding-standards-and-documentation-tooling.md        | Coding standards, JSDoc style, eslint-plugin-jsdoc + TypeDoc validation as a ratchet, the CLAUDE.md split              | p602                    |
+| B     | p606_layering-inversion-and-public-entry.md               | The engine stops importing the app; declaration-merged component types; the `aekasha` entry; boundary lint             | p601, p602              |
+| B     | p607_sbp-foundation-feature-modules.md                    | No side-effect registrations, `sideEffects`, lazy Rapier, `__AEK_DEBUG__`, lazy maps and loaders, the feature manifest | p606                    |
+| B     | p608_engine-folder-restructure.md                         | The folder map applied with a codemod; utils, UI and debug moved; demo code out of the engine                          | p606, p607, p299 merged |
+| B     | p609_toolkit-and-app-restructure.md                       | Toolkit categories (p450's structure), app scenes in folders, deprecated re-exports removed                            | p608                    |
+| B     | p610_character-and-input-action-architecture.md           | The input action layer, the controller contract, `createDynamicCharacter` split, intents                               | p603, p608              |
+| B     | p611_sbp-tooling-profiles-and-marketing.md                | `yarn sbp`, budgets, the banner profile and example, the lite-renderer study, marketing                                | p607, p608              |
+| C     | p612_review-ecs-loop-config-init.md                       | ECS, main loop, config, `InitEngine`, views (+ p200's cache)                                                           | p608                    |
+| C     | p613_review-rendering-scene-assets.md                     | Renderer, scenes and loader, geometry / material / texture, assets, import, PostFX, viewports, snapshots               | p608                    |
+| C     | p614_review-physics.md                                    | PhysicsAPI split, EngineRapier, worker, tiers, raycast (+ the `RayCastOpts` removal)                                   | p608, p610              |
+| C     | p615_review-sky-box.md                                    | The sky box                                                                                                            | p608                    |
+| C     | p616_review-lod-spatial-instancing-lines.md               | LOD, impostors, spatial index, instancing, lines                                                                       | p608                    |
+| C     | p617_review-input-ui-hud.md                               | Input devices, the UI kit (usable by apps), HUD, icons                                                                 | p608, p610              |
+| C     | p618_review-debug-public-api.md                           | The debug entry points and their docs, debug structure (no panel polish: p800)                                         | p608                    |
+| C     | p619_review-schemas-pipeline-devtools-hub.md              | Schemas, the data pipeline, the asset pipeline, devTools, the Hub generator                                            | p608                    |
+| C     | p620_review-toolkit-and-app-code.md                       | Toolkit and app code                                                                                                   | p609                    |
+| D     | p621_hub-docs-readme-and-claude-md-final.md               | Architecture, SBP and migration pages, readme, CLAUDE.md final, the epic closed                                        | Stage C                 |
 
 **Order:** p601 and p602 first (in either order), then p603-p605. Stage B is one engine major and
 must land in order (p606 → p607 → p608, then p609-p611). Stage C plans are independent of each

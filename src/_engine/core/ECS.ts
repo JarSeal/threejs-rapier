@@ -234,6 +234,7 @@ export class ECSWorld {
   // We use 20 bits for the index (~1 million entities)
   // and 12 bits for the generation (4096 reuses per slot)
   private readonly INDEX_MASK = 0xfffff;
+  private readonly GEN_MASK = 0xfff;
   private readonly GEN_SHIFT = 20; // @CONSIDER: This could be a CONFIG value (optional, defaults to 20)
   // Tracks the current 'version' of every index ever created. Sized to
   // `maxEntities` (capped at the full 20-bit index space), not the full
@@ -379,7 +380,7 @@ export class ECSWorld {
   private _pack(index: number, gen: number): number {
     // Mask gen to 12 bits (0xfff) before shifting to ensure it never
     // interferes with bits outside the 32-bit signed integer range.
-    return ((gen & 0xfff) << this.GEN_SHIFT) | (index & this.INDEX_MASK);
+    return ((gen & this.GEN_MASK) << this.GEN_SHIFT) | (index & this.INDEX_MASK);
   }
 
   /**
@@ -503,8 +504,12 @@ export class ECSWorld {
     const index = this._getIndex(entityId);
 
     // Incrementing the generation at this index means any OLD IDs
-    // floating around will fail the isAlive() check immediately.
-    this.generations[index]++;
+    // floating around will fail the isAlive() check immediately. It wraps at
+    // the packed id's 12 bits: isAlive compares it with the id's masked
+    // generation, so an unwrapped 4096 would make every later entity in the
+    // slot dead on creation and undeletable. An id repeats after 4096 reuses
+    // of its slot (docs/issues/ecs-generation-wrap-after-4096-reuses.md).
+    this.generations[index] = (this.generations[index] + 1) & this.GEN_MASK;
 
     // Clear ECS data using the packed ID as the key for Map consistency
     this.storages.forEach((storage) => storage.delete(entityId));

@@ -24,7 +24,13 @@ import {
 import { lerror, lwarn } from '../utils/Logger';
 // Always-safe thin wrapper: a no-op outside debug builds and tree-shaken out of production.
 import { updatePhysicsPanel } from '../debug/Stats';
-import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay } from './MainLoop';
+import {
+  addVisibilityChangeFn,
+  getFixedFrameDelta,
+  getReadOnlyLoopState,
+  LoopState,
+  toggleMainPlay,
+} from './MainLoop';
 import {
   DebugModuleRef,
   initWorker,
@@ -359,7 +365,8 @@ export const stepPhysics = (
   if (isSteppingHeld) return 0;
 
   updateTimer();
-  let dt = timer.getDelta();
+  // The main loop's fixed frame delta when one is set (debug and test only, setFixedFrameDelta)
+  let dt = getFixedFrameDelta() ?? timer.getDelta();
 
   if (
     !loopState.masterPlay ||
