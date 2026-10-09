@@ -10,6 +10,7 @@ import type {
 } from '../core/Physics/PhysicsAPITypes';
 import { PhysicsProtocolType } from '../core/Physics/PhysicsAPITypes';
 import { initPhysicsEngine } from '../core/Physics/PhysicsUtils';
+import { readStatsClock } from '../utils/StatsClock';
 import {
   createPhysicsTransformArrayBuffer,
   PHYSICS_TRANSFORM_SHARED_BANKS,
@@ -123,7 +124,7 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
           // a performance.now() call is made here. Read once per message, so a SET_STEP_STATS
           // replayed as a sub-step command applies from the next STEP.
           const trackStats = Boolean(workerPhysicsState?.stepStatsEnabled);
-          const receivedAt = trackStats ? performance.now() + mainClockOffset : 0;
+          const receivedAt = trackStats ? readStatsClock() + mainClockOffset : 0;
           let stepMs = 0;
           let stepEndAt = 0;
           for (let i = 0; i < (data.steps ?? 1); i++) {
@@ -138,10 +139,10 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
             // Timed around step() alone — replaying this sub-step's commands above is main-
             // thread-issued work, not simulation cost, and folding it in would repeat the
             // legacy PHY panel's contamination bug in a new place.
-            const subStepStart = performance.now();
+            const subStepStart = readStatsClock();
             engAPI.step();
             stepsExecuted++;
-            const subStepEnd = performance.now();
+            const subStepEnd = readStatsClock();
             stepMs += subStepEnd - subStepStart;
             stepEndAt = subStepEnd + mainClockOffset;
           }

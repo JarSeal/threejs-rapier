@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Documentation, Dev tooling, Standards
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md (the standard they apply)
@@ -342,7 +342,7 @@ Documents only.
 - `yarn verify:scenes --config quick`: 24 of 24 passed against `main`'s baselines (966 s).
 - The Hub page's `import type` rule names its check; CLAUDE.md's Workflow describes the hooks.
 
-### Phase 3: the simulation rules
+### Phase 3: the simulation rules — done
 
 1. `utils/StatsClock.ts` (`readStatsClock`), and the profiling `performance.now()` reads in §2.5's
    files switched to it.
@@ -351,6 +351,41 @@ Documents only.
 3. CLAUDE.md's Physics section: the rule in one line.
 4. Verification: as Phase 2, plus the full `yarn verify:scenes` (the hashes are unchanged: profiling
    reads never fed the simulation).
+
+**As built:**
+
+- 19 restricted reads, not about 25: 16 profiling (step timing, write-back latency, step-gate hold
+  time, ray stats, the ray helpers' draw time) switched to `readStatsClock`, and 3 in `PhysicsAPI.ts`
+  (the pause bookkeeping in `stepPhysics` and `setPhysicsPauseTime`, and `getPhysGameTime`) that
+  feed the characters through `getPhysGameTime`, so they aren't measurement.
+- ESLint allow-lists by file only, and allow-listing `PhysicsAPI.ts` would drop the rule for the
+  whole facade. The game-time reads go through `readPhysicsWallClock`
+  (`core/Physics/PhysicsWallClock.ts`, `@internal`), and that file alone is allow-listed (p610
+  deletes it). `DynamicCharacter.ts`'s entry allows `Math.random` only; its clock reads stay
+  restricted. A later config entry replaces the rule's options for its files, so each entry lists
+  what stays restricted (`SIMULATION_RESTRICTED_PROPERTIES` filtered).
+- `PhysicsUtils.ts` has a dead, exported duplicate of `setPhysicsPauseTime` (nothing calls it). It
+  reads the wall clock through `readPhysicsWallClock` like the live one; deleting it is an API
+  removal, left to p614.
+- `SIMULATION_FILES` adds `utils/world/movingPlatform.ts` (an `APP_PHYSICS_STEP` system §2.5
+  missed; p608 moves it to `toolkit/ecs/MovingPlatform.ts`). No violations there. The rules: the
+  three properties (destructuring included) and `new Date` / `Date()` as syntax.
+- `@internal` exports are in TypeDoc's model (no `excludeInternal`), so `api.json` records the two
+  clocks (`--update`); `docs.json` rose in both folders. The bundle is within tolerance:
+  `physicsWorker.js` 14 B smaller (2,308,133 B).
+- The Hub page's time and randomness rules name the lint; CLAUDE.md's Physics section has it in
+  one line. `hub:build`: 288 pages, the same 23 warnings; the search index 1,016 kB (8 kB under the
+  1 MB warning).
+- `yarn verify:scenes` (full, 3,222 s): 95 of 96 passed, every hash unchanged. `scene01V2
+  mainThread`'s snapshot failed (changed 0.22 % over the 0.2 % limit): its red wireframe sphere,
+  spun by a scene app looper, is one app frame off on some loads. That's pre-existing: on HEAD
+  without this phase it failed 1 of 4 runs with the identical diff (mean 0.065, max 156). The
+  looper counted `deltaApp` from the scene's first frame, and a load spends a varying number of
+  frames with physics held. Fixed in `scene01_v2.ts`: the angle is computed from
+  `getPhysicsSimClock()` (the world's simulated time, which doesn't advance while held; 2 rad/s as
+  before), the standard's own rule for presentation. `scene01V2`'s baselines were recorded again on
+  this branch (`--only scene01V2 --update`; `main` doesn't have the change), then 2 of 2 runs
+  passed in every configuration with exact snapshots.
 
 ### Phase 4: JSDoc lint
 

@@ -30,6 +30,7 @@ import {
 import type { ColliderParams, RigidBodyAPI, RigidBodyParams } from './Physics/PhysicsAPITypes';
 import type { PhysicsInterpolationMode } from './Physics/PhysicsAPITypes';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
+import { readStatsClock } from '../utils/StatsClock';
 
 let debugPhysicsDraw: DebugModuleRef<typeof import('./Debug/_dbg__PhysicsDebugDraw')> | null = null;
 
@@ -135,7 +136,7 @@ export const registerPhysicsManager = (world: ECSWorld) => {
   world.addSystem(
     ECSSystemStage.LATE_MAIN,
     'physicsRayStatsFrameEndSystem',
-    () => endPhysicsRayStatsFrame(performance.now()),
+    () => endPhysicsRayStatsFrame(readStatsClock()),
     -1000
   );
 };

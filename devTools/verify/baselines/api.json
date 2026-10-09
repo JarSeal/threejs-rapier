@@ -1101,6 +1101,9 @@
       "setPhysicsPauseTime": "Function",
       "ValidProtocolTypes": "Variable"
     },
+    "src/_engine/core/Physics/PhysicsWallClock.ts": {
+      "readPhysicsWallClock": "Function"
+    },
     "src/_engine/core/PhysicsAPI.ts": {
       "addPhysicsStepGate": "Function",
       "createCollider": "Function",
@@ -2406,6 +2409,9 @@
       "IntervalWindowConfig": "TypeAlias",
       "IntervalWindowKind": "TypeAlias",
       "IntervalWindowSnapshot": "TypeAlias"
+    },
+    "src/_engine/utils/StatsClock.ts": {
+      "readStatsClock": "Function"
     },
     "src/_engine/utils/UI/PercentagePieHtml.ts": {
       "createPercentagePie": "Function",

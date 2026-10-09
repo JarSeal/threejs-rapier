@@ -100,8 +100,13 @@ and commands.
 
 - **Time is the step index** ([getPhysicsSubStepIndex](api:getPhysicsSubStepIndex)), never
   `performance.now()`, `Date` or the frame delta. Measuring how long something took (profiling)
-  isn't simulation input.
+  isn't simulation input, and the engine's simulation code reads it through one measurement-only
+  clock, so every wall-clock read there says what it's for.
 - **Randomness is seeded:** [createSeededRandom](api:createSeededRandom), never `Math.random`.
+- **The lint enforces both** in the engine's and the toolkit's simulation files (a list in
+  `eslint.config.js`): `Math.random`, `performance.now()`, `Date.now()` and `new Date` are errors
+  there. A known exception is listed in the config with the change that removes it, never disabled
+  inline. Put a new simulation file on the list.
 - **Input arrives as intents:** player input, AI, network and replays all write the same intents,
   and a controller never knows which one drives it.
 - **It reads its own state at the step,** not the synced `TRANSFORM`s, interpolated poses or
