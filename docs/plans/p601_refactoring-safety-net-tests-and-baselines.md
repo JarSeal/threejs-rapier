@@ -153,6 +153,57 @@ As built:
 3. `yarn verify:scenes [--only <sceneId>] [--config <name>] [--update] [--url <url>] [--webgl]`.
 4. Run it over every scene; fix or allow-list what it finds, with an issue file per real bug.
 
+As built (step 1):
+
+- The bridge (`debug/TestBridge.ts`, the types and `registerTestBridge`; `core/Debug/_dbg__TestBridge.ts`)
+  installs with `?aekTest=true` in the debug env **and prod test mode** (`mode: 'DEBUG' | 'PROD_TEST'`),
+  from `InitEngine` right before `appStartFn`, so it sees the first load.
+- Prod test mode has no probe (`registerPhysicsDeterminismProbe` is `IS_DEBUG_ENV` only), no step
+  limit (`setPhysicsStepLimit` is a no-op there) and no physics boot overrides (`loadConfig` reads
+  them in the debug env only). So the §3.2 matrix is: debug × three targets (errors, hash, snapshot)
+  plus prod test × the config's target (errors only: without the step freeze its snapshot would
+  catch physics at an arbitrary step). Four loads per scene, not six.
+- `errors()` was dropped: the logger is `console`, and the runner's `console` / `pageerror`
+  listeners see everything from the first script, before the bridge can install.
+- `whenProbeDone()` was added: the probe's report through `onPhysicsProbeReport`
+  (`_dbg__PhysicsDeterminism.ts`), not a parsed log line; `NOT_ARMED` without `?physicsProbe`,
+  `TIMEOUT` when the scene's physics never reaches the step. The runner calls `freeze()` after it:
+  a paused app loop never reaches the step.
+- `whenSceneReady()` waits for `hasFirstSceneBeenLoaded() && !isCurrentlyLoading()` (after
+  `loadEndFn`, so after the physics hold's release) plus two frames. `freeze()` pauses the app and
+  master loops and the day-night cycle; TSL's `time` node still moves per render.
+- `snapshot()` returns the PNG base64 encoded (`encodeRGBA8PNG`, byte exact).
+- Checked on SwiftShader WebGL: `physicsTiers` at 120 steps hashes `49157b8f` on `WORKER_THREAD`/SAB
+  and `MAIN_THREAD`; a 512 × 288 snapshot takes about 10 s there.
+
+As built (steps 2-3):
+
+- `playwright-core` 1.63.0 (exact pin, the skill's version: it reuses the Chromium that version
+  downloaded). `yarn verify:scenes` runs `copyDecoders` and `gatherAppData` first, as `yarn dev` does
+  (the gatherer plugin doesn't gather on start), then `tsx devTools/verify/scenes.ts`.
+- Flags: `--only` takes ids or `*` globs, comma separated; `--config` a configuration
+  (`workerSab`, `workerMsg`, `mainThread`, `prodTest`) or a set (`all`, the default; `quick` =
+  `workerSab`); `--headed` added (risk 1). On WSL2 the WebGL fallback is the default without
+  `--headed`, and it's logged.
+- Own dev server on 8092 (the dev files self-check has 8091); a fresh browser context per page
+  load, so no localStorage carries over; the physics boot override is written by an init script.
+- Each debug configuration names the probe config it expects (`WORKER_THREAD/SHARED_MEMORY`,
+  `WORKER_THREAD/MESSAGE_BATCH`, `MAIN_THREAD/`): a load that ran as something else fails (eg. no
+  COOP/COEP headers, so SAB fell back). The debug configurations' hashes are also compared with
+  each other, a mismatch printed as a warning (p101 says they match).
+- Baselines per backend the page reports (`whenSceneReady`'s `backend`, added to the bridge, so a
+  silent WebGPU → WebGL2 fallback never compares against WebGPU images):
+  `.cache/verify/scenes/<webgpu|webgl>/baseline.json` + `baseline/<scene>.<config>.png`, the run in
+  `last-run.json` + `last-run/` (with `*.diff.png` for a failed snapshot: the current image dimmed,
+  the changed pixels red). Each entry records the commit (`+dirty` with local changes).
+  `--update` records only runs without failures, merged into the file.
+- Snapshot tolerance: mean RGB delta ≤ 0.5 and ≤ 0.2 % of pixels with a channel delta over 24
+  (the max delta alone fails on one moving pixel). A run without a baseline is `NEW`, not a failure.
+- Console warnings are recorded in `last-run.json`, not compared; console errors and page errors fail
+  unless `scenes.config.ts` allows them. Prod test mode runs 3 s after the scene is ready.
+- `physicsTiers`, all four configurations: about 95 s on SwiftShader; recorded, then passed again.
+  Its dotted rings move a few pixels between loads (inside the tolerance; to look at in step 4).
+
 ### Phase 3: baselines
 
 1. `devTools/verify/baselines.ts`: reads the visualizer data, the TypeDoc model (built with the
