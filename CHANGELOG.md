@@ -22,6 +22,8 @@ Earlier releases are only recorded in the git history.
 **Changed**
 
 - The texture preview's GPU readback uses `readRenderTargetRGBA8Async`.
+- The engine's UI icons (`core/UI/icons/svg/`) all follow one form: a 16 × 16 viewBox, `currentColor`, the `bi bi-<name>` class and no transforms. `runtime-view`, `starttime-view` and `profiler-pulse` had their transforms baked into their paths (they look the same; the two view icons are now square, so they draw at full height), and five icons got their missing class. New `github.svg` and `three-js.svg` (not in the bundle: the Hub's brand marks).
+- Bootstrap Icons' MIT licence, which most of those icons are from, is now with them (`core/UI/icons/LICENSE-bootstrap-icons.txt`), and the bundle carries its `@license` comment.
 
 ### Toolkit 1.4.0 (Crescent)
 
@@ -71,6 +73,7 @@ Earlier releases are only recorded in the git history.
   - The homepage hero is the engine's render (`exampleHubHero`'s Hub image), through `<img data-aek-scene="<sceneId>">`.
 - `yarn dev` serves the Hub at `/hub/` (`devTools/hubPlugin.ts`, dev server only; `AEK_HUB=false` turns it off). It builds on the first request, rebuilds on every save under `hub/` and in its other sources, and refreshes only the open Hub tabs whose page changed (a stylesheet change without a reload). It never reloads the app's tabs. A page with an error is served as an error page with the file and line, and comes back by itself when it's fixed.
 - `yarn hub:build [--out <dir>] [--no-api]` builds the public site into `dist-hub/`: relative links (it works at a domain root and under `/hub/`), a `404.html`, a Netlify `_headers` file, and `?v=<content hash>` on every asset. An error fails it. `--no-api` skips the API documentation (no TypeDoc run, `api:` links unchecked) for fast content work. `yarn hub:preview [--base /hub/]` serves the build as a static host would.
+- The Hub's GitHub and Three.js marks: a GitHub link in the header's tools, the icons on the footer's GitHub and Three.js links (with Rapier, now links too), and the GitHub mark on the API pages' source links in the public build. The GitHub mark is Bootstrap Icons': the Hub ships its licence (`_assets/icons/LICENSE-bootstrap-icons.txt`) next to Lucide's.
 - `docs/techniques/hub-authoring.md`: how to write Hub pages, their code blocks, snippet includes and region markers, `api:` links, scene panels, cards and Hub images, and what search indexes.
 - `devTools/toolkit/buildAekashaSymbol.ts` (`npx tsx`): builds the toolkit's Æ symbol GLB from the favicon's glyph. New dev dependency `linkedom` 0.18.13 (its `DOMParser` for three's `SVGLoader` in Node).
 - CLAUDE.md: the Hub's section, the issue-file convention (`**Title:**` on line 1, then `Key: value` lines with `Status:` first), the rule that a change to an engine or toolkit feature or public API updates its Hub content in the same branch, that a `#region` marker in engine, toolkit or app code is a Hub include (renaming it breaks a page), `?startScene`, snapshots, the example scenes and their Hub tab, and the toolkit's model.

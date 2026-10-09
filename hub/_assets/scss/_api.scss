@@ -278,6 +278,19 @@
       text-decoration: underline;
     }
   }
+
+  // The public build's links go to GitHub: its mark from the icon file, not inlined per link
+  // (a module page has hundreds)
+  .hubApiSourceGitHub::before {
+    content: '';
+    display: inline-block;
+    width: 1.125em;
+    height: 1.125em;
+    margin-right: 0.35em;
+    vertical-align: -0.2em;
+    background: currentColor;
+    mask: url('icons/github.svg') center / contain no-repeat;
+  }
 }
 
 // --- The A-Z index ---

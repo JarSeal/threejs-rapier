@@ -7,7 +7,8 @@ import { HUB_ICONS_DIR } from './paths';
 /**
  * The Hub's icons (p551 Phase 3): `hub/_assets/icons/<name>.svg`, inlined into the HTML at build
  * time so they take the text colour (`currentColor`) and cost no request. Lucide's (ISC,
- * `LICENSE-lucide.txt`) plus the Æ mark (`aekasha.svg`).
+ * `LICENSE-lucide.txt`) plus the brand marks (`aekasha.svg`, `github.svg`, `three-js.svg`), copies of
+ * the engine's 16 × 16 icons (`github.svg` is Bootstrap Icons', MIT, `LICENSE-bootstrap-icons.txt`).
  */
 
 /** The `<svg>` attributes an inlined icon keeps; size and class come from the Hub's CSS */

@@ -390,7 +390,7 @@ The shell (`hub/_layout/shell.html`) also has `{{link:path}}`, a checked URL to 
 
 An unknown icon, asset or helper fails the build. **Always reference a static asset through `{{asset:…}}`.** The built site caches `_assets/*` as immutable, so a bare path would stay stale in browsers after the file changes.
 
-The icons are [Lucide](https://lucide.dev/) line icons (ISC, `hub/_assets/icons/LICENSE-lucide.txt`) plus the Æ mark (`aekasha.svg`). To add one, copy its SVG from `lucide-static` into `hub/_assets/icons/`.
+The icons are [Lucide](https://lucide.dev/) line icons (ISC, `hub/_assets/icons/LICENSE-lucide.txt`) plus three brand marks: the Æ (`aekasha.svg`), `github.svg` (from [Bootstrap Icons](https://icons.getbootstrap.com/), MIT, `hub/_assets/icons/LICENSE-bootstrap-icons.txt`) and `three-js.svg`. To add an icon, copy its SVG from `lucide-static` into `hub/_assets/icons/`. The brand marks are copies of the engine's icons (`src/_engine/core/UI/icons/svg/`, 16 × 16), so a change to one goes into both. Where an icon would repeat many times on a page, draw it from its file with a CSS `mask: url('icons/<name>.svg')` instead of inlining it (the API pages' GitHub source links do).
 
 ## Generated sections
 

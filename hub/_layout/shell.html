@@ -56,6 +56,9 @@
             <a class="hubVersionPill" href="{{link:version}}" title="Versions and changelog"
               >v{{engineVersion}}</a
             >
+            <a class="hubIconLink" href="{{githubUrl}}" title="The source on GitHub"
+              >{{icon:github}}<span class="hubVisuallyHidden">GitHub</span></a
+            >
             <button type="button" class="hubThemeToggle" data-hub-theme-toggle>
               {{icon:sun}}{{icon:moon}}<span class="hubVisuallyHidden" data-hub-theme-label
                 >Switch theme</span
@@ -77,9 +80,12 @@
         <p>
           <a href="{{root}}">{{siteTitle}}</a
           ><span class="hubFooterSep">/</span>v{{engineVersion}}<span class="hubFooterSep">/</span
-          ><a href="{{githubUrl}}">GitHub</a>
+          ><a href="{{githubUrl}}">{{icon:github}}GitHub</a>
         </p>
-        <p>Powered by Three.js + Rapier</p>
+        <p>
+          Powered by <a href="https://threejs.org">{{icon:three-js}}Three.js</a> +
+          <a href="https://rapier.rs">Rapier</a>
+        </p>
       </div>
     </footer>
   </body>

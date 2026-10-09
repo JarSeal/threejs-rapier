@@ -923,7 +923,7 @@ const createSourceLink = (mode: HubBuildMode, meta: ProjectMetadata): SourceLink
       return `<a href="/__open-in-editor?file=${file}" data-hub-open-in-editor title="Open in your editor">${label}</a>`;
     }
     const url = `${repo}/blob/${ref}/${fileName}#L${line}`;
-    return `<a href="${escapeHtml(url)}" title="The source on GitHub" rel="noopener">${label}</a>`;
+    return `<a class="hubApiSourceGitHub" href="${escapeHtml(url)}" title="The source on GitHub" rel="noopener">${label}</a>`;
   };
 };
 

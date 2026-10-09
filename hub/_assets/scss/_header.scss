@@ -244,6 +244,8 @@ html:not(.hubJs) .hubNavItem_hasMenu:focus-within > .hubNavDropdown {
   }
 }
 
+// The header's icon buttons: the GitHub link and the theme toggle
+.hubIconLink,
 .hubThemeToggle {
   display: flex;
   align-items: center;
@@ -261,7 +263,9 @@ html:not(.hubJs) .hubNavItem_hasMenu:focus-within > .hubNavDropdown {
     background: var(--hub-panel-hover);
     color: var(--hub-text);
   }
+}
 
+.hubThemeToggle {
   // The icon shows the theme a click switches to
   .hubIcon_moon {
     display: none;
