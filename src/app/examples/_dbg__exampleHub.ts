@@ -14,8 +14,7 @@ import {
 } from '../../_engine/debug/DevFiles';
 import { lerror, lwarn } from '../../_engine/utils/Logger';
 
-// The example scenes' "Hub" tab (docs/plans/_DONE_p554_hub-examples-start-scene-and-example-scenes.md
-// section 2.4): "Save Hub image" takes a snapshot of what the canvas shows (core/Snapshot.ts: the
+// The example scenes' "Hub" tab (p554 §2.4): "Save Hub image" takes a snapshot of what the canvas shows (core/Snapshot.ts: the
 // active camera, PostFX, no viewports or debug helpers) at a fixed size and writes it as
 // `<sceneId>.hub.png` beside the scene file through the dev files (_DONE_p342). The Hub's
 // `::: scene` directive and `aek:image` pick it up by that path (devTools/hub/scenes.ts) and

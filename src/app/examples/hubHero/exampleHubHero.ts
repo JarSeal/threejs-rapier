@@ -15,8 +15,7 @@ const PALETTES = [
 ];
 
 /**
- * The Ækasha Hub homepage's image (docs/plans/_DONE_p554_hub-examples-start-scene-and-example-scenes.md
- * section 2.4), saved from the scene's Hub tab (`HERO` size). Not an example page of its own: a
+ * The Ækasha Hub homepage's image (p554 §2.4), saved from the scene's Hub tab (`HERO` size). Not an example page of its own: a
  * large asteroid in a glowing ring, smaller ones around it, the SPACE sky box and a bloom pass.
  * The left of the frame is left empty: the homepage fades the image out under its text.
  */

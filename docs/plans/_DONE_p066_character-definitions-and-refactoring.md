@@ -1,6 +1,6 @@
 Status: implemented
 Category: Character, Controls
-Blocks: _DONE_p067_character-state-debugger-window.md (and through it p068_character-debug-gizmos.md and p069_character-live-config-editing.md: this plan moves the files they cite and changes some of the data they read. Phase 2 updates their references.)
+Related: p067-p069 (the character state window, its gizmos and live config editing; implemented, their plan files have been removed: this plan moved the files they cited and changed some of the data they read)
 
 # Character Definitions and Refactoring — Plan
 

@@ -18,7 +18,9 @@ Close the epic: the Hub, the readme and CLAUDE.md describe the engine as it is a
   guide for the major (completed from p606 and p608's sections), the coding standards (p605) for
   contributors, the gameplay contracts (p603) as "where your feature goes".
 - **The readme:** Features, Project structure and Examples rewritten for the new layout and entry
-  points (`InitEngine`'s new signature, the feature list), SBP in "Why Ækasha?".
+  points (`InitEngine`'s new signature, the feature list), SBP in "Why Ækasha?". The readme's
+  Features list could become a short list linking the Hub's feature pages (`/hub/features/`), so
+  the two don't repeat each other (p555's open question; it waited for a public Hub).
 - **CLAUDE.md:** the root file's final map and the nested files checked against the code (p605's
   split); the commands from p601 and p611.
 - The epic marked done; the `_DONE_` child plans kept or removed per the plans rule.

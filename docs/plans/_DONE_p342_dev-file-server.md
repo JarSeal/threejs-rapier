@@ -1,6 +1,6 @@
 Status: implemented (Phases 1-4)
 Category: Dev tooling, Debug
-Related: p304_procedural-texture-baker.md (D5's PNG export), \_DONE_p085_material-editor-params-and-persistence.md (overrides that could go into the JSON), \_DONE_p069_character-live-config-editing.md, \_DONE_p300_asset-optimization-pipeline-plan.md (encodes what is written)
+Related: p304_procedural-texture-baker.md (D5's PNG export), \_DONE_p085_material-editor-params-and-persistence.md (overrides that could go into the JSON), p069 (character live config editing, implemented; its plan file has been removed), \_DONE_p300_asset-optimization-pipeline-plan.md (encodes what is written)
 
 # Dev File Server
 
