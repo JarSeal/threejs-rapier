@@ -31,12 +31,16 @@ Earlier releases are only recorded in the git history.
 
 - The toolkit's first model, the Ækasha symbol (`toolkit/models/aekashaSymbol/`, id `aekashaSymbol`): the Æ glyph of the favicon extruded with a small bevel, 1 unit high, centred and facing +z, Draco-compressed (its asset JSON keeps the pipeline's output Draco). `devTools/toolkit/buildAekashaSymbol.ts` builds the GLB from `src/public/favicon.svg`.
 
+**Removed**
+
+- The `checkerBoard` material (`toolkit/materials/checkerBoard.material.json` and `.tsl.ts`): a placeholder whose node functions never drew a checkerboard. Use `triplanarCheckerboard`, with its `plusSigns` static define off for plain squares (`matOverrides: { staticDefines: { plusSigns: false } }`).
+
 ### App 1.9.0 (Preschooler)
 
 **Added**
 
 - Example scenes for the Hub (`src/app/examples/<name>/`, named "Example: …"), each with its own camera, lights and asset ids, and `#region` markers around the code its Hub page shows:
-  - `exampleQuickStart`: a hovering checkerboard cube, a camera and two lights, the smallest complete scene.
+  - `exampleQuickStart`: a hovering cube with the triplanar checkerboard material (a variant without its plus signs), a camera and two lights, the smallest complete scene.
   - `examplePhysics`: a static ground with a box, a sphere, a capsule and a cylinder dropping on it; Space drops more (the oldest go past 80).
   - `exampleToolkit`: the toolkit's Æ symbol, hovering, with the triplanar checkerboard material.
   - `exampleSkyBox`: a `DAY_NIGHT` sky box with a two-minute day; Space plays and pauses it, ← → move the time and ↑ ↓ change the speed.
@@ -49,6 +53,7 @@ Earlier releases are only recorded in the git history.
 
 **Changed**
 
+- The `testECS` scene no longer lists the removed `checkerBoard` material.
 - `src/app/physicsTest.ts` marks its dynamic box code as the region `dynamic-box` (a comment only), which the Hub's "Code blocks" page includes. Renaming the region breaks that page.
 
 ### Project

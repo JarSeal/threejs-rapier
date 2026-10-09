@@ -87,11 +87,11 @@ The `<body>` is the page's own markup, and it goes into the shell's main column.
 Every **empty element with an `id`** in the body is a slot. The generator fills it with the `.md` file of the same name in the page's folder:
 
 ```html
-<h1>Examples</h1>
+<h1>Quick start</h1>
 <!-- Filled by intro.md -->
 <div id="intro"></div>
-<!-- Filled by quick-start.md -->
-<section id="quick-start"></section>
+<!-- Filled by setup.md -->
+<section id="setup"></section>
 ```
 
 - The element stays as you wrote it, with its tag, classes and attributes, so a slot can be styled or placed in a layout (the homepage's hero is a slot inside a grid).
@@ -103,7 +103,7 @@ Markdown is [markdown-it](https://github.com/markdown-it/markdown-it) (CommonMar
 
 ### Headings and the table of contents
 
-Every heading gets an id from its text (`### Install and run` → `#install-and-run`) and a `#` link that shows on hover. An id is never one that the page's markup already uses: on a page with a `quick-start` slot, a "Quick start" heading gets `quick-start-2`, and `#quick-start` still reaches the slot.
+Every heading gets an id from its text (`### Install and run` → `#install-and-run`) and a `#` link that shows on hover. An id is never one that the page's markup already uses: on a page with a `setup` slot, a "Setup" heading gets `setup-2`, and `#setup` still reaches the slot.
 
 The "On this page" table of contents lists the `##` and `###` headings of every slot, in page order. It's shown when there are at least 3 of them, from 1200 px wide, and never on the homepage.
 

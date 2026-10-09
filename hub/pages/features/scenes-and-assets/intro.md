@@ -5,6 +5,6 @@ checked against its schema when you save it, and your editor autocompletes it.
 
 ::: scene exampleQuickStart
 The smallest complete scene: a scene JSON with a camera, two lights and a material, and a scene
-file that adds a ground and a hovering cube. The [quick start](hub:examples#your-first-scene)
+file that adds a ground and a hovering cube. The [quick start](hub:examples/quick-start#your-first-scene)
 walks through it.
 :::

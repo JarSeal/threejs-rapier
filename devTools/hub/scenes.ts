@@ -229,7 +229,12 @@ registerHubDirective('scene', {
       return `<p class="hubSceneLinks">${link('isDebug', 'bug', 'Open in debug')}${link('isProdTest', 'play', 'Open in prod test')}</p>\n</div>\n</div>\n`;
     }
     // The public Hub runs no engine (p550 §1): how to run it, the same for every scene
-    const quickStart = resolveHubLink('hub:examples#quick-start', env, env.file, line);
+    const quickStart = resolveHubLink(
+      'hub:examples/quick-start#install-and-run',
+      env,
+      env.file,
+      line
+    );
     return `<p class="hubSceneNote">Run it locally: start the dev server (<code>yarn dev</code>, see the <a href="${quickStart}">quick start</a>), then open <code>http://localhost:8080/?isDebug=true&amp;startScene=${id}</code>, or <code>?isProdTest=true&amp;startScene=${id}</code> to run it as in production.</p>\n</div>\n</div>\n`;
   },
 });

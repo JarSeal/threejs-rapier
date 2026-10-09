@@ -9,7 +9,9 @@ import type { HubPage } from './types';
  * child page of the page at `<page path>` (`examples`), in menu order (`aek:order`, then label),
  * each a link with the child's `aek:image` (else its `aek:icon`), menu label and
  * `aek:description`. `featured` keeps the children with `aek:featured`, `group=<name>` those
- * with that `aek:group` (the Features page's groups). Every page's image is resolved before any
+ * with that `aek:group` (the Features page's groups). The list gets `hubCards_featured` with
+ * `featured`, and `hubCards_icons` when no card has an image: the homepage's featured features
+ * are icon columns, its featured examples image cards (p555 Phase 2). Every page's image is resolved before any
  * page renders (`build.ts`), so a card can show it. The directive takes no content. Out of the
  * search: each card's page has its own results.
  */
@@ -50,16 +52,22 @@ const renderCardMedia = (page: HubPage, env: HubMarkdownEnv, line: number) => {
   const image = getPageImageSources(page, env, CARD_IMAGE_WIDTHS, line);
   if (image) {
     const size = image.width ? ` width="${image.width}" height="${image.height}"` : '';
-    return `<img class="hubCardImage" src="${image.src}" srcset="${image.srcset}" sizes="${CARD_IMAGE_SIZES}"${size} alt="" loading="lazy" decoding="async" />`;
+    return {
+      isImage: true,
+      html: `<img class="hubCardImage" src="${image.src}" srcset="${image.srcset}" sizes="${CARD_IMAGE_SIZES}"${size} alt="" loading="lazy" decoding="async" />`,
+    };
   }
   if (page.icon) {
-    return `<span class="hubCardIcon">${env.icons.render(page.icon, env.file, line)}</span>`;
+    return {
+      isImage: false,
+      html: `<span class="hubCardIcon">${env.icons.render(page.icon, env.file, line)}</span>`,
+    };
   }
-  return '';
+  return { isImage: false, html: '' };
 };
 
-const renderCard = (page: HubPage, env: HubMarkdownEnv, line: number) =>
-  `<li class="hubCard"><a class="hubCardLink" href="${pageHref(env.root, page)}">${renderCardMedia(page, env, line)}<span class="hubCardBody"><span class="hubCardTitle">${escapeHtml(page.menu)}</span>${page.description ? `<span class="hubCardText">${escapeHtml(page.description)}</span>` : ''}</span></a></li>`;
+const renderCard = (page: HubPage, media: string, env: HubMarkdownEnv) =>
+  `<li class="hubCard"><a class="hubCardLink" href="${pageHref(env.root, page)}">${media}<span class="hubCardBody"><span class="hubCardTitle">${escapeHtml(page.menu)}</span>${page.description ? `<span class="hubCardText">${escapeHtml(page.description)}</span>` : ''}</span></a></li>`;
 
 registerHubDirective('cards', {
   open: (args, { env, line, tokens, idx }) => {
@@ -97,8 +105,13 @@ registerHubDirective('cards', {
       );
       return '';
     }
-    const modifiers = filters.isFeatured ? ' hubCards_featured' : '';
-    return `<ul class="hubCards${modifiers} hubSearchSkip">\n${children.map((child) => renderCard(child, env, line)).join('\n')}\n</ul>\n`;
+    const medias = children.map((child) => renderCardMedia(child, env, line));
+    const modifiers = [
+      filters.isFeatured && 'hubCards_featured',
+      !medias.some((media) => media.isImage) && 'hubCards_icons',
+    ].filter(Boolean);
+    const cards = children.map((child, i) => renderCard(child, medias[i].html, env));
+    return `<ul class="${['hubCards', ...modifiers, 'hubSearchSkip'].join(' ')}">\n${cards.join('\n')}\n</ul>\n`;
   },
   close: () => '',
 });

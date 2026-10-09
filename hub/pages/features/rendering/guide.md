@@ -92,7 +92,7 @@ workaround in the engine yet:
 
 ## Read more
 
-- The [quick start](hub:examples#quick-start): the dev environment and the smallest complete
+- The [quick start](hub:examples/quick-start): the dev environment and the smallest complete
   scene.
 - The API reference: [Renderer](hub:documentation/engine/core/Renderer),
   [PostFX](hub:documentation/engine/core/PostFX) and

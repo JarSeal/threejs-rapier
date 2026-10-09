@@ -4,7 +4,7 @@ import { getMaterial } from '../../../_engine/core/Material';
 import { createMeshEntity } from '../../../_engine/core/MeshManager';
 import { existsOrThrow } from '../../../_engine/utils/assert';
 
-// #region quick-start (shown in the Hub: hub/pages/examples/)
+// #region quick-start (shown in the Hub: hub/pages/examples/quick-start/)
 export const scene = async () => {
   // The camera and the lights come from the scene JSON. A ground to cast a shadow on:
   createMeshEntity({
@@ -14,10 +14,12 @@ export const scene = async () => {
     receiveShadow: true,
   });
 
-  // A cube with the toolkit's checkerBoard material, which the scene JSON lists
+  // A cube with the toolkit's triplanarCheckerboard material, which the scene JSON lists, as a
+  // variant without its plus signs (a static define)
   const cubeId = createMeshEntity({
     geo: { id: 'quickStartCube', type: 'BOX' },
-    mat: existsOrThrow(getMaterial('checkerBoard'), 'No checkerBoard material.'),
+    mat: existsOrThrow(getMaterial('triplanarCheckerboard'), 'No triplanarCheckerboard material.'),
+    matOverrides: { staticDefines: { plusSigns: false } },
     position: { y: 1.5 },
     castShadow: true,
   });

@@ -9,8 +9,6 @@ export type HubConfig = {
   title: string;
   /** The homepage's `<meta name="description">` when its page sets none */
   description: string;
-  /** The repo, linked from the footer */
-  githubUrl: string;
 };
 
 export type HubHeading = {

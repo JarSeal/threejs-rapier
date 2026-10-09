@@ -1,39 +1,4 @@
-## Quick start
-
-### Requirements
-
-- Node.js 22.13.0, the version in the repo's `.nvmrc`. With [nvm](https://github.com/nvm-sh/nvm),
-  `nvm use` in the repo picks it (`nvm install` first if you don't have it).
-- Yarn 1 (`>= 1.22.15`).
-- A browser with WebGPU: a recent Chrome, Edge or Safari, or Firefox with WebGPU enabled. Other
-  browsers fall back to WebGL 2.
-
-### Install and run
-
-```bash
-git clone https://github.com/JarSeal/aekasha-js.git my-game
-cd my-game
-nvm use
-yarn
-yarn dev
-```
-
-The dev server runs at `http://localhost:8080`. Open `http://localhost:8080/?isDebug=true` for
-the full debug tooling, then press `h` to open the debug drawer.
-
-::: tip On a phone
-A phone on your network needs a secure context for WebGPU and `SharedArrayBuffer`, which a plain
-`http://` address isn't. `yarn dev:https` serves the app over HTTPS on port 8443 with a
-self-signed certificate: open `https://<your computer's address>:8443/?isDebug=true` on the phone
-and accept the certificate.
-:::
-
-### Your first scene
-
-::: scene exampleQuickStart
-The smallest complete scene: a camera and two lights, a ground, and a cube with the toolkit's
-checker board material, hovering.
-:::
+## Your first scene
 
 A scene is a JSON file and a scene file. The JSON names what the engine loads before the scene
 file runs: here its camera, its lights and a material. Each one is a JSON file of its own,
@@ -61,12 +26,13 @@ The scene file exports `scene`, which the engine calls once the JSON's assets ar
 - [`createMeshEntity`](api:createMeshEntity) makes an entity with a mesh. Its geometry and
   material can be props, registered under their `id` the first time (the ground), or ones that
   are registered already: [`getMaterial`](api:getMaterial) returns the material the scene JSON
-  listed.
+  listed. `matOverrides` makes a variant of it ([`getMaterialVariant`](api:getMaterialVariant)),
+  here one without the checkerboard's plus signs.
 - [`addComponent`](api:ECSWorld.addComponent) gives the cube the toolkit's `HOVER` component.
   A system updates every entity that has it once a frame, so the cube needs nothing else.
 - Everything the scene creates is removed when another scene loads.
 
-### Make it yours
+## Make it yours
 
 1. Copy the `src/app/examples/quickStart/` folder and rename its ids (the `id` in the scene JSON,
    the files and their `appId`s).
@@ -74,7 +40,7 @@ The scene file exports `scene`, which the engine calls once the JSON's assets ar
    scene in `src/index.ts` (`loadScene({ sceneId: '<your scene id>' })`).
 3. Edit the scene file or the JSON: the page reloads with the change.
 
-### Next
+## Next
 
 Drop some shapes onto the ground in the [physics example](hub:examples/physics), or see the
 [toolkit example](hub:examples/toolkit) for a model, materials and an effect from the toolkit.

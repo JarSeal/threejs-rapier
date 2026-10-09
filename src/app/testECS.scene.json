@@ -8,7 +8,7 @@
   "lights": ["ambientLight"],
   "geometries": ["testSphere", { "id": "otherTestBox", "type": "BOX" }],
   "textures": ["testTexture"],
-  "materials": ["testMaterial", "checkerBoard", "testTslMat"],
+  "materials": ["testMaterial", "testTslMat"],
   "importedAssets": ["testImport"],
   "meshes": ["testMesh", "testImportedMesh"],
   "skyboxes": ["basicSkybox"]

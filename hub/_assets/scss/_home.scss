@@ -233,6 +233,105 @@
   font-weight: 600;
 }
 
-.hubHomeSide .hubBrandCard .hubBrandCardText {
-  margin: 0;
+.hubHomeSide .hubBrandCard {
+  .hubBrandCardTitle {
+    color: var(--hub-text);
+  }
+
+  .hubBrandCardText {
+    margin: 0;
+  }
+}
+
+// "What's new" (p555 Phase 2): the changelog's latest entry, a row per part it bumped
+.hubWhatsNewMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+
+  time {
+    color: var(--hub-text);
+    font-weight: 500;
+  }
+}
+
+.hubHomeSide .hubChangeParts {
+  margin-bottom: 1rem;
+
+  li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+  }
+}
+
+.hubChangePartName {
+  min-width: 4.25rem;
+  color: var(--hub-text);
+  font-weight: 500;
+}
+
+.hubChangePartVersion {
+  color: var(--hub-accent);
+}
+
+.hubChangePartCodename {
+  margin-left: auto;
+  font-size: 0.8125rem;
+}
+
+// The quick links: icon, label and text, the buttons' arrow
+.hubHomeSide .hubQuickLinks li {
+  padding: 0;
+}
+
+.hubHomeSide .hubQuickLink {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.7rem 0;
+
+  > .hubIcon {
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--hub-accent);
+  }
+
+  > .hubIcon_arrow-right {
+    width: 0.95em;
+    height: 0.95em;
+    margin-left: auto;
+    color: var(--hub-text-muted);
+    transition: transform 0.15s;
+  }
+
+  &:hover,
+  &:focus-visible {
+    .hubQuickLinkLabel {
+      color: var(--hub-accent);
+    }
+
+    > .hubIcon_arrow-right {
+      transform: translateX(2px);
+    }
+  }
+}
+
+.hubQuickLinkBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.hubQuickLinkLabel {
+  color: var(--hub-text);
+  transition: color 0.15s;
+}
+
+.hubQuickLinkText {
+  color: var(--hub-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
 }

@@ -15,9 +15,9 @@ A component and its system each, registered in `src/AppECSPlugins.ts` (see
 ### TSL materials
 
 Each a `*.material.json` with its `*.tsl.ts`, so a scene lists it by id like any material:
-`checkerBoard`, `triplanarCheckerboard`, `triplanarGrid` (both projected from the three axes, in
-world or object space, so they need no UVs) and `asteroid`. Their node inputs (colours, scales) are params in the JSON, which the
-material editor edits live.
+`triplanarCheckerboard`, `triplanarGrid` (both projected from the three axes, in world or object
+space, so they need no UVs) and `asteroid`. Their node inputs (colours, scales) are params in the
+JSON, which the material editor edits live.
 
 ### Procedural geometry
 
@@ -40,7 +40,7 @@ The Ækasha symbol: the Æ glyph extruded with a small bevel, a Draco GLB with i
 ## Using it
 
 - **Import it.** Toolkit code is imported like the engine's, and its asset JSONs are found and
-  checked like the app's: a scene lists the `checkerBoard` material or the `aekashaSymbol` model
+  checked like the app's: a scene lists the `triplanarCheckerboard` material or the `aekashaSymbol` model
   by id.
 - **Copy it.** Copy a file into `src/app/`, rename its ids (a JSON's `id`, a component's key) so
   they don't clash with the toolkit's, and change what you need. Your copy is yours; the

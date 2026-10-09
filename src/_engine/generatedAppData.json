@@ -12296,28 +12296,6 @@
           "nodes": {}
         },
         {
-          "id": "checkerBoard",
-          "params": {
-            "color": "#ff00ff"
-          },
-          "tslFile": "materials/checkerBoard.tsl.ts",
-          "nodes": {
-            "colorNode": {
-              "baseColor": "#1a233a",
-              "panelColor": "#ff0000",
-              "gridScale": 4
-            },
-            "roughnessNode": {
-              "baseRoughness": 0.2,
-              "scratchIntensity": 0.8
-            },
-            "normalNode": {
-              "bumpScale": 0.05
-            }
-          },
-          "type": "STANDARDNODEMATERIAL"
-        },
-        {
           "id": "testTslMat",
           "tslFile": "materials/testTslMat.tsl.ts",
           "nodes": {
@@ -13954,7 +13932,7 @@
     },
     "exampleQuickStart": {
       "name": "Example: Quick start",
-      "description": "The smallest complete scene: a camera and two lights from JSON, a ground, and a cube with the toolkit's checkerBoard material, hovering with the toolkit's HoverEffect.",
+      "description": "The smallest complete scene: a camera and two lights from JSON, a ground, and a cube with the toolkit's triplanarCheckerboard material, hovering with the toolkit's HoverEffect.",
       "backgroundColor": "#1c212b",
       "cameras": [
         {
@@ -14037,23 +14015,25 @@
       ],
       "materials": [
         {
-          "id": "checkerBoard",
+          "id": "triplanarCheckerboard",
           "params": {
-            "color": "#1a233a"
+            "color": "#ff0000",
+            "roughness": 0.85,
+            "metalness": 0
           },
-          "tslFile": "materials/checkerBoard.tsl.ts",
+          "tslFile": "materials/triplanarCheckerboard.tsl.ts",
+          "staticDefines": {
+            "alignToObject": true,
+            "fitToBounds": false,
+            "dominantAxis": false,
+            "plusSigns": true
+          },
           "nodes": {
             "colorNode": {
-              "baseColor": "#1a233a",
-              "panelColor": "#ffaa00",
-              "gridScale": 4
-            },
-            "roughnessNode": {
-              "baseRoughness": 0.2,
-              "scratchIntensity": 0.8
-            },
-            "normalNode": {
-              "bumpScale": 0.05
+              "checkerSize": 0.25,
+              "checkerColorA": "#898989",
+              "checkerColorB": "#787878",
+              "plusSignColor": "#555555"
             }
           },
           "type": "STANDARDNODEMATERIAL"
@@ -23549,46 +23529,6 @@
       },
       "type": "STANDARDNODEMATERIAL",
       "__sourcePath": "src/toolkit/materials/asteroid.material.json"
-    },
-    "checkerBoard": {
-      "id": "checkerBoard",
-      "params": {
-        "color": "#1a233a"
-      },
-      "__saveData": {
-        "sceneTestECS": [
-          {
-            "__meta": {
-              "date": 1779449688109
-            },
-            "params": {
-              "color": "#ff00ff"
-            },
-            "nodes": {
-              "colorNode": {
-                "panelColor": "#ff0000"
-              }
-            }
-          }
-        ]
-      },
-      "tslFile": "materials/checkerBoard.tsl.ts",
-      "nodes": {
-        "colorNode": {
-          "baseColor": "#1a233a",
-          "panelColor": "#ffaa00",
-          "gridScale": 4
-        },
-        "roughnessNode": {
-          "baseRoughness": 0.2,
-          "scratchIntensity": 0.8
-        },
-        "normalNode": {
-          "bumpScale": 0.05
-        }
-      },
-      "type": "STANDARDNODEMATERIAL",
-      "__sourcePath": "src/toolkit/materials/checkerBoard.material.json"
     },
     "triplanarCheckerboard": {
       "id": "triplanarCheckerboard",

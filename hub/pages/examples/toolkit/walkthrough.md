@@ -29,7 +29,7 @@ runs:
 - `matOverrides` gives one mesh a variant of a registered material: here other checker colours.
   Meshes with the same overrides share one variant.
 - The `HOVER` component is the toolkit's hover effect, the same as in the
-  [quick start](hub:examples#your-first-scene). Its system is registered for the whole app in
+  [quick start](hub:examples/quick-start#your-first-scene). Its system is registered for the whole app in
   `src/AppECSPlugins.ts`, so any entity can use it.
 
 Back to the [examples](hub:examples).

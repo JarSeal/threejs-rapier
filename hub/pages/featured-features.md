@@ -1,6 +1,7 @@
 ## Powerful and flexible.
 
-Ækasha gives you the tools to build and iterate faster, so you can focus on what matters: your
-game and your ideas.
+The core is small and modular: bring in only what your app needs, and let the heavy work run off
+the main thread.
 
-[View all features](hub:features)
+::: cards features featured
+:::

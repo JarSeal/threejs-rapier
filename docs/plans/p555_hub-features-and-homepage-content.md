@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Instructions, Hub
 Epic: p550_aekasha-hub-epic.md
 
@@ -207,12 +207,36 @@ As built:
 - Fixed while checking the ECS page: `ECSSystemStage`'s comment in `src/AppECSRegistry.ts` put
   `APP_PRE_PHYSICS` in the app loop; it runs with `MAIN`, also while paused.
 
-### Phase 2 — Homepage
+### Phase 2 — Homepage — done
 
 §2.4.
 
 **Exit:** the homepage has the design's sections with real content. "What's new" follows
 `CHANGELOG.md` (adding an entry updates it on the next build). It holds up at 375 px.
+
+As built:
+
+- The homepage is a generated section (`devTools/hub/generated/home.ts`, path `''`) with three
+  slots: `generated-hero-side` (`engine_metadata.description`), `generated-whats-new` and
+  `generated-quick-links`. `hero-side.md`, `whats-new.md` and `quick-links.md` are gone.
+- "What's new" is rendered at build time, not from `hub-data.js`: the date, the branch, a row per
+  part (version and codename; Project as "Tooling") and "Read the changelog entry". Its anchor is
+  the heading's `slugify`, since `latestChange.hash` is only filled when the Version page renders
+  (after the homepage); the link is a `hub:` link, so `checkLinks` fails the build if it drifts.
+- `hub.config.ts` has no `githubUrl` any more: the header's, the footer's and the quick links'
+  GitHub links are `package.json`'s repository (`getRepoWebUrl`), like the source links.
+- The quick start moved from a slot on the Examples page to its own page,
+  `examples/quick-start/` (`intro` with its scene panel, `setup`, `first-scene`; `aek:order` 10),
+  so it can be a card. Featured examples: Quick start, Physics, Toolkit.
+- `::: cards` adds `hubCards_icons` when no card has an image: `.hubCards_featured.hubCards_icons`
+  are the icon columns (4, 2 under 48rem, 1 under 26rem), featured image cards a row of 3 (1
+  under 34rem). Both by container query on the cards' parent, since the main column narrows
+  beside the side column.
+- "View all features / examples" are `hubMoreLink`s in the page markup (with the arrow icon).
+- The quick start scene's cube uses `triplanarCheckerboard` without its plus signs
+  (`matOverrides`); the toolkit's legacy `checkerBoard` material is removed.
+- Known: `yarn hub:build --no-api` fails on the feature pages' `hub:documentation/engine/…`
+  folder links (Phase 1), since those pages exist only with the API built. For Phase 3.
 
 ### Phase 3 — Coverage check, docs and versioning
 

@@ -18,6 +18,7 @@ import './cards'; // Registers the `cards` directive
 import './claudeMd'; // Registers the `claude-md` directive
 import { hubCodePlugin, loadHubHighlighter } from './code';
 import { buildSearchIndex } from './search';
+import { createHomeSection, getRepoWebUrl } from './generated/home';
 import { createIssuesSection } from './generated/issues';
 import type { HubGeneratedSection, HubSlotGenerator } from './generated/section';
 import { createVersionSection } from './generated/version';
@@ -37,7 +38,6 @@ import {
   type HubRenderContext,
 } from './markdown';
 import { discoverPages, relativeRoot, type HubPageTree } from './pages';
-import { toRepoWebUrl } from './repoFiles';
 import {
   loadAppScenes,
   resolvePageImage,
@@ -349,7 +349,12 @@ export const buildHub = async ({
   if (buildTime) meta.build.time = buildTime;
   const version = createVersionSection(meta, diag);
   const api = await createApiSection({ mode, diag, meta, model: apiModel });
-  const sections: HubGeneratedSection[] = [createIssuesSection(diag), version.section, api.section];
+  const sections: HubGeneratedSection[] = [
+    createHomeSection(meta, version.latestChange),
+    createIssuesSection(diag),
+    version.section,
+    api.section,
+  ];
   const sectionDirs = sections.flatMap((section) => section.dirs);
   let searchStats: HubBuildResult['search'] = null;
   let apiRebuildingHtml: string | null = null;
@@ -415,7 +420,7 @@ export const buildHub = async ({
     icons,
     apiLinks: api.links,
     getAppScenes: () => (appScenes ??= loadAppScenes()),
-    repoBlobUrl: `${toRepoWebUrl(meta.engine.repoUrl)}/blob/${meta.build.commit || 'main'}/`,
+    repoBlobUrl: `${getRepoWebUrl(meta)}/blob/${meta.build.commit || 'main'}/`,
     tree,
   };
   // Before any page renders: a `::: cards` shows other pages' images
@@ -481,7 +486,7 @@ export const buildHub = async ({
     js: assetUrl(root, findScript('_assets/hub.js')),
     dataJs: assetUrl(root, data),
     engineVersion: meta.engine.version,
-    githubUrl: escapeHtml(hubConfig.githubUrl),
+    githubUrl: escapeHtml(getRepoWebUrl(meta)),
   });
 
   const pageValues = ({ page, env, body }: RenderedPage): ShellPageValues => {

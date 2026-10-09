@@ -218,7 +218,7 @@ Each file is validated against its schema, and the `$schema` line gives you auto
   "name": "My scene",
   "cameras": ["mainCamera"],
   "lights": ["ambientLight"],
-  "materials": ["checkerBoard"],
+  "materials": ["triplanarCheckerboard"],
   "meshes": ["testMesh"],
   "skyboxes": ["basicSkybox"],
 }
@@ -231,7 +231,7 @@ Each file is validated against its schema, and the `$schema` line gives you auto
   "props": {
     "appId": "testMesh",
     "geo": "testSphere",
-    "mat": "checkerBoard",
+    "mat": "triplanarCheckerboard",
     "castShadow": true,
     "position": { "x": 4, "y": 1, "z": 2 },
   },

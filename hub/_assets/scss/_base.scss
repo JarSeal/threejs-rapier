@@ -162,6 +162,32 @@ button {
   }
 }
 
+// "View all …" under a section's cards: an accent link with the buttons' arrow
+.hubMoreLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--hub-accent);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-decoration: none;
+
+  .hubIcon_arrow-right {
+    width: 0.95em;
+    height: 0.95em;
+    transition: transform 0.15s;
+  }
+
+  &:hover,
+  &:focus-visible {
+    color: var(--hub-accent-hover);
+
+    .hubIcon_arrow-right {
+      transform: translateX(2px);
+    }
+  }
+}
+
 .hubPanel {
   padding: 1.25rem 1.5rem;
   background: var(--hub-panel);
