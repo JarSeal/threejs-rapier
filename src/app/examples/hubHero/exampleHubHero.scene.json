@@ -1,0 +1,12 @@
+{
+  "$schema": "../../../../.schemas/scene.schema.json",
+  "id": "exampleHubHero",
+  "sceneFile": "./examples/hubHero/exampleHubHero.ts",
+  "name": "Example: Hub hero",
+  "description": "The Ækasha Hub homepage's image: the SPACE sky box, a large toolkit asteroid in a glowing ring and smaller ones around it, slowly turning, with a bloom pass.",
+  "cameras": ["exampleHubHeroCamera"],
+  "skyboxes": ["exampleHubHero"],
+  "materials": ["asteroid"],
+  "postFx": ["heroBloom"],
+  "postFxEnabled": true
+}

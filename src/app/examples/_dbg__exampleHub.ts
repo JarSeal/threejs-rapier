@@ -29,7 +29,8 @@ const TAB_ID = 'exampleHub';
 /** The image sizes: `CARD` for an example page and its card, `HERO` for the Hub's homepage */
 export const HUB_IMAGE_SIZES = {
   CARD: { width: 1600, height: 1000 },
-  HERO: { width: 2880, height: 1080 },
+  // The homepage hero's image column (hub/pages/index.html): the placeholder's 585 × 360
+  HERO: { width: 1560, height: 960 },
 } as const;
 
 export type HubImageSize = keyof typeof HUB_IMAGE_SIZES;
@@ -137,14 +138,19 @@ export const createExampleHubTab = (sceneId: string, size: HubImageSize = 'CARD'
 /** Example scenes whose Hub image isn't a card */
 const SCENE_IMAGE_SIZES: Record<string, HubImageSize> = { exampleHubHero: 'HERO' };
 
+/** Scenes outside `src/app/examples/` that a Hub page shows (`::: scene`), so they get the tab too */
+const OTHER_HUB_SCENES = new Set(['lodShowcase']);
+
 /**
- * Gives every example scene (a scene file under `src/app/examples/`) its "Hub" tab on enter.
- * Call it once before the first scene loads, in the debug env only, through a dynamic import.
+ * Gives every example scene (a scene file under `src/app/examples/`) and the other scenes the Hub
+ * shows its "Hub" tab on enter. Call it once before the first scene loads, in the debug env
+ * only, through a dynamic import.
  */
 export const registerExampleHubTabs = () =>
   registerOnAllSceneEnterings(TAB_ID, () => {
     const sceneId = getCurrentSceneId();
     const sceneFile = sceneId ? getGeneratedSceneData(sceneId)?.sceneFile : undefined;
-    if (!sceneId || !sceneFile || !/^(\.\/)?examples\//.test(sceneFile)) return;
+    if (!sceneId || !sceneFile) return;
+    if (!/^(\.\/)?examples\//.test(sceneFile) && !OTHER_HUB_SCENES.has(sceneId)) return;
     createExampleHubTab(sceneId, SCENE_IMAGE_SIZES[sceneId]);
   });

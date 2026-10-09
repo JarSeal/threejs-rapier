@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: in progress | Phases 1-4 implemented
 Category: Instructions, Examples, Scene
 Epic: p550_aekasha-hub-epic.md
 Blocks: p555_hub-features-and-homepage-content.md (its example links and cards)
@@ -280,11 +280,44 @@ As built:
 - The Æ model is Draco-compressed (`KHR_draco_mesh_compression` in the GLB), loads through
   `importAssetAsync`, and its hole is open.
 
-### Phase 4 — The other examples and the hero
+### Phase 4 — The other examples and the hero — done
 
 §2.2's remaining scenes and pages, and the hero image (`exampleHubHero`, §2.4).
 
 **Exit:** every example page opens its scene. The homepage hero is the engine render.
+
+As built:
+
+- `exampleSkyBox` has its own `DAY_NIGHT` sky box (a two-minute day) and no lights. Space, ← →
+  and ↑ ↓ drive the day, and a HUD line from a scene main looper shows it. `createExampleHud`
+  (`app/examples/exampleHud.ts`) is the examples' HUD line, removed by an all-scenes exit hook
+  (the exit hooks run before the next scene's file); `examplePhysics` uses it too.
+- `exampleEcs`: `SpinComponent.ts` (the key and data type, no imports, so `AppECSRegistry.ts`
+  stays light) and `SpinSystem.ts` (`APP_LOGIC`), registered in `AppECSPlugins.ts`. The page
+  includes regions of `AppECSRegistry.ts` (`ecs-component-types`, `ecs-component-data`) and
+  `AppECSPlugins.ts` (`ecs-register-plugin`).
+- `exampleDebugTab`: the scene owns `boxSettings`, and the tab (`_dbg__exampleDebugTab.ts`) binds
+  to it as its `state` (`persistKeys`, `AEK_debugExampleBoxes`), so creating the tab loads the
+  saved values before the scene builds from them. Prettier escapes the underscores of a `<<<`
+  path (`\_dbg\_\_`), so the page has `<!-- prettier-ignore -->` above that include.
+- `exampleLod`: 180 torus knots in one `createInstancedLodPool` (the knot, its chain at 50/20/6 %,
+  a flat hemi octahedral impostor), lit by its own `DAY_SKY` sky box. The impostor
+  (`lodExampleKnotImpostor`) is baked at load until it's exported and listed in the scene's
+  `impostors`. The page ends with `::: scene lodShowcase` as the full demo; lodShowcase gets the
+  Hub tab too (`OTHER_HUB_SCENES` in `_dbg__exampleHub.ts`).
+- `exampleHubHero`: its own `SPACE` sky box (the light-casting sun behind the camera, a
+  light-less one in the frame), a detail-10 toolkit asteroid in an emissive torus ring and 16
+  smaller ones to its right, all turning with `SPIN`, and a bloom PostFX pass
+  (`heroBloom.postFx.json`, three's `BloomNode`, in the scene's folder).
+- The hero size is 1560 × 960, not 2880 × 1080: the homepage's hero image is its middle column
+  (the placeholder's 585 × 360), not a full-width banner.
+- The homepage's hero `<img>` has `data-aek-scene="exampleHubHero"` and keeps the placeholder as
+  its `src`: the generator (`resolveSceneImageTag`, `devTools/hub/scenes.ts`, called from
+  `resolvePageMarkup`) swaps in the scene's webp (`srcset`, real size) and adds the class
+  `hubSceneRender`, whose CSS mask fades the opaque render's edges (the left longest, under the
+  text; both sides alike in the one-column layout). Without the PNG it keeps the placeholder and
+  warns at the tag's line.
+- The search index is 1.03 MB, over its 1 MB warning.
 
 ### Phase 5 — Hub content and docs
 

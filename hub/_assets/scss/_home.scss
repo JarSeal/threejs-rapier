@@ -56,6 +56,14 @@
   margin-left: -18%;
 }
 
+// The engine's render (the exampleHubHero scene, <img data-aek-scene>) is opaque: its edges are
+// faded out here, as the placeholder's own alpha does, the left one longest (under the text)
+.hubHeroImage.hubSceneRender {
+  mask-image: linear-gradient(to right, transparent, #000 32%, #000 90%, transparent),
+    linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent);
+  mask-composite: intersect;
+}
+
 .hubHeroSide {
   align-self: stretch;
   padding: clamp(2.5rem, 6vw, 4.5rem) 0 2rem 2.5rem;
@@ -101,6 +109,12 @@
   .hubHeroImage {
     width: 100%;
     margin: 0;
+  }
+
+  // Under the text here: the same fade on both sides
+  .hubHeroImage.hubSceneRender {
+    mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent),
+      linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent);
   }
 }
 

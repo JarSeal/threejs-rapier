@@ -35,7 +35,13 @@ import {
   type HubRenderContext,
 } from './markdown';
 import { discoverPages, relativeRoot, type HubPageTree } from './pages';
-import { loadAppScenes, resolvePageImage, type HubAppScenes } from './scenes';
+import {
+  loadAppScenes,
+  resolvePageImage,
+  resolveSceneImageTag,
+  SCENE_IMG_TAG_REGEX,
+  type HubAppScenes,
+} from './scenes';
 import {
   FAVICON_FILES,
   HUB_NOT_FOUND_FILE,
@@ -169,29 +175,41 @@ const resolvePageMarkup = (
   helpers: HubMarkupHelpers
 ) => {
   const lineOf = (at: number) => env.page.bodyLine + lineAt(env.page.body, offset + at) - 1;
-  return markup
-    .replace(
-      HTML_HUB_LINK_REGEX,
-      (_match, attr: string, quote: string, href: string, at: number) =>
-        `${attr}=${quote}${(isApiLink(href) ? resolveApiLink : resolveHubLink)(href, env, env.page.file, lineOf(at))}${quote}`
-    )
-    .replace(PLACEHOLDER_REGEX, (match, key: string, arg: string | undefined, at: number) => {
-      if (arg === undefined) return key === 'root' ? env.root : match;
-      if ((PAGE_HELPERS as readonly string[]).includes(key)) {
-        return helpers[key as (typeof PAGE_HELPERS)[number]](
-          arg,
-          env.root,
+  /** Links and placeholders in `text`, which starts at `start` in `markup` */
+  const resolveText = (text: string, start: number) =>
+    text
+      .replace(
+        HTML_HUB_LINK_REGEX,
+        (_match, attr: string, quote: string, href: string, at: number) =>
+          `${attr}=${quote}${(isApiLink(href) ? resolveApiLink : resolveHubLink)(href, env, env.page.file, lineOf(start + at))}${quote}`
+      )
+      .replace(PLACEHOLDER_REGEX, (match, key: string, arg: string | undefined, at: number) => {
+        if (arg === undefined) return key === 'root' ? env.root : match;
+        if ((PAGE_HELPERS as readonly string[]).includes(key)) {
+          return helpers[key as (typeof PAGE_HELPERS)[number]](
+            arg,
+            env.root,
+            env.page.file,
+            lineOf(start + at)
+          );
+        }
+        env.diag.error(
           env.page.file,
-          lineOf(at)
+          lineOf(start + at),
+          `Unknown placeholder ${match} (a page has {{root}}, ${PAGE_HELPERS.map((name) => `{{${name}:…}}`).join(', ')})`
         );
-      }
-      env.diag.error(
-        env.page.file,
-        lineOf(at),
-        `Unknown placeholder ${match} (a page has {{root}}, ${PAGE_HELPERS.map((name) => `{{${name}:…}}`).join(', ')})`
-      );
-      return '';
-    });
+        return '';
+      });
+  // A scene's image (`<img data-aek-scene="…">`) after its own placeholders (its fallback `src`)
+  let resolved = '';
+  let cursor = 0;
+  for (const match of markup.matchAll(SCENE_IMG_TAG_REGEX)) {
+    resolved += resolveText(markup.slice(cursor, match.index), cursor);
+    const tag = resolveText(match[0], match.index);
+    resolved += resolveSceneImageTag(tag, match[1], env, env.page.file, lineOf(match.index));
+    cursor = match.index + match[0].length;
+  }
+  return resolved + resolveText(markup.slice(cursor), cursor);
 };
 
 /** A generated slot's key: `issues/#generated-issues` */

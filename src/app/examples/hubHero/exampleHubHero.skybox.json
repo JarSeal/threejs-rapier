@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../../.schemas/skyBox.schema.json",
+  "id": "exampleHubHero",
+  "preset": "SPACE",
+  "suns": [
+    {
+      "elevation": 30,
+      "azimuth": 315,
+      "discSize": 2,
+      "glowIntensity": 1.2,
+      "glowSize": 12,
+      "light": { "shadowFollow": "ORIGIN", "shadowFrustumSize": 16 }
+    },
+    {
+      "elevation": 20,
+      "azimuth": 135,
+      "discSize": 1.2,
+      "color": "#9fc4ff",
+      "glowIntensity": 0.9,
+      "glowSize": 10
+    }
+  ],
+  "debugData": {
+    "name": "Hub hero sky",
+    "description": "The SPACE preset with its sun behind the camera, lighting the asteroids from the front, and a light-less blue sun in the frame."
+  }
+}

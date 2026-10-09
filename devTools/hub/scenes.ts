@@ -110,12 +110,17 @@ const findScene = (
   return scene ?? null;
 };
 
-/** The scene's Hub image as an `<img>` with its webp sizes, or null when there's none yet */
-const renderSceneImage = (scene: HubAppScene, env: HubMarkdownEnv, line: number) => {
+/** The scene's Hub image as webp sources (an image job per width), or null when there's none yet */
+const getSceneImageSources = (
+  scene: HubAppScene,
+  env: HubMarkdownEnv,
+  file: string,
+  line: number
+) => {
   env.includes.push(scene.imageFile); // Watched also before it's there: saving it rebuilds
   if (!fs.existsSync(scene.imageFile)) {
     env.diag.warn(
-      env.file,
+      file,
       line,
       `The scene "${scene.id}" has no Hub image yet (${toRepoPath(scene.imageFile)}): save it from the scene's Hub tab`
     );
@@ -123,7 +128,7 @@ const renderSceneImage = (scene: HubAppScene, env: HubMarkdownEnv, line: number)
   }
   const size = readPngSize(scene.imageFile);
   if (!size) {
-    env.diag.error(env.file, line, `Not a PNG: ${toRepoPath(scene.imageFile)}`);
+    env.diag.error(file, line, `Not a PNG: ${toRepoPath(scene.imageFile)}`);
     return null;
   }
   const hash = hashContent(fs.readFileSync(scene.imageFile));
@@ -133,11 +138,64 @@ const renderSceneImage = (scene: HubAppScene, env: HubMarkdownEnv, line: number)
     addImageJob(env, { source: scene.imageFile, outPath, isConverted: true, width });
     return { width, url: `${env.root}${outPath}?v=${hash}` };
   });
-  const srcset = urls.map(({ width, url }) => `${url} ${width}w`).join(', ');
-  return `<img class="hubSceneImage" src="${urls[0].url}" srcset="${srcset}" sizes="${SCENE_IMAGE_SIZES}" width="${size.width}" height="${size.height}" alt="${escapeHtml(scene.name)}, rendered by the engine" loading="lazy" decoding="async" />`;
+  return {
+    src: urls[0].url,
+    srcset: urls.map(({ width, url }) => `${url} ${width}w`).join(', '),
+    width: size.width,
+    height: size.height,
+  };
+};
+
+/** The scene's Hub image as an `<img>` with its webp sizes, or null when there's none yet */
+const renderSceneImage = (scene: HubAppScene, env: HubMarkdownEnv, line: number) => {
+  const image = getSceneImageSources(scene, env, env.file, line);
+  if (!image) return null;
+  return `<img class="hubSceneImage" src="${image.src}" srcset="${image.srcset}" sizes="${SCENE_IMAGE_SIZES}" width="${image.width}" height="${image.height}" alt="${escapeHtml(scene.name)}, rendered by the engine" loading="lazy" decoding="async" />`;
 };
 
 const SCENE_ID_REGEX = /^[\w-]+$/;
+
+/** An `<img>` in a page's markup that shows a scene's Hub image: `data-aek-scene="<sceneId>"` */
+export const SCENE_IMG_TAG_REGEX = /<img\b[^>]*?\sdata-aek-scene="([^"]*)"[^>]*>/g;
+
+/**
+ * Resolves an `<img data-aek-scene="<sceneId>">` of a page's markup (its other placeholders
+ * already resolved): with the scene's Hub image saved, its `src`, `srcset`, `width` and `height`
+ * become the image's webp, and it gets the class `hubSceneRender`; without one, it keeps its own
+ * `src` (a fallback) and the build warns. Its other attributes (class, alt, sizes) are kept.
+ */
+export const resolveSceneImageTag = (
+  tag: string,
+  sceneId: string,
+  env: HubMarkdownEnv,
+  file: string,
+  line: number
+) => {
+  const plain = tag.replace(/\s+data-aek-scene="[^"]*"/, '');
+  if (!SCENE_ID_REGEX.test(sceneId)) {
+    env.diag.error(file, line, `data-aek-scene needs a scene id, not "${sceneId}"`);
+    return plain;
+  }
+  const scene = findScene(sceneId, env, env.diag, file, line);
+  const image = scene ? getSceneImageSources(scene, env, file, line) : null;
+  if (!image) return plain;
+  const attrs: Record<string, string> = {
+    src: image.src,
+    srcset: image.srcset,
+    width: String(image.width),
+    height: String(image.height),
+  };
+  let resolved = plain;
+  for (const [name, value] of Object.entries(attrs)) {
+    const attrRegex = new RegExp(`\\s${name}="[^"]*"`);
+    resolved = attrRegex.test(resolved)
+      ? resolved.replace(attrRegex, ` ${name}="${value}"`)
+      : resolved.replace(/^<img\b/, `<img ${name}="${value}"`);
+  }
+  return /\sclass="/.test(resolved)
+    ? resolved.replace(/\sclass="([^"]*)"/, ' class="$1 hubSceneRender"')
+    : resolved.replace(/^<img\b/, '<img class="hubSceneRender"');
+};
 
 registerHubDirective('scene', {
   open: (args, { env, line }) => {
