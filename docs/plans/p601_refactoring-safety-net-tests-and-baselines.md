@@ -24,7 +24,8 @@ test bridge (Phase 2) that ships in no production build.
 - **Baselines** (`yarn verify:baselines`) for bundle sizes per chunk, the public API surface and
   JSDoc coverage, diffed against a committed copy, so a refactor's PR shows what it changed.
 - Each p600 child plan's verification section is then "`yarn test`, `yarn verify:scenes`,
-  `yarn verify:baselines`, plus what's specific to the plan".
+  `yarn verify:baselines`, plus what's specific to the plan". The verify commands run for minutes to
+  hours, so whoever starts one gives the watch command, `tail -f .cache/verify/progress.log`.
 
 ## 2. Grounding (checked against the code, 2026-10-09)
 
@@ -237,6 +238,9 @@ As built (step 4):
   `largeWorld` probes 30 steps (no bodies, about 1 s a frame on SwiftShader); `space`'s worker
   targets and `thirdPersonGymScene` have an `unstableHash` (`MutualGravity` reads the worker's last
   synced poses, its own JSDoc; characters aren't deterministic).
+- Every run's output also goes to `.cache/verify/progress.log` (emptied when a run starts; the
+  header prints the watch command), so `tail -f .cache/verify/progress.log` follows whichever run is
+  going, from any terminal.
 - Not acted on: every page warns "using deprecated parameters for the initialization function"
   from inside `@dimforge/rapier3d-compat` 0.19.3's own `init()` (our call passes nothing);
   SwiftShader's GL performance messages in heavy scenes. Warnings are recorded, not compared.
@@ -250,13 +254,17 @@ As built (step 4):
 ### Phase 3: baselines
 
 1. `devTools/verify/baselines.ts`: reads the visualizer data, the TypeDoc model (built with the
-   Hub's extractor when stale) and writes the three files.
+   Hub's extractor when stale) and writes the three files. Its output goes to the same
+   progress log as the scene runner's (`.cache/verify/progress.log`, emptied when a run starts).
 2. `yarn verify:baselines [--update]`. First baselines committed.
 
 ### Phase 4: docs and versioning
 
 1. CLAUDE.md: the commands, the "no test suite" sentence replaced, the verification line every
-   p600 plan uses. The run-aekasha-js skill points at the runner.
+   p600 plan uses. With the watch command: an agent that starts `verify:scenes` or
+   `verify:baselines` (in the background: they take minutes to hours) gives the user
+   `tail -f .cache/verify/progress.log`, the one log every verify run writes. The run-aekasha-js
+   skill points at the runner.
 2. The Hub: the commands on the getting-started page (`hub/pages/`), `yarn hub:build`.
 3. `CHANGELOG.md` entry: Project (the tooling; the bridge is dev-only) and Engine (a patch bump
    for Phase 1's ECS generation fix); mark the plan done.

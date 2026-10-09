@@ -26,5 +26,5 @@ Applies p600 §5 (the per-file review standard) and p605's JSDoc style to every 
 
 - Every file in scope reviewed against p600 §5, the findings fixed or filed (`docs/issues/` or a plan item).
 - JSDoc coverage of the scope's public exports at 100% (p601's `docs.json`), members included; the ratchet raised.
-- `yarn test`, `yarn verify:scenes` (snapshots and hashes unchanged unless stated), `yarn verify:baselines` (no unexplained growth), `yarn build`, `yarn hub:build`.
+- `yarn test`, `yarn verify:scenes` (snapshots and hashes unchanged unless stated), `yarn verify:baselines` (no unexplained growth), `yarn build`, `yarn hub:build`. The verify commands run for minutes to hours: when one starts, give the watch command, `tail -f .cache/verify/progress.log`.
 - The Hub pages of the features in scope checked against the code; CLAUDE.md's nested files for them current.

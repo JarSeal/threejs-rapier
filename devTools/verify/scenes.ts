@@ -50,6 +50,9 @@ import {
 /** Bump when the baseline file's shape changes: an old one is then ignored */
 const BASELINE_FORMAT_VERSION = 1;
 const CACHE_DIR = path.join(ROOT, '.cache/verify/scenes');
+/** Every verify run's output, emptied when one starts, so `tail -f .cache/verify/progress.log`
+ * watches whichever run is going */
+const PROGRESS_LOG = path.join(ROOT, '.cache/verify/progress.log');
 const GENERATED_DATA = path.join(ROOT, 'src/_engine/generatedAppData.json');
 /** `DEBUG_PHYSICS_API_BOOT_LS_KEY` (core/Config.ts, which reads `window` at load: not importable here) */
 const PHYSICS_BOOT_LS_KEY = 'AEK_debugPhysicsApiBoot';
@@ -61,6 +64,24 @@ const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
+
+let isProgressLogStarted = false;
+
+/** Prints a line and appends it to the progress log (a convenience: a failed write is ignored) */
+const out = (line: string, isError = false) => {
+  if (isError) console.error(line);
+  else console.log(line);
+  try {
+    if (!isProgressLogStarted) {
+      fs.mkdirSync(path.dirname(PROGRESS_LOG), { recursive: true });
+      fs.writeFileSync(PROGRESS_LOG, '');
+      isProgressLogStarted = true;
+    }
+    fs.appendFileSync(PROGRESS_LOG, `${line}\n`);
+  } catch {
+    // Watching is optional
+  }
+};
 
 type Backend = 'webgpu' | 'webgl';
 
@@ -108,7 +129,7 @@ type RunResult = {
 // --- Arguments ---
 
 const fail = (msg: string): never => {
-  console.error(`${RED}${msg}${RESET}`);
+  out(`${RED}${msg}${RESET}`, true);
   process.exit(2);
 };
 
@@ -575,22 +596,20 @@ const formatDuration = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 const printResult = (r: RunResult) => {
   const colour = { PASS: GREEN, UPDATED: GREEN, NEW: YELLOW, SKIPPED: DIM, FAIL: RED }[r.status];
   const hash = r.hash ? ` ${DIM}${r.hash}${RESET}` : '';
-  console.log(
+  out(
     `${colour}${r.status.padEnd(7)}${RESET} ${r.sceneId} ${DIM}${r.config}${RESET}${hash} ${DIM}(${formatDuration(r.durationMs)})${RESET}`
   );
-  for (const f of r.failures) console.log(`        ${RED}✗ ${f}${RESET}`);
+  for (const f of r.failures) out(`        ${RED}✗ ${f}${RESET}`);
   if (r.status === 'FAIL' || r.errors.length) {
     for (const e of r.errors) {
       const allowed = isAllowed(r.sceneId, e);
-      console.log(
-        `        ${allowed ? DIM : RED}${allowed ? '(allowed) ' : ''}${e.slice(0, 400)}${RESET}`
-      );
+      out(`        ${allowed ? DIM : RED}${allowed ? '(allowed) ' : ''}${e.slice(0, 400)}${RESET}`);
     }
   }
   for (const w of r.warnings.filter((w) => !w.startsWith('[console.warn]'))) {
-    console.log(`        ${YELLOW}! ${w}${RESET}`);
+    out(`        ${YELLOW}! ${w}${RESET}`);
   }
-  for (const n of r.notes) console.log(`        ${DIM}${n}${RESET}`);
+  for (const n of r.notes) out(`        ${DIM}${n}${RESET}`);
 };
 
 /** Debug configurations of one scene should hash alike (p101: deterministic in every target) */
@@ -650,11 +669,12 @@ const main = async () => {
     void close().then(() => process.exit(130));
   });
 
-  console.log(
+  out(
     `Scene runner against ${baseUrl}: ${sceneIds.length} scene(s) × ${args.configs.join(', ')}, ` +
       `${requested === 'webgl' ? `WebGL2 (SwiftShader${args.webgl ? '' : ', WSL2'})` : 'WebGPU'}` +
-      `${args.update ? ', recording baselines' : ''}\n`
+      `${args.update ? ', recording baselines' : ''}`
   );
+  out(`${DIM}Watch it: tail -f ${path.relative(ROOT, PROGRESS_LOG)}${RESET}\n`);
 
   const ctx: LoadContext = {
     browser,
@@ -673,7 +693,7 @@ const main = async () => {
         const isFirstPage = !ctx.backend;
         const r = await runOne(ctx, sceneId, config);
         if (isFirstPage && ctx.backend && ctx.backend !== requested) {
-          console.log(
+          out(
             `${YELLOW}No WebGPU here: the engine fell back to WebGL2 (the webgl baseline)${RESET}`
           );
         }
@@ -682,7 +702,7 @@ const main = async () => {
       }
       const mismatch = checkCrossTargetHashes(sceneResults);
       if (mismatch)
-        console.log(`        ${YELLOW}! the physics targets hash differently: ${mismatch}${RESET}`);
+        out(`        ${YELLOW}! the physics targets hash differently: ${mismatch}${RESET}`);
       results.push(...sceneResults);
     }
   } finally {
@@ -700,7 +720,7 @@ const main = async () => {
 
   const count = (status: RunStatus) => results.filter((r) => r.status === status).length;
   const failed = count('FAIL');
-  console.log(
+  out(
     `\n${count('PASS')} passed, ${failed} failed, ${count('NEW')} new, ${count('UPDATED')} recorded, ` +
       `${count('SKIPPED')} skipped in ${formatDuration(Date.now() - started)} ` +
       `${DIM}(${path.relative(ROOT, paths.lastRunFile)})${RESET}`
