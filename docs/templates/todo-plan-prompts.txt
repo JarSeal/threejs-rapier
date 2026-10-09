@@ -232,7 +232,7 @@ The on-screen tools should provide.
 
 We should make it easy to build a game or 3D app UI with these HTML/Javascript components and they should be easily overwritten with styles (a developer pattern and a HUB guide should be made). Also a guide to how to create your own scene debugger drawer tab should be made. The usage should implement the SPB (Smallest Possible Build) strategy. An example page of all of the HTML UI components should be constructed for the Hub.
 
-We should add a section to the Hub's main navigation bar called "Project" and it can be a button with an icon on the right side of the navigation. These pages and button should only be visible in the local dev server runs (not included in the Hub's build). This section has a main page explaining the core philosophies and code conventions for the current project. As sub pages (for now) it should have a small style guide for the engine explaining the different colors, text styles, fonts, spacing, margins, etc. - a small design document for the Aekasha engine and also a component library to display the different components it uses. This component library is for developing Aekasha but serves a purpose for glancing what kind of components the app/game developer could use for their UI. The developer could the easily copy the Aekashas design document and create their own design document for their project (app or a game). Later we could also add road maps for showing implemented and not-implemented plans for Aekasha and also for the app itself (create a plan for these, Aekasha docs should somehow differ from the app's docs or maybe they should have their own folders, eg. docs/ for Aekasha and docsApp/ for the app?).
+We should add a section to the Hub's main navigation bar called "Project" and it can be a (Aekasha blue) button with an icon on the right side of the navigation. These pages and button should only be visible in the local dev server runs (not included in the Hub's build). This section has a main page explaining the core philosophies and code conventions for the current project (Aekasha development and the app development should be two different sections). As sub pages (for now) it should have a small style guide for the engine explaining the different colors, text styles, fonts, spacing, margins, etc. - a small design document for the Aekasha engine and also a component library to display the different components it uses. This component library is for developing Aekasha but serves a purpose for glancing what kind of components the app/game developer could use for their UI. The developer could the easily copy the Aekashas design document and create their own design document for their project (app or a game). Later we could also add road maps for showing implemented and not-implemented plans for Aekasha and also for the app itself (create a plan for these, Aekasha docs should somehow differ from the app's docs or maybe they should have their own folders, eg. docs/ for Aekasha and docsApp/ for the app?). In the Hub's home page, the right side of the hero (where it says BUILD / EXPLORE / CREATE) we could have quick links to the app's project Hub section.
 
 One more thing to focus here is semantics and accessibility. The UI should follow good HTML and accessibility standards and should help - not just disabled - but also keyboard driven users. If some standards should not be followed, it should have a very good reason. The main mantra here is "USER FIRST"! The goal is to have a professional, yet cool UI and a welcoming, "Can't wait to get back to Aekasha!" type of UI vibe.
 
@@ -245,6 +245,7 @@ Create "HUB SEO optimization" plan in docs/plans/p180_hub-seo-optimization.md
 Category: HUB
 
 UNDER_CONSTRUCTION
+The Hub should have proper SEO optimization. Also the app's index.html should have SEO optimization but some of the header tags should probably be commented out so that the developer can then easily add or remove what SEO features is needed and what is not.
 
 ************************************
 
@@ -255,6 +256,6 @@ Category: Versioning
 UNDER_CONSTRUCTION
 We should add a syntax for describing and recognizing custom engines (and why not for the toolkits and apps as well) from the version number. Suggest a way to mark custom engines: maybe one way would be to add an underscore at the end of the version, something like "v4.13.0_my-game-1.0"? You know better, but something to tell that this is a custom engine and we could see that from which version it was made out of.
 
-We should also add the Hub versioning.
+We should also add versioning for the Hub.
 
 ************************************

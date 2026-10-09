@@ -1,0 +1,79 @@
+// `::: cards <page path>` (p554 Phase 5, p555 §2.2): a grid of links to child pages, each with
+// its image (or icon), label and description
+.hubCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 2rem;
+  padding: 0;
+  list-style: none;
+}
+
+.hubCard {
+  margin: 0;
+}
+
+.hubCardLink {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--hub-panel);
+  border: 1px solid var(--hub-border);
+  border-radius: var(--hub-radius);
+  color: var(--hub-text);
+  text-decoration: none;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+
+  &:hover {
+    background: var(--hub-panel-hover);
+    border-color: var(--hub-border-strong);
+  }
+
+  &:hover .hubCardTitle {
+    color: var(--hub-accent);
+  }
+}
+
+// The scenes' renders are 16:10; another image is cut to it
+.hubCardImage {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-bottom: 1px solid var(--hub-border);
+  border-radius: 0;
+}
+
+.hubCardIcon {
+  display: flex;
+  padding: 1.25rem 1.25rem 0;
+  color: var(--hub-accent);
+
+  svg {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+}
+
+.hubCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.hubCardTitle {
+  font-weight: 600;
+  line-height: 1.35;
+  transition: color 0.15s;
+}
+
+.hubCardText {
+  color: var(--hub-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}

@@ -7,6 +7,7 @@ import type Token from 'markdown-it/lib/token.mjs';
 import type { HubDiagnostics } from './diagnostics';
 import { hashContent } from './hash';
 import type { HubIcons } from './icons';
+import type { HubPageTree } from './pages';
 import { PAGE_IMAGES_URL_DIR } from './paths';
 import type { HubAppScenes } from './scenes';
 import type { HubBuildMode, HubHeading, HubPage } from './types';
@@ -62,6 +63,11 @@ export type HubRenderContext = {
   apiLinks: HubApiLinkResolver | null;
   /** The app's scenes (p554, `scenes.ts`), read on the build's first use */
   getAppScenes: () => HubAppScenes;
+  /**
+   * The page tree, every page's `imageFile` resolved before any page renders (`::: cards`,
+   * `cards.ts`); null when there's none
+   */
+  tree: HubPageTree | null;
 };
 
 /** One page's render state, shared by its slots */
@@ -132,7 +138,7 @@ export type HubDirective = {
 
 const directives = new Map<string, HubDirective>();
 
-/** Adds a `::: name args` directive (p552's `code-group`, p554's `scene`, p555's `cards`) */
+/** Adds a `::: name args` directive (p552's `code-group`, p554's `scene` and `cards`) */
 export const registerHubDirective = (name: string, directive: HubDirective) => {
   directives.set(name, directive);
 };

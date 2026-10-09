@@ -14,6 +14,7 @@ import {
 } from './assets';
 import { createApiSection, type ApiBuildStats, type ApiModelSource } from './api/render';
 import { buildHubData, getPageSection } from './data';
+import './cards'; // Registers the `cards` directive
 import { hubCodePlugin, loadHubHighlighter } from './code';
 import { buildSearchIndex } from './search';
 import { createIssuesSection } from './generated/issues';
@@ -412,12 +413,16 @@ export const buildHub = async ({
     icons,
     apiLinks: api.links,
     getAppScenes: () => (appScenes ??= loadAppScenes()),
+    tree,
   };
+  // Before any page renders: a `::: cards` shows other pages' images
   const pageImageFiles: string[] = [];
   for (const page of tree?.pages ?? []) {
     const image = resolvePageImage(page, context, diag);
     page.imageFile = image.file;
     pageImageFiles.push(...image.dependencies);
+  }
+  for (const page of tree?.pages ?? []) {
     const env = createMarkdownEnv(page, relativeRoot(page.path), diag, context);
     rendered.push({ page, env, body: renderPageBody(page, env, md, helpers, generators) });
   }

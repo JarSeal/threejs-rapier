@@ -10,7 +10,14 @@ import {
   type HubMarkdownEnv,
   type HubRenderContext,
 } from './markdown';
-import { APP_DATA_FILE, APP_SRC_DIR, ROOT, SCENE_IMAGES_URL_DIR, toRepoPath } from './paths';
+import {
+  APP_DATA_FILE,
+  APP_SRC_DIR,
+  PAGE_IMAGES_URL_DIR,
+  ROOT,
+  SCENE_IMAGES_URL_DIR,
+  toRepoPath,
+} from './paths';
 import type { HubPage } from './types';
 
 /**
@@ -21,8 +28,8 @@ import type { HubPage } from './types';
  * - a scene's Hub image is `<sceneId>.hub.png` beside its scene file, written by the example
  *   scenes' Hub tab (`src/app/examples/_dbg__exampleHub.ts`, the same path rule), converted to
  *   webp at the widths the layout shows it;
- * - `aek:image` in a page's head (`scene:<sceneId>` or a path from the repo root), for p555's
- *   cards.
+ * - `aek:image` in a page's head (`scene:<sceneId>` or a path from the repo root), which a
+ *   `::: cards` shows (`cards.ts`).
  * The scene ids come from the generated app data, the data `?startScene` checks, so a scene the
  * Hub links is one the app loads. `yarn build` gathers the development data again before
  * `hub:build`, so it has every scene, debug scenes too.
@@ -115,7 +122,8 @@ const getSceneImageSources = (
   scene: HubAppScene,
   env: HubMarkdownEnv,
   file: string,
-  line: number
+  line: number,
+  imageWidths = SCENE_IMAGE_WIDTHS
 ) => {
   env.includes.push(scene.imageFile); // Watched also before it's there: saving it rebuilds
   if (!fs.existsSync(scene.imageFile)) {
@@ -132,7 +140,7 @@ const getSceneImageSources = (
     return null;
   }
   const hash = hashContent(fs.readFileSync(scene.imageFile));
-  const widths = [...new Set(SCENE_IMAGE_WIDTHS.map((width) => Math.min(width, size.width)))];
+  const widths = [...new Set(imageWidths.map((width) => Math.min(width, size.width)))];
   const urls = widths.map((width) => {
     const outPath = `${SCENE_IMAGES_URL_DIR}${scene.id}-${width}.webp`;
     addImageJob(env, { source: scene.imageFile, outPath, isConverted: true, width });
@@ -260,4 +268,46 @@ export const resolvePageImage = (
     return { file: null, dependencies: [] };
   }
   return { file, dependencies: [file] };
+};
+
+export type HubImageSources = {
+  src: string;
+  srcset: string;
+  /** The source's size, null when it isn't a PNG (the layout then sets the aspect ratio) */
+  width: number | null;
+  height: number | null;
+};
+
+/**
+ * A page's `aek:image` (resolved by `resolvePageImage` first) as webp sources at `widths`, for
+ * an image of it on another page (`::: cards`), or null without one. A scene's image shares its
+ * outputs with the scene's panels (`_assets/images/scenes/<sceneId>-<width>.webp`), a file's go
+ * beside the page's own images.
+ */
+export const getPageImageSources = (
+  page: HubPage,
+  env: HubMarkdownEnv,
+  widths: number[],
+  line: number
+): HubImageSources | null => {
+  if (!page.imageFile) return null;
+  const sceneMatch = /^scene:(.*)$/.exec(page.image);
+  if (sceneMatch) {
+    const scene = env.getAppScenes().byId?.get(sceneMatch[1].trim());
+    return scene ? getSceneImageSources(scene, env, env.file, line, widths) : null;
+  }
+  const source = page.imageFile;
+  const size = /\.png$/i.test(source) ? readPngSize(source) : null;
+  const hash = hashContent(fs.readFileSync(source));
+  const urls = widths.map((width) => {
+    const outPath = `${PAGE_IMAGES_URL_DIR}${page.path}aek-image-${width}.webp`;
+    addImageJob(env, { source, outPath, isConverted: true, width });
+    return { width, url: `${env.root}${outPath}?v=${hash}` };
+  });
+  return {
+    src: urls[0].url,
+    srcset: urls.map(({ width, url }) => `${url} ${width}w`).join(', '),
+    width: size?.width ?? null,
+    height: size?.height ?? null,
+  };
 };
