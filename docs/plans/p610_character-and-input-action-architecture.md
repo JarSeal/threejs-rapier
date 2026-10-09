@@ -2,8 +2,8 @@ Status: stub — not-implemented
 Category: Characters, Input, Architecture
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage B, engine major)
 Blocked by: p608_engine-folder-restructure.md
-Blocks: p614_review-physics.md, p617_review-input-ui-hud.md
-Related: \_DONE_p603_gameplay-architecture-contracts.md (the contracts C1-C5 this plan builds, and the stub plans p421-p427 that build on it), p604_multiplayer-viability-study.md (step-index time, seeded RNG), p420_npc-simulation-tiers.md, the "Refactor dynamic character code" (p070) and "Key binding refactoring" (p770) prompts (they build on this plan)
+Blocks: p614_review-physics.md, p617_review-input-ui-hud.md, p512_client-prediction-and-reconciliation.md
+Related: \_DONE_p603_gameplay-architecture-contracts.md (the contracts C1-C5 this plan builds, and the stub plans p421-p427 that build on it), \_DONE_p604_multiplayer-viability-study.md (step-index time, seeded RNG), p420_npc-simulation-tiers.md, the "Refactor dynamic character code" (p070) and "Key binding refactoring" (p770) prompts (they build on this plan)
 
 # Character and Input Action Architecture — Stub
 
@@ -28,7 +28,11 @@ dynamic character.
   wall, platform, jump, tumble, crouch), with `CharacterData`'s state, config (`_`) and internals
   (`__`) as separate objects (the debug tools follow).
 - **Determinism** (p604 §4): step-index time instead of `getPhysGameTime()`, the seeded RNG instead
-  of `Math.random` (`DynamicCharacter.ts:1497`); the async casts' one-step lag documented or fixed.
+  of `Math.random` (`DynamicCharacter.ts:1497`); the async casts' one-step lag documented or fixed;
+  the controller reads its own state at the step, never the synced `TRANSFORM` or the visual
+  (p604 §4.8). The aim is the gym's characters hashing alike in every worker target with real frame
+  timing too, so they can leave `scenes.config.ts`'s `unstableHash` and a network brain or client
+  prediction (p604 §3.1: the local character predicted alone) can rely on them.
 - Behaviour stays the same: the gym's characters move as before (recorded paths compared).
 
 ## Inputs

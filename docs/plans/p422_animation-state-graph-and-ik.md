@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Characters, Animation
 Blocked by: p610_character-and-input-action-architecture.md (soft: the actor and controller contracts the graph reads)
-Related: \_DONE_p603_gameplay-architecture-contracts.md (C6: this plan decides it), p421_kinematic-character-controller.md (both controllers report the same locomotion states), p250_physics-api-support-for-multibody-joints.md (ragdoll joints), p420_npc-simulation-tiers.md (cheaper animation per tier, `CROWD` vertex animation), p604_multiplayer-viability-study.md (root motion and determinism)
+Related: \_DONE_p603_gameplay-architecture-contracts.md (C6: this plan decides it), p421_kinematic-character-controller.md (both controllers report the same locomotion states), p250_physics-api-support-for-multibody-joints.md (ragdoll joints), p420_npc-simulation-tiers.md (cheaper animation per tier, `CROWD` vertex animation), \_DONE_p604_multiplayer-viability-study.md (root motion and determinism)
 
 # Animation State Graph and IK — Stub
 

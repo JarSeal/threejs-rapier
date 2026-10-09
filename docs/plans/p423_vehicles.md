@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Vehicles, Physics
 Blocked by: p610_character-and-input-action-architecture.md (the controller and brain contracts, the action layer's contexts)
-Related: \_DONE_p603_gameplay-architecture-contracts.md (C1 actor kind `VEHICLE`, C2, C3 `VehicleIntent`, C5 contexts), p421_kinematic-character-controller.md (`attach` / `detach`, used on enter and exit), p604_multiplayer-viability-study.md
+Related: \_DONE_p603_gameplay-architecture-contracts.md (C1 actor kind `VEHICLE`, C2, C3 `VehicleIntent`, C5 contexts), p421_kinematic-character-controller.md (`attach` / `detach`, used on enter and exit), \_DONE_p604_multiplayer-viability-study.md
 
 # Vehicles — Stub
 

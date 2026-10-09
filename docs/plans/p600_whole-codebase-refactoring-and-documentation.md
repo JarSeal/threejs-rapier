@@ -1,6 +1,6 @@
 Status: draft | epic — not-implemented
 Category: Refactoring, Documentation, Architecture, Build
-Blocks: \_DONE_p601_refactoring-safety-net-tests-and-baselines.md, \_DONE_p602_architecture-and-target-structure.md, \_DONE_p603_gameplay-architecture-contracts.md, p604_multiplayer-viability-study.md, p605_coding-standards-and-documentation-tooling.md, p606_layering-inversion-and-public-entry.md, p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p609_toolkit-and-app-restructure.md, p610_character-and-input-action-architecture.md, p611_sbp-tooling-profiles-and-marketing.md, p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md, p621_hub-docs-readme-and-claude-md-final.md
+Blocks: \_DONE_p601_refactoring-safety-net-tests-and-baselines.md, \_DONE_p602_architecture-and-target-structure.md, \_DONE_p603_gameplay-architecture-contracts.md, \_DONE_p604_multiplayer-viability-study.md, p605_coding-standards-and-documentation-tooling.md, p606_layering-inversion-and-public-entry.md, p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p609_toolkit-and-app-restructure.md, p610_character-and-input-action-architecture.md, p611_sbp-tooling-profiles-and-marketing.md, p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md, p621_hub-docs-readme-and-claude-md-final.md
 Related: p990_follow-ups-from-done-plans.md (its bundle size items move to p607), p200_component-query-caching.md (its main-camera cache lands in p612), p420_npc-simulation-tiers.md (fits p603's actor model), p500_restore-physics-snapshot.md (p604's rollback prerequisite), p302_material-and-texture-system-refactor.md (p613 leaves what it rewrites), p240_client-device-capability-sniffer.md (SBP-aware: its benchmark is a lazy chunk), `docs/templates/todo-plan-prompts.txt` (the original prompt, and the p800, p450, p070 and p770 prompts this epic sequences)
 
 # Whole Codebase Refactoring and Documentation — Epic
@@ -172,23 +172,25 @@ toolkit minus `_dbg__*` and `generatedApp*`):
 (no throttle, steer, brake). No hook for animation, IK or vehicles beyond`onLocomotionStateChange`.
 - **Input:** `core/Input/*` is per-device binding registries (keyboard, mouse, touch); the gamepad
   is a TODO stub; there is no action layer and no input recording.
-- **Multiplayer bases:** a fixed-step accumulator (`stepPhysics`, `PhysicsAPI.ts:349`) with an
+- **Multiplayer bases:** a fixed-step accumulator (`stepPhysics`, `PhysicsAPI.ts:355`) with an
   absolute step index (`getPhysicsSubStepIndex`), the `APP_PHYSICS_STEP` stage, deterministic
   scene loads and the determinism probe, `CharacterIntent`, a DOM-free physics worker
-  (`EngineRapier.ts` imports only Rapier) and a tick-stamped protocol (`STEP` with per-sub-step
-  commands, `requestId`-matched replies, `SHARED_MEMORY` / `MESSAGE_BATCH` transports).
+  (`EngineRapier.ts` imports only Rapier; p604 ran it in Node, bit for bit) and a tick-stamped
+  protocol (`STEP` with per-sub-step commands, `requestId`-matched replies, `SHARED_MEMORY` /
+  `MESSAGE_BATCH` transports).
 - **Multiplayer blockers:**
   - Characters aren't deterministic: `Math.random` for the tumble impulse
     (`DynamicCharacter.ts:1497`), the wall-clock `getPhysGameTime()` (`performance.now()`,
-    `PhysicsAPI.ts:977`), async casts that answer a step late in `WORKER_THREAD` mode.
-  - Rapier is the compat build, not the cross-platform deterministic one.
+    `PhysicsAPI.ts:987`), async casts that answer a step late in `WORKER_THREAD` mode.
+  - Rapier is the compat build, not the one Rapier guarantees deterministic across platforms
+    (p604 found the compat build reproducing across browsers and CPUs all the same, §7).
   - Entity ids are per world (index + generation); `appId` is optional (a UUID otherwise) and
     `getEntityIdByAppId` is a linear scan.
   - No ECS serializer; physics snapshot restore is broken (p500).
   - The core can't run headless: `Config.ts:304` reads `window.location` and `import.meta.env` at
     load, `PhysicsAPI.ts:10` imports `physicsWorker?worker`, `MainLoop.ts` needs rAF and a
     renderer, `InitEngine` always builds the HUD and imports SCSS, `ECS.ts` imports `three/webgpu`.
-  - `worker.postMessage` is called directly (`PhysicsAPI.ts:826`): no transport interface.
+  - `worker.postMessage` is called directly (`PhysicsAPI.ts:842`): no transport interface.
 
 ## 3. Shared principles
 
@@ -228,6 +230,9 @@ Every child plan follows these; p602 turns §3.1-§3.5 into exact decisions.
   serializable, and free of the DOM, the renderer and Vite-only imports.
 - **Presentation** (rendering, interpolation, animation, UI, audio, debug): reads the simulation,
   never writes it except through intents and commands.
+- The simulation never reads the presentation: not the synced `TRANSFORM`s, interpolated poses or
+  `Object3D`s, which lag a frame behind the physics worker. It reads physics state through
+  step-stamped reads (`readBodyPositionsAtStep`; p604 §4.8).
 - Not every module needs both halves; the split is about which rules a file lives under.
 
 ### 3.5 Debug code
@@ -356,27 +361,41 @@ implementation of each; new features are separate plans outside this epic.
 - **Where it lives:** generic contracts and the core implementations in the engine; ready-made
   controllers, brains and effects in the toolkit; game-specific logic in the app.
 
-## 7. Multiplayer: a preliminary verdict
+## 7. Multiplayer: the verdict (p604)
 
-**Viable, with a staged path.** p604 confirms it with a spike.
+**Viable, with a staged path**, confirmed by p604's measurements (its §3.1 and Phase 1): the
+engine's physics worker ran in Node from a recorded message stream and reproduced the browser
+bit for bit, and so did Chromium, Firefox and an Android phone (x86-64 and ARM).
 
-- **Possible on today's base, after the structural stage:** an authoritative server running the
-  simulation headless (Node or a worker), clients sending intents stamped with the step index and
-  rendering interpolated snapshots. This is what the worker protocol already does across a thread:
-  serializable commands per tick in, poses per tick out.
-- **Needs more work:** client-side prediction and reconciliation for the local player needs
-  deterministic characters and a working physics snapshot restore (p500). Lockstep or full
-  rollback across machines needs Rapier's cross-platform deterministic build
-  (`@dimforge/rapier3d-deterministic-compat`), which is slower and also inlines its WASM.
-- **Constraints adopted now** (cheap, and good design anyway):
-  - The simulation/presentation split (§3.4).
+- **Go after the structural stage:** an authoritative server running the simulation headless,
+  clients sending intents stamped with the step index and rendering interpolated snapshots. The
+  physics half runs headless today; the gameplay half (the `APP_PHYSICS_STEP` systems in the main
+  thread's ECS) needs the headless core (p606, p608). `physicsTiers` steps in 0.29 ms on a server;
+  sending only the changed bodies, quantized, at 20 Hz costs 45-62 kbit/s per client for its 687
+  bodies.
+- **Go, staged:** client prediction and reconciliation, blocked by p500 (snapshot restore) and
+  p610 (deterministic characters). Snapshots take and restore in 0.25-4 ms; re-simulating the
+  whole world is the cost, so the local character is predicted with a kinematic controller (p421)
+  and only small worlds are rewound whole.
+- **Possible later, not shaping the engine now:** lockstep and rollback. Rapier's compat build
+  reproduced across machines in p604's tests, but only its deterministic build
+  (`@dimforge/rapier3d-deterministic-compat`: 0-9 % slower, +12 kB gzip, different results
+  from compat) is guaranteed to; a lockstep game switches then. The blockers are our own code:
+  characters, JS `Math` in simulation code, every peer on the same build. Rollback re-simulates
+  every misprediction, so it fits small active worlds only.
+- **Constraints adopted now** (cheap, and good design anyway; the full list is p604 §4):
+  - The simulation/presentation split (§3.4), including the simulation reading its own state at
+    the step, never the synced or interpolated poses.
   - Simulation time is the step index (`getPhysicsSubStepIndex`), never the wall clock.
   - A seeded RNG service for simulation code.
   - A stable network id per replicated entity, with a map instead of the linear `appId` scan.
   - The input action layer: brains write intents, so a network brain is just another brain.
   - A transport interface in front of `postMessage`, so a WebSocket or WebTransport channel can
-    stand where the worker is.
-  - A core that runs headless (no `window`, `import.meta.env` or `?worker` at module load).
+    stand where the worker is; protocol messages stay plain data.
+  - A core that runs headless (no `window`, `import.meta.env` or `?worker` at module load), with
+    type-only imports written `import type` across the simulation boundary.
+  - Serializable simulation components.
+  - One Rapier build for every peer (the compat build, until a game needs the deterministic one).
 - **Performance cost of the constraints:** none in the hot paths. The action layer and transport
   interface are one indirection per frame or message.
 
@@ -427,7 +446,7 @@ standards, the structure and the SBP strategy to it would make every session pay
 | A     | \_DONE_p601_refactoring-safety-net-tests-and-baselines.md | Vitest, the scene runner (snapshots, console errors, determinism hashes), bundle / API / coverage baselines            | —                       |
 | A     | \_DONE_p602_architecture-and-target-structure.md          | The decisions: folder map, public entry, feature-module contract, debug placement, naming, boundaries                  | —                       |
 | A     | \_DONE_p603_gameplay-architecture-contracts.md            | Actors, controllers, intents, brains, animation, world systems; the stub plans                                         | p602                    |
-| A     | p604_multiplayer-viability-study.md                       | The verdict, the constraints, an optional two-client spike                                                             | p602                    |
+| A     | \_DONE_p604_multiplayer-viability-study.md                | The verdict, the constraints (measured; the two-client spike dropped)                                                  | p602                    |
 | A     | p605_coding-standards-and-documentation-tooling.md        | Coding standards, JSDoc style, eslint-plugin-jsdoc + TypeDoc validation as a ratchet, the CLAUDE.md split              | p602                    |
 | B     | p606_layering-inversion-and-public-entry.md               | The engine stops importing the app; declaration-merged component types; the `aekasha` entry; boundary lint             | p601, p602              |
 | B     | p607_sbp-foundation-feature-modules.md                    | No side-effect registrations, `sideEffects`, lazy Rapier, `__AEK_DEBUG__`, lazy maps and loaders, the feature manifest | p606                    |
@@ -480,8 +499,9 @@ other once their blockers land, and can run in parallel branches.
 5. **Over-abstraction.** A gameplay contract is generalized only when a second real
    implementation is named (eg. the kinematic controller next to the dynamic one). p603 records
    which contracts are firm and which wait for their second user.
-6. **The deterministic Rapier build** is slower and as large; p604 measures it before any plan
-   depends on it.
+6. **The deterministic Rapier build:** measured by p604 at 0-9 % slower and +12 kB gzip, with
+   results that differ from compat's. No plan depends on it: the engine stays on the compat build
+   until a lockstep or rollback game needs it (p604 §4.9).
 7. **Tooling churn.** eslint-plugin-jsdoc and TypeDoc's validation are new dependencies of the
    lint and the Hub build; the ratchet (p605) must not block unrelated work while coverage climbs.
 8. **Open:** whether the engine should become a real package (a workspace, publishable to npm) or

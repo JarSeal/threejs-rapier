@@ -1,7 +1,7 @@
 Status: implemented (Phases 1-3)
 Category: Architecture, Refactoring
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
-Blocks: \_DONE_p603_gameplay-architecture-contracts.md, p604_multiplayer-viability-study.md, p605_coding-standards-and-documentation-tooling.md, p606_layering-inversion-and-public-entry.md, p608_engine-folder-restructure.md
+Blocks: \_DONE_p603_gameplay-architecture-contracts.md, \_DONE_p604_multiplayer-viability-study.md, p605_coding-standards-and-documentation-tooling.md, p606_layering-inversion-and-public-entry.md, p608_engine-folder-restructure.md
 
 # Architecture and Target Structure
 

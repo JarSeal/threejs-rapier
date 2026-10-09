@@ -2,7 +2,7 @@ Status: stub — not-implemented
 Category: AI, Characters
 Blocked by: p610_character-and-input-action-architecture.md (the brain contract in code)
 Blocks: p420_npc-simulation-tiers.md (soft: its `REDUCED` tier moves on the navmesh)
-Related: \_DONE_p603_gameplay-architecture-contracts.md (C4: the AI brain), p421_kinematic-character-controller.md (the NPC default controller), p425_game-events-missions-and-save-games.md (AI reacting to game events), p604_multiplayer-viability-study.md (step-index time, the seeded RNG)
+Related: \_DONE_p603_gameplay-architecture-contracts.md (C4: the AI brain), p421_kinematic-character-controller.md (the NPC default controller), p425_game-events-missions-and-save-games.md (AI reacting to game events), \_DONE_p604_multiplayer-viability-study.md (step-index time, the seeded RNG)
 
 # AI Brains and Navigation — Stub
 

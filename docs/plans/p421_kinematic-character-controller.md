@@ -2,7 +2,7 @@ Status: stub — not-implemented
 Category: Characters, Physics
 Blocked by: p610_character-and-input-action-architecture.md (the controller contract in code)
 Blocks: p420_npc-simulation-tiers.md (soft: the NPC default controller)
-Related: \_DONE_p603_gameplay-architecture-contracts.md (C2: this is the second implementation that makes the controller contract firm), p604_multiplayer-viability-study.md (step-index time, no async casts in the tick), the "Refactor dynamic character code" (p070) prompt in `docs/templates/todo-plan-prompts.txt` (crouch shape, grace time and air control apply here too)
+Related: \_DONE_p603_gameplay-architecture-contracts.md (C2: this is the second implementation that makes the controller contract firm), \_DONE_p604_multiplayer-viability-study.md (step-index time, no async casts in the tick), p512_client-prediction-and-reconciliation.md (predicts the local player with this controller), the "Refactor dynamic character code" (p070) prompt in `docs/templates/todo-plan-prompts.txt` (crouch shape, grace time and air control apply here too)
 
 # Kinematic Character Controller — Stub
 

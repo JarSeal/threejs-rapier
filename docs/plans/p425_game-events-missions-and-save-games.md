@@ -1,6 +1,6 @@
 Status: stub — not-implemented
 Category: Gameplay, Save games
-Related: \_DONE_p603_gameplay-architecture-contracts.md (C7: events, missions, the save service), p604_multiplayer-viability-study.md (§4 rule 7: serializable components, shared with network replication), p500_restore-physics-snapshot.md (the physics part of a save), p420_npc-simulation-tiers.md (`ABSTRACT` NPC state is game state), p610_character-and-input-action-architecture.md (controllers and brains saved as `{ kind, params }`), p355_save-menu-and-file-server-settings.md (not this: it saves debug edits into asset JSONs)
+Related: \_DONE_p603_gameplay-architecture-contracts.md (C7: events, missions, the save service), \_DONE_p604_multiplayer-viability-study.md (§4 rule 7: serializable components, shared with network replication), p500_restore-physics-snapshot.md (the physics part of a save), p420_npc-simulation-tiers.md (`ABSTRACT` NPC state is game state), p610_character-and-input-action-architecture.md (controllers and brains saved as `{ kind, params }`), p355_save-menu-and-file-server-settings.md (not this: it saves debug edits into asset JSONs)
 
 # Game Events, Missions and Save Games — Stub
 

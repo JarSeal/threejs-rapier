@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Characters, AI
 Blocked by: p610_character-and-input-action-architecture.md (the actor, controller and brain contracts in code, defined by p603), p421_kinematic-character-controller.md (soft: the NPC default controller), p424_ai-brains-and-navigation.md (soft: the AI brain and the navmesh `REDUCED` moves on)
-Related: \_DONE_p603_gameplay-architecture-contracts.md (C1-C4: the tiers below in its terms), p425_game-events-missions-and-save-games.md (where `ABSTRACT` NPC state is saved), p422_animation-state-graph-and-ik.md (animation cost per tier), p350_lod-system-research.md (§6 physics simulation tiers, §8 roadmap), \_DONE_p352_physics-simulation-tiers.md (generic rigid bodies; it refuses tier changes on characters and leaves them to this plan), p353_macro-streaming-grid.md (cells around the player), \_DONE_p351_impostor-billboard-lod.md (`CROWD` rendering), p102_physics-world-bounds.md, p604_multiplayer-viability-study.md (the determinism rules an `ABSTRACT` simulation would follow)
+Related: \_DONE_p603_gameplay-architecture-contracts.md (C1-C4: the tiers below in its terms), p425_game-events-missions-and-save-games.md (where `ABSTRACT` NPC state is saved), p422_animation-state-graph-and-ik.md (animation cost per tier), p350_lod-system-research.md (§6 physics simulation tiers, §8 roadmap), \_DONE_p352_physics-simulation-tiers.md (generic rigid bodies; it refuses tier changes on characters and leaves them to this plan), p353_macro-streaming-grid.md (cells around the player), \_DONE_p351_impostor-billboard-lod.md (`CROWD` rendering), p102_physics-world-bounds.md, \_DONE_p604_multiplayer-viability-study.md (the determinism rules an `ABSTRACT` simulation would follow)
 
 # NPC Simulation Tiers — Stub
 
