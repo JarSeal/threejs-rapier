@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Testing, Dev tooling
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p606_layering-inversion-and-public-entry.md (no Stage B or C plan starts without it)
@@ -146,7 +146,7 @@ As built:
 - The Stop hook runs the tests when `src/`, `devTools/` or `vitest.config.ts` changed (not for a
   Hub-only change). 188 tests, about 0.6 s.
 
-### Phase 2: the scene runner
+### Phase 2: the scene runner — done
 
 1. `_dbg__TestBridge.ts` and its `?aekTest=true` gate (dev and test builds only).
 2. `devTools/verify/scenes.ts` and `scenes.config.ts`, starting from the skill driver's launch
