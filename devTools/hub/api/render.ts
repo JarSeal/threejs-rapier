@@ -17,6 +17,7 @@ import {
   type HubMarkdownEnv,
 } from '../markdown';
 import { ROOT, TSCONFIG_FILE } from '../paths';
+import { toRepoWebUrl } from '../repoFiles';
 import type { HubSearchExtraDoc } from '../search';
 import type { HubBuildMode, HubHeading } from '../types';
 import {
@@ -901,13 +902,6 @@ const renderLanding = (ctx: Ctx) => {
 };
 
 // --- The section ---
-
-/** `https://github.com/JarSeal/aekasha-js.git` → `https://github.com/JarSeal/aekasha-js` */
-const toRepoWebUrl = (url: string) =>
-  url
-    .replace(/^git\+/, '')
-    .replace(/\.git$/, '')
-    .replace(/\/+$/, '');
 
 /**
  * A symbol's source: GitHub at the build's commit (`public`), or the file at its line in the

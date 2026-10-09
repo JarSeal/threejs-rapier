@@ -15,6 +15,7 @@ import {
 import { createApiSection, type ApiBuildStats, type ApiModelSource } from './api/render';
 import { buildHubData, getPageSection } from './data';
 import './cards'; // Registers the `cards` directive
+import './claudeMd'; // Registers the `claude-md` directive
 import { hubCodePlugin, loadHubHighlighter } from './code';
 import { buildSearchIndex } from './search';
 import { createIssuesSection } from './generated/issues';
@@ -36,6 +37,7 @@ import {
   type HubRenderContext,
 } from './markdown';
 import { discoverPages, relativeRoot, type HubPageTree } from './pages';
+import { toRepoWebUrl } from './repoFiles';
 import {
   loadAppScenes,
   resolvePageImage,
@@ -413,6 +415,7 @@ export const buildHub = async ({
     icons,
     apiLinks: api.links,
     getAppScenes: () => (appScenes ??= loadAppScenes()),
+    repoBlobUrl: `${toRepoWebUrl(meta.engine.repoUrl)}/blob/${meta.build.commit || 'main'}/`,
     tree,
   };
   // Before any page renders: a `::: cards` shows other pages' images

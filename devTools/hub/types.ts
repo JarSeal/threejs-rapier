@@ -64,6 +64,13 @@ export type HubPage = {
   image: string;
   /** The image `aek:image` points to, null without one (or when it isn't there) */
   imageFile: string | null;
+  /** `aek:group`: the group a `::: cards <path> group=<name>` shows it in (the Features page's) */
+  group: string;
+  /**
+   * `aek:covers`: the CLAUDE.md Architecture sections the page covers (p555 §2.5), by heading
+   * without its parenthetical (`Debug system`). `::: claude-md` links them in dev.
+   */
+  covers: string[];
   /**
    * A generated section's child page (an issue): it has no `index.html`, `dir` and `file` are its
    * source's (`docs/issues/<name>.md`)

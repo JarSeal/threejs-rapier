@@ -8,7 +8,8 @@ import type { HubDiagnostics } from './diagnostics';
 import { hashContent } from './hash';
 import type { HubIcons } from './icons';
 import type { HubPageTree } from './pages';
-import { PAGE_IMAGES_URL_DIR } from './paths';
+import { PAGE_IMAGES_URL_DIR, ROOT, toRepoPath } from './paths';
+import { readMarkdownHeadings } from './repoFiles';
 import type { HubAppScenes } from './scenes';
 import type { HubBuildMode, HubHeading, HubPage } from './types';
 
@@ -23,6 +24,9 @@ import type { HubBuildMode, HubHeading, HubPage } from './types';
  *   checked after every page is rendered (`HubMarkdownEnv.links`);
  * - `api:` links (`[loadScene](api:loadScene)`, p553 §2.3), resolved against the API model as
  *   they're rendered: an unknown or ambiguous name is an error listing the candidates;
+ * - `repo:` links (`[budgets](repo:docs/techniques/asset-optimization.md#budgets)`, p555): a file
+ *   from the repo root, checked with its `#heading` (a Markdown file's, GitHub's anchor) or
+ *   `#L<line>`; GitHub at the build's commit in `public`, the editor in `dev`;
  * - relative images, copied (PNG and JPEG to WebP) to `_assets/images/pages/<page path>`.
  */
 
@@ -63,6 +67,8 @@ export type HubRenderContext = {
   apiLinks: HubApiLinkResolver | null;
   /** The app's scenes (p554, `scenes.ts`), read on the build's first use */
   getAppScenes: () => HubAppScenes;
+  /** The repo's files on GitHub at the build's commit, with a trailing slash (`repo:` links) */
+  repoBlobUrl: string;
   /**
    * The page tree, every page's `imageFile` resolved before any page renders (`::: cards`,
    * `cards.ts`); null when there's none
@@ -312,6 +318,65 @@ export const resolveApiLink = (href: string, env: HubMarkdownEnv, file: string, 
   return `${env.root}${result.pagePath}${result.anchor ? `#${result.anchor}` : ''}`;
 };
 
+const REPO_LINK_PREFIX = 'repo:';
+
+export const isRepoLink = (href: string) => href.startsWith(REPO_LINK_PREFIX);
+
+/**
+ * The editor link `hub.ts` fetches instead of following (Vite's `/__open-in-editor`), as the API
+ * pages' source links do
+ */
+export const openInEditorHref = (file: string, line: number) =>
+  `/__open-in-editor?file=${encodeURIComponent(`${file}:${line}`)}`;
+
+/**
+ * Resolves a `repo:` href: GitHub at the build's commit (`public`), or the editor at the
+ * heading's line (`dev`). A missing file, heading or line is an error, and the link points
+ * nowhere (`#`).
+ * @returns the href, and whether it opens the editor
+ */
+export const resolveRepoLink = (href: string, env: HubMarkdownEnv, file: string, line: number) => {
+  const [target, hash = ''] = decodeURI(href.slice(REPO_LINK_PREFIX.length)).split('#');
+  const source = path.resolve(ROOT, target.replace(/^\/+/, ''));
+  if (
+    !source.startsWith(ROOT + path.sep) ||
+    !fs.statSync(source, { throwIfNoEntry: false })?.isFile()
+  ) {
+    env.diag.error(file, line, `Dead link ${href}: no such file from the repo root`);
+    return { href: '#', isEditor: false };
+  }
+  env.includes.push(source);
+  let targetLine = 1;
+  const lineMatch = /^L(\d+)$/.exec(hash);
+  if (lineMatch) {
+    targetLine = Number(lineMatch[1]);
+    const lineCount = fs.readFileSync(source, 'utf-8').split('\n').length;
+    if (targetLine < 1 || targetLine > lineCount) {
+      env.diag.error(file, line, `Dead link ${href}: ${toRepoPath(source)} has ${lineCount} lines`);
+    }
+  } else if (hash) {
+    if (!/\.md$/i.test(source)) {
+      env.diag.error(file, line, `${href}: only a Markdown file has #headings (use #L<line>)`);
+    } else {
+      const headings = readMarkdownHeadings(fs.readFileSync(source, 'utf-8'));
+      const heading = headings.find(({ slug }) => slug === hash);
+      if (heading) targetLine = heading.line;
+      else {
+        env.diag.error(
+          file,
+          line,
+          `Dead link ${href}: no heading #${hash} in ${toRepoPath(source)} (it has ${headings.map(({ slug }) => `#${slug}`).join(', ')})`
+        );
+      }
+    }
+  }
+  if (env.mode === 'dev') return { href: openInEditorHref(source, targetLine), isEditor: true };
+  return {
+    href: `${env.repoBlobUrl}${encodeURI(toRepoPath(source))}${hash ? `#${hash}` : ''}`,
+    isEditor: false,
+  };
+};
+
 const isRelativeUrl = (url: string) => !!url && !/^([a-z][\w+.-]*:|\/|#)/i.test(url);
 
 const CONVERTED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
@@ -346,6 +411,12 @@ const linksRule = (state: StateCore) => {
         const href = token.attrGet('href') ?? '';
         if (isHubLink(href)) token.attrSet('href', resolveHubLink(href, env, env.file, line));
         else if (isApiLink(href)) token.attrSet('href', resolveApiLink(href, env, env.file, line));
+        else if (isRepoLink(href)) {
+          const repo = resolveRepoLink(href, env, env.file, line);
+          token.attrSet('href', repo.href);
+          if (repo.isEditor) token.attrSet('data-hub-open-in-editor', '');
+          else token.attrSet('rel', 'noopener');
+        }
       } else if (token.type === 'image') {
         const src = token.attrGet('src') ?? '';
         if (!isRelativeUrl(src)) continue;
@@ -361,9 +432,10 @@ const linksRule = (state: StateCore) => {
 
 export const createHubMarkdown = () => {
   const md = new MarkdownIt({ html: true, linkify: true, typographer: false });
-  // markdown-it drops `hub:` and `api:` hrefs as unknown schemes; they're resolved by linksRule
+  // markdown-it drops `hub:`, `api:` and `repo:` hrefs as unknown schemes; linksRule resolves them
   const defaultValidateLink = md.validateLink.bind(md);
-  md.validateLink = (url) => isHubLink(url) || isApiLink(url) || defaultValidateLink(url);
+  md.validateLink = (url) =>
+    isHubLink(url) || isApiLink(url) || isRepoLink(url) || defaultValidateLink(url);
 
   md.block.ruler.before('fence', 'hub_directive', directiveRule, {
     alt: ['paragraph', 'reference', 'blockquote', 'list'],

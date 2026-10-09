@@ -53,15 +53,17 @@ export type AppComponentType = (typeof AppComponentType)[keyof typeof AppCompone
 
 /** Stages of ECS system invocation */
 export enum ECSSystemStage {
-  // --- Runs in updateMainLoop (Always runs if MasterPlay is true) ---
+  // --- Runs in updateMainLoop (Always runs if MasterPlay is true, also while the app is paused) ---
   MAIN = 'MAIN',
-
-  // --- Runs in updateAppLoop (Only if AppPlay is true) ---
   APP_PRE_PHYSICS = 'APP_PRE_PHYSICS', // Input handling, logic before physics
+
+  // --- Runs from stepPhysics (Only if AppPlay is true) ---
   // Runs once per fixed physics sub-step (0-N times per frame), right before that step, with
   // dt = the fixed timestep — for anything that has to move in lockstep with the simulation
   // (kinematic paths, character controllers). Only runs while physics is stepping.
   APP_PHYSICS_STEP = 'APP_PHYSICS_STEP',
+
+  // --- Runs in updateAppLoop (Only if AppPlay is true) ---
   APP_POST_PHYSICS = 'APP_POST_PHYSICS', // physicsToTransform (Syncing SAB to ECS)
   /**
    * Standard gameplay systems. Work in the ECS TRANSFORM domain here — TRANSFORM already holds

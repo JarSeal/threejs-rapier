@@ -24,6 +24,8 @@ const META_NAMES = [
   'aek:icon',
   'aek:featured',
   'aek:image',
+  'aek:group',
+  'aek:covers',
 ];
 
 /** An empty element with an `id`: `<div id="setup"></div>` (whitespace inside is fine) */
@@ -118,6 +120,11 @@ const parsePage = (dir: string, diag: HubDiagnostics): HubPage | null => {
     isFeatured: meta['aek:featured'] === 'true',
     image: meta['aek:image'] ?? '',
     imageFile: null,
+    group: meta['aek:group'] ?? '',
+    covers: (meta['aek:covers'] ?? '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean),
     isGenerated: false,
     isInMenu: true,
     isSearchable: true,
@@ -225,6 +232,8 @@ const attachSection = (
       isFeatured: false,
       image: '',
       imageFile: null,
+      group: '',
+      covers: [],
       isGenerated: true,
       isInMenu: generated.isInMenu,
       isSearchable: generated.isSearchable ?? true,

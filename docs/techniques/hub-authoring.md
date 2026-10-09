@@ -73,8 +73,10 @@ The `<head>` is for metadata only. Nothing else in it reaches the built page, be
 | `aek:tags`        | Comma-separated search terms.                                                                                                     |
 | `aek:description` | One sentence. It becomes `<meta name="description">`, and it's used for search and cards.                                         |
 | `aek:icon`        | An icon name from `hub/_assets/icons/` (without `.svg`). Only top-level sections show it in the nav.                              |
-| `aek:featured`    | `true` to feature the page on the homepage. It's parsed, but nothing reads it until the homepage's content plan (p555).           |
+| `aek:featured`    | `true` to feature the page on the homepage: `::: cards <path> featured` shows only those ([Cards](#cards)).                       |
 | `aek:image`       | The page's picture on its card ([Cards](#cards)): `scene:<sceneId>` for a scene's Hub image, or an image path from the repo root. |
+| `aek:group`       | The group a `::: cards <path> group=<name>` shows the page in: the Features page's `Core`, `World`, `Performance` and `Tools`.    |
+| `aek:covers`      | A feature page's CLAUDE.md Architecture sections, comma-separated, by heading without its parenthetical (`Debug system`).         |
 
 The nav is built from these tags alone, so there's no separate menu list to keep in sync. A misspelt `aek:` name gives a warning.
 
@@ -137,6 +139,36 @@ Bodies are made through [the facade](api:PhysicsAPI.createRigidBody).
 - `api:` works in a page's markup too: `<a href="api:loadScene">`.
 - In the engine's and the toolkit's JSDoc, `{@link loadScene}` links the same way. TypeDoc resolves it from the file's imports. One that resolves to nothing documented is shown as text, with a warning at its file and line. A link to three's own classes is shown as text, without a warning.
 
+### Repo links
+
+Link to a file in the repo (a technique doc, a source file) with `repo:` and its path from the repo root:
+
+```md
+Read [Impostor atlases](repo:docs/techniques/asset-optimization.md#impostor-atlases).
+The renderer is created in [src/index.ts](repo:src/index.ts#L10).
+```
+
+- **The file and its `#hash` are checked.** A Markdown file's `#heading` is GitHub's anchor for it (lower case, punctuation dropped, spaces to `-`). Any file takes `#L<line>`.
+- In `yarn hub:build`, it links GitHub at the build's commit. In dev, it opens the file in your editor at the heading or line, as the API pages' source links do.
+- Link to Hub pages with `hub:`, never `repo:`: only `hub:` stays inside the Hub.
+
+### CLAUDE.md sections
+
+A feature page names the CLAUDE.md Architecture sections it covers in its head, and `::: claude-md` links them:
+
+```html
+<meta name="aek:covers" content="Physics" />
+```
+
+```md
+::: claude-md
+:::
+```
+
+- In dev, it renders a line with a link to each section, opening the editor at its heading. In `yarn hub:build`, it renders nothing: CLAUDE.md is the contributors' notes, not the public's.
+- Both check the names against CLAUDE.md (when the build runs in the repo). A renamed section fails the build until `aek:covers` follows it.
+- The directive takes no content.
+
 ## Callouts
 
 ```md
@@ -160,7 +192,7 @@ Nested.
 ::::
 ```
 
-The other directives are `code-group` ([Code groups](#code-groups)), `scene` ([Scene panels](#scene-panels)) and `cards` ([Cards](#cards)); p555 adds more. A new one is added through `registerHubDirective(name, { open, close })` in `devTools/hub/markdown.ts`, without touching the parser.
+The other directives are `code-group` ([Code groups](#code-groups)), `scene` ([Scene panels](#scene-panels)), `cards` ([Cards](#cards)) and `claude-md` ([CLAUDE.md sections](#claudemd-sections)). A new one is added through `registerHubDirective(name, { open, close })` in `devTools/hub/markdown.ts`, without touching the parser.
 
 ## Code blocks
 
@@ -268,6 +300,7 @@ The search box (⌘K, Ctrl+K or `/`) searches every page except the homepage. `y
 - **The title, headings and tags weigh the most.** Put the words a reader would search for in `aek:tags`, especially those the page doesn't spell out (`rapier` on the physics page).
 - **Code blocks add their identifiers, not their keywords.** Identifiers are split at camelCase too, so `mesh` finds `createMeshEntity`.
 - **The API is searched by name.** Every engine and toolkit module, export and class or interface member is a result of its own, weighted like a title and split at camelCase, with its kind and its summary's first sentence. Only the name is searched: the summary is shown, not indexed, which keeps the index under 1 MB.
+- **Content with the class `hubSearchSkip` is left out**, headings included: the cards, the API lists (indexed their own way) and the Version page's changelog, which the browser's own find searches on that page.
 - **`yarn hub:build` prints the index's size.** Over 1 MB it warns. The index is loaded whole on first use, so keep it lean.
 
 No Hub file needs to change for a new page to be found: it's indexed on the next build.
@@ -362,6 +395,7 @@ The build replaces `src`, `srcset`, `width` and `height` with the scene's WebP i
 ```
 
 - It renders a card for each child page of the page at that path, in nav order. A card links its page and shows its `aek:image` (or its `aek:icon` without one), its nav label and its `aek:description`.
+- After the path, `featured` keeps the pages with `aek:featured`, and `group=<name>` the pages with that `aek:group`: `::: cards features group=Core`. Both together keep the pages that match both.
 - The text comes from each page's head, so there's nothing to keep in sync. Write a description that reads well on its own.
 - The directive takes no content.
 - The cards are left out of the search: each page they link has its own results.
@@ -468,6 +502,10 @@ The same checks run in dev and in `yarn hub:build`. In dev, an error shows the e
 | `Unknown scene "x": …generatedAppData.json has …`      | A misspelt or renamed scene id. Use a listed one.     |
 | `The app's scenes can't be read from …`                | Run `yarn gatherAppData`.                             |
 | `::: cards: no page at hub/pages/…`                    | Fix the page path after `cards`.                      |
+| `::: cards: unknown argument "…"`                      | Use `featured` or `group=<name>`.                     |
+| `Dead link repo:…: no such file from the repo root`    | The file moved. Fix the path after `repo:`.           |
+| `Dead link repo:…: no heading #x in …`                 | The heading was renamed. Use one listed.              |
+| `aek:covers: CLAUDE.md has no Architecture section …`  | The section was renamed. Use one listed.              |
 | `aek:image: no such file from the repo root: …`        | Fix the path, or use `scene:<sceneId>`.               |
 | `aek:image: not a PNG, JPEG or WebP: …`                | Convert the image to one of those.                    |
 | Warning: `Slot "…" has no ….md: it stays empty`        | Add the `.md`, or remove the slot.                    |

@@ -148,3 +148,19 @@
     color: var(--hub-error);
   }
 }
+
+// `::: claude-md` (p555): a feature page's dev-only line to its CLAUDE.md sections
+.hubDevNote {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.6rem 0.9rem;
+  border: 1px dashed var(--hub-border-strong);
+  border-radius: 6px;
+  color: var(--hub-text-muted);
+  font-size: 0.9375rem;
+
+  .hubIcon {
+    align-self: center;
+  }
+}

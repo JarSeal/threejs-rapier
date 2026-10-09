@@ -12,7 +12,9 @@ import type { HubGeneratedSection } from './section';
  * their codenames and the build's commit and time, then `CHANGELOG.md`. The changelog's headings
  * move one level down (`# Changelog` is the page's h2, an entry an h3), so the TOC lists the
  * entries and each one has its anchor: `#2026-10-07-dev-server-implementation`. The latest
- * entry goes into `hub-data.js` as `latestChange`, for the homepage's "What's new".
+ * entry goes into `hub-data.js` as `latestChange`, for the homepage's "What's new". The changelog
+ * is out of the search (`hubSearchSkip`, p555): it was a large share of the index, and the
+ * browser's own find searches it on this page.
  */
 
 export const VERSION_SECTION_PATH = 'version/';
@@ -128,7 +130,7 @@ const renderChangelog = (
       .find((h) => h.level === 3 && h.text.replace(/\s+[—–-]\s+/, ' — ') === text);
     latest.hash = heading?.id ?? '';
   }
-  return `<div class="hubChangelog">\n${html}</div>\n`;
+  return `<div class="hubChangelog hubSearchSkip">\n${html}</div>\n`;
 };
 
 export const createVersionSection = (meta: ProjectMetadata, diag: HubDiagnostics) => {

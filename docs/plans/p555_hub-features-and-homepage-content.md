@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Instructions, Hub
 Epic: p550_aekasha-hub-epic.md
 
@@ -69,20 +69,20 @@ feature page links its API (p553) and its example (p554).
 
 `hub/pages/features/<slug>/`, one each:
 
-| Slug | Feature | Example (p554) |
-| --- | --- | --- |
-| `rendering` | WebGPU renderer, WebGL fallback, PostFX | Quick start |
-| `ecs` | ECS: entities, components, plugins, stages, managed entities | Custom component & system |
-| `physics` | Physics API, threads, transform buffer, deterministic loads, simulation tiers | Physics |
-| `scenes-and-assets` | Scene and asset JSON (every suffix, the scene's `impostors` list), the gatherer, `__saveData` | Quick start |
-| `asset-optimization` | The asset pipeline: KTX2, meshopt/Draco, budgets, lock file, alpha-coverage mips, atlas images and full mip chains | Toolkit |
-| `sky-box` | The layered sky, presets, day-night | Sky box & day-night |
-| `lod` | LOD chains, selection, cross-fades, impostors (baked and exported), instanced pools | LOD & instancing, and `lodShowcase` (the full demo) |
-| `spatial-index` | Grids, domains, scene scope | — |
-| `viewports` | Viewports and views | — |
-| `debug-suite` | Drawer tabs (the LOD tab's overlay and Impostors export among them), profiler, GPU memory, undo, character tools, dev file server, material editor | Your own debug tab |
-| `characters` | The dynamic character controller | — |
-| `toolkit` | What the toolkit holds and how to use or copy it | Toolkit |
+| Slug                 | Feature                                                                                                                                            | Example (p554)                                      |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `rendering`          | WebGPU renderer, WebGL fallback, PostFX                                                                                                            | Quick start                                         |
+| `ecs`                | ECS: entities, components, plugins, stages, managed entities                                                                                       | Custom component & system                           |
+| `physics`            | Physics API, threads, transform buffer, deterministic loads, simulation tiers                                                                      | Physics                                             |
+| `scenes-and-assets`  | Scene and asset JSON (every suffix, the scene's `impostors` list), the gatherer, `__saveData`                                                      | Quick start                                         |
+| `asset-optimization` | The asset pipeline: KTX2, meshopt/Draco, budgets, lock file, alpha-coverage mips, atlas images and full mip chains                                 | Toolkit                                             |
+| `sky-box`            | The layered sky, presets, day-night                                                                                                                | Sky box & day-night                                 |
+| `lod`                | LOD chains, selection, cross-fades, impostors (baked and exported), instanced pools                                                                | LOD & instancing, and `lodShowcase` (the full demo) |
+| `spatial-index`      | Grids, domains, scene scope                                                                                                                        | —                                                   |
+| `viewports`          | Viewports and views                                                                                                                                | —                                                   |
+| `debug-suite`        | Drawer tabs (the LOD tab's overlay and Impostors export among them), profiler, GPU memory, undo, character tools, dev file server, material editor | Your own debug tab                                  |
+| `characters`         | The dynamic character controller                                                                                                                   | —                                                   |
+| `toolkit`            | What the toolkit holds and how to use or copy it                                                                                                   | Toolkit                                             |
 
 Each page has the same shape:
 
@@ -163,7 +163,7 @@ outside the repo.
 
 ## 3. Phases
 
-### Phase 1 — Feature pages
+### Phase 1 — Feature pages — done
 
 §2.1, §2.2 (the `cards` directive) and §2.3.
 
@@ -172,6 +172,40 @@ outside the repo.
 - Every page in the table builds, with `api:` links that resolve.
 - Each page's example link opens its scene in dev.
 - A reviewer spot-checks three pages against the code.
+
+As built:
+
+- `::: cards` was p554's already (`::: cards <page path>`): §2.2's sources are page paths, and
+  the filters are arguments after it, `featured` and `group=<name>` (a new `aek:group` meta).
+  `featured` adds the class `hubCards_featured` for Phase 2's icon columns. The Features page
+  groups with a heading per group, each with its own `::: cards features group=<name>`.
+- Pages: one `index.html` with two slots each, `intro` (the summary and the example's
+  `::: scene` panel) and `guide` (the rest). Titles and menu labels: Rendering, ECS, Physics,
+  Scenes and assets, Asset optimization, Sky box ("Sky box and day-night"), LOD and impostors,
+  Spatial index, Viewports and views, Debug suite, Characters, Toolkit. Groups: Core (rendering,
+  physics, ecs, scenes-and-assets), World (sky-box, characters, viewports), Performance
+  (asset-optimization, lod, spatial-index), Tools (debug-suite, toolkit). Featured: rendering,
+  physics, ecs, debug-suite.
+- Examples: rendering shows `exampleHubHero` (its bloom pass is the PostFX snippet) and links the
+  quick start; asset-optimization and toolkit show `exampleToolkit`; scenes-and-assets
+  `exampleQuickStart`. Spatial index, viewports and characters have none (open question 2); they
+  point at app scenes by `?startScene` where one exists (`physicsTiers`, `skyShowcase`, `space`,
+  `thirdPersonGymScene`, `topDownTestScene`).
+- "Read more" needed two link kinds the Hub didn't have:
+  - `repo:` links (`markdown.ts`, `repoFiles.ts`): a repo file, checked with its `#heading`
+    (GitHub's slug) or `#L<line>`; GitHub at the build's commit in `public`, the editor in `dev`.
+  - `aek:covers` (parsed now, not in Phase 3: the coverage check reuses it) and
+    `::: claude-md` (`claudeMd.ts`): the dev-only line linking the page's CLAUDE.md sections.
+    Both modes fail on a name CLAUDE.md doesn't have. `covers` per page: rendering `Snapshots`
+    (added to CLAUDE.md after this plan), viewports `Viewports, Views`, the others as §2.5.
+    Asset optimization, characters and toolkit cover no Architecture section.
+- New regions (comments only, no version bump): `create-renderer` in `src/index.ts` and
+  `dynamic-character` in `src/app/scene_topDownTest.ts`.
+- 12 Lucide icons from `lucide-static` 1.53.0 (the version the Hub's others are).
+- The search index was already over 1 MB (1.04); the changelog is now out of it
+  (`hubSearchSkip` on the Version page's changelog), and with every page it's 971 kB.
+- Fixed while checking the ECS page: `ECSSystemStage`'s comment in `src/AppECSRegistry.ts` put
+  `APP_PRE_PHYSICS` in the app loop; it runs with `MAIN`, also while paused.
 
 ### Phase 2 — Homepage
 

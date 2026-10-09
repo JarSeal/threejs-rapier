@@ -7,6 +7,7 @@ import { IS_DEBUG_ENV } from './_engine/core/Config';
 
 InitEngine(async () => {
   // Init renderer
+  // #region create-renderer (shown in the Hub: hub/pages/features/rendering/)
   await createRenderer({
     antialias: true,
     forceWebGL: false,
@@ -20,6 +21,7 @@ InitEngine(async () => {
     // shadowMapType: THREE.BasicShadowMap,
     shadowMapType: THREE.VSMShadowMap,
   });
+  // #endregion create-renderer
 
   // Create sceneLoader
   createSceneLoader({
