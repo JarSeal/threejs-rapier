@@ -68,6 +68,12 @@ Create "Refactor dynamic character code" plan in docs/plans/p070_refactor-dynami
 Category: Character
 
 UNDER_CONSTRUCTION
+NOTE (p603, 2026-10-09): write this plan after p610_character-and-input-action-architecture.md, on the restructured character code (blocked by p610). Where each item lands:
+- The sensor bugs (wall glide on ledges and stairs, slope detection, the nudge when clearing an object) and the jump force cap: the dynamic controller's floor, wall, platform and jump modules (p610 splits createDynamicCharacter into them). Body writes from sensor callbacks already move into the tick in p610.
+- Grace time (coyote time), the air control limiter and the crouched capsule: controller config and the body plan (a crouched collider set). p421_kinematic-character-controller.md should get the same options, so name them on the controller contract, not on DynamicCharacter alone.
+- "Keep turning to the last heading after the key is released": the player brain (p603 C4: the turn-to-move default belongs to the brain), which keeps writing faceYaw; the controller only turns at _rotateSpeed.
+- The tumble start's Math.random is replaced by the seeded RNG in p610.
+
 The dynamic character sensors are currently failing for some cases. For example the wall glide does not work if the character jumps on a ledge, it gets stuck (for example the side of the stairs when the character is a bit over a part of the stairs but not completely and it also happens for a thin ledge or moving platform). Also the slope detection fails and I am able to jump up a slope that should be impossible. This needs fixing as well. Then when the character jumps over an object that it should clear by jumping, one of the sensors causes a small nudge or sometimes just stops the player from moving in the direction it is headed. Fix this. Also the overall code should be more readable and developer friendly (not sure if this has already been done, but check please).
 
 We should also add/change some of the features:
@@ -104,6 +110,12 @@ Create "Browser default key and mouse behavior mapping and key binding refactori
 Category: Shortcuts
 
 UNDER_CONSTRUCTION
+NOTE (p603, 2026-10-09): the key binding half lands on p610's action layer (p603 C5: actions above devices, bindings per context, the engine's debug keys and the app's bindings on one model). Write it after p610. Where each item lands:
+- The per-view default key binding lists (runtime view, material editor, prod test) are binding contexts of the action layer; "only the active view's bindings are enabled" is the active context. The CONFIG.ts overrides are overrides of a context's binding set.
+- The shortcut dialog's tabs and groups read the contexts and the bindings' metadata (today's category becomes a group with title, description and orderNr).
+- The build/dev-start gather of the app's bindings reads the bindings declared as data per context, so the action layer should let bindings be declared as data, not only registered by code calls.
+- The browser default behaviour map (defaultBrowserBehavior) is device-level (the keyboard and mouse devices under kernel/input/) and doesn't depend on p610; it can be its own plan before or after.
+
 We should create a list of the browser's keyboard shortcuts default behaviors are enabled (also consider different browsers). This list in the CONFIG.ts file would look something like this:
 {
   defaultBrowserBehavior: {

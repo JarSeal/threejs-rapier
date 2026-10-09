@@ -1,6 +1,6 @@
 Status: draft | epic — not-implemented
 Category: Refactoring, Documentation, Architecture, Build
-Blocks: \_DONE_p601_refactoring-safety-net-tests-and-baselines.md, \_DONE_p602_architecture-and-target-structure.md, p603_gameplay-architecture-contracts.md, p604_multiplayer-viability-study.md, p605_coding-standards-and-documentation-tooling.md, p606_layering-inversion-and-public-entry.md, p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p609_toolkit-and-app-restructure.md, p610_character-and-input-action-architecture.md, p611_sbp-tooling-profiles-and-marketing.md, p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md, p621_hub-docs-readme-and-claude-md-final.md
+Blocks: \_DONE_p601_refactoring-safety-net-tests-and-baselines.md, \_DONE_p602_architecture-and-target-structure.md, \_DONE_p603_gameplay-architecture-contracts.md, p604_multiplayer-viability-study.md, p605_coding-standards-and-documentation-tooling.md, p606_layering-inversion-and-public-entry.md, p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p609_toolkit-and-app-restructure.md, p610_character-and-input-action-architecture.md, p611_sbp-tooling-profiles-and-marketing.md, p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md, p621_hub-docs-readme-and-claude-md-final.md
 Related: p990_follow-ups-from-done-plans.md (its bundle size items move to p607), p200_component-query-caching.md (its main-camera cache lands in p612), p420_npc-simulation-tiers.md (fits p603's actor model), p500_restore-physics-snapshot.md (p604's rollback prerequisite), p302_material-and-texture-system-refactor.md (p613 leaves what it rewrites), p240_client-device-capability-sniffer.md (SBP-aware: its benchmark is a lazy chunk), `docs/templates/todo-plan-prompts.txt` (the original prompt, and the p800, p450, p070 and p770 prompts this epic sequences)
 
 # Whole Codebase Refactoring and Documentation — Epic
@@ -332,7 +332,8 @@ and changed per file group:
 
 ## 6. Gameplay architecture direction
 
-p603 decides; this is the direction it starts from. The engine provides contracts and one solid
+p603 decided it (firm contracts C1-C5 and the RNG, the rest a direction with a stub plan each,
+p421-p427); this is the direction it started from. The engine provides contracts and one solid
 implementation of each; new features are separate plans outside this epic.
 
 - **Actor:** an ECS entity with a role (player, NPC, vehicle, prop). No class hierarchy.
@@ -400,7 +401,8 @@ standards, the structure and the SBP strategy to it would make every session pay
 - **`p200_component-query-caching.md`:** its recommendation (cache the main-camera tag lookup) is
   implemented in p612.
 - **`p420_npc-simulation-tiers.md`:** its NPC data entity and tiers fit p603's actor, controller
-  and brain model; soft-blocked by p603.
+  and brain model; p603 rewrote its tiers in those terms, and it's blocked by p610 (the contracts in
+  code) and softly by p603's stubs p421 (kinematic controller) and p424 (AI brains, navmesh).
 - **`p500_restore-physics-snapshot.md`:** stays its own plan; p604 lists it as the prerequisite for
   prediction and rollback.
 - **`p302_material-and-texture-system-refactor.md`:** stays in the terrain epic; p613 leaves
@@ -424,7 +426,7 @@ standards, the structure and the SBP strategy to it would make every session pay
 | ----- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | A     | \_DONE_p601_refactoring-safety-net-tests-and-baselines.md | Vitest, the scene runner (snapshots, console errors, determinism hashes), bundle / API / coverage baselines            | —                       |
 | A     | \_DONE_p602_architecture-and-target-structure.md          | The decisions: folder map, public entry, feature-module contract, debug placement, naming, boundaries                  | —                       |
-| A     | p603_gameplay-architecture-contracts.md                   | Actors, controllers, intents, brains, animation, world systems; the stub plans                                         | p602                    |
+| A     | \_DONE_p603_gameplay-architecture-contracts.md            | Actors, controllers, intents, brains, animation, world systems; the stub plans                                         | p602                    |
 | A     | p604_multiplayer-viability-study.md                       | The verdict, the constraints, an optional two-client spike                                                             | p602                    |
 | A     | p605_coding-standards-and-documentation-tooling.md        | Coding standards, JSDoc style, eslint-plugin-jsdoc + TypeDoc validation as a ratchet, the CLAUDE.md split              | p602                    |
 | B     | p606_layering-inversion-and-public-entry.md               | The engine stops importing the app; declaration-merged component types; the `aekasha` entry; boundary lint             | p601, p602              |

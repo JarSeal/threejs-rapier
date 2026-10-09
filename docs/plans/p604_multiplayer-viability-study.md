@@ -2,7 +2,7 @@ Status: draft | study — not-implemented
 Category: Architecture, Networking, Physics
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p606_layering-inversion-and-public-entry.md (soft: the headless-core rules), p605_coding-standards-and-documentation-tooling.md (soft: the simulation rules)
-Related: p500_restore-physics-snapshot.md (the prerequisite for prediction and rollback), p603_gameplay-architecture-contracts.md (the network brain), \_DONE_p063_triple-buffered-physics-transform-buffer.md (the worker transport), \_DONE_p352_physics-simulation-tiers.md and \_DONE_p343_deterministic-physics-tier-policy.md (determinism at the step clock), \_DONE_p346_spatial-domains.md (interest management)
+Related: p500_restore-physics-snapshot.md (the prerequisite for prediction and rollback), \_DONE_p603_gameplay-architecture-contracts.md (the network brain), \_DONE_p063_triple-buffered-physics-transform-buffer.md (the worker transport), \_DONE_p352_physics-simulation-tiers.md and \_DONE_p343_deterministic-physics-tier-policy.md (determinism at the step clock), \_DONE_p346_spatial-domains.md (interest management)
 
 # Multiplayer Viability Study
 

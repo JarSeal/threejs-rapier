@@ -1,7 +1,8 @@
-Status: in progress | Phases 1-2 implemented
+Status: implemented (Phases 1-4)
 Category: Architecture, Characters, Gameplay
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p610_character-and-input-action-architecture.md, p420_npc-simulation-tiers.md (soft: its NPC entity and tiers use these contracts)
+Stub plans: p421_kinematic-character-controller.md, p422_animation-state-graph-and-ik.md, p423_vehicles.md, p424_ai-brains-and-navigation.md, p425_game-events-missions-and-save-games.md, p426_sequencer-splines-and-cutscenes.md, p427_weather-and-mood.md
 Related: p604_multiplayer-viability-study.md (the network brain and the determinism rules), p307_wet-and-dry-surface-states.md (consumes the weather state), the "Refactor dynamic character code" (p070) and "Key binding refactoring" (p770) prompts in `docs/templates/todo-plan-prompts.txt`
 
 # Gameplay Architecture Contracts
@@ -394,13 +395,28 @@ doesn't (an "As found" list per contract).
 
 Walk C1-C7 with the user; mark each firm or direction, with the reason.
 
-### Phase 3: the stub plans
+### Phase 3: the stub plans — done
 
 Create S1-S7 (`Status: stub — not-implemented`, `Related: p603…`); update p420 (its tiers in terms
 of controllers and brains) and the p070 / p770 prompts' notes in `docs/templates/todo-plan-prompts.txt`
 (where they land after p610).
 
-### Phase 4: mark done
+As built:
+
+- S1-S7 are `p421`-`p427`, each with a `Blocked by` on p610 where it needs the contracts in code
+  (S1, S3, S4; soft for S2 and S6), and a grounding list checked against the code.
+- Rapier's `DynamicRayCastVehicleController` is a commented-out signature too
+  (`PhysicsAPITypes.ts` ~l.1787), next to the KCC's: S3 records it.
+- S7 drives p307's surface conditions state instead of owning a second wetness: p307 already
+  defines that state engine-level and says a weather plan should drive it. C7's "one world state"
+  holds, with p307's state as its materials part.
+- p420: `Blocked by` is now p610 (hard) and p421 / p424 (soft); p603 moved to `Related`. A new
+  "In p603's terms" section maps the tiers to controller swaps, and Phase 2, Phase 4 and the open
+  questions point at p421, p424, p425 and p610.
+- The prompts' notes say p070 and p770 are written after p610; p770's browser default behaviour
+  map doesn't depend on p610.
+
+### Phase 4: mark done — done
 
 Documents only: no version bump. Mark the plan done; p610 builds C1-C5.
 

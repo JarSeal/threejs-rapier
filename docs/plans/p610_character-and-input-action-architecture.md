@@ -1,9 +1,9 @@
 Status: stub — not-implemented
 Category: Characters, Input, Architecture
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage B, engine major)
-Blocked by: p603_gameplay-architecture-contracts.md, p608_engine-folder-restructure.md
+Blocked by: p608_engine-folder-restructure.md
 Blocks: p614_review-physics.md, p617_review-input-ui-hud.md
-Related: p604_multiplayer-viability-study.md (step-index time, seeded RNG), p420_npc-simulation-tiers.md, the "Refactor dynamic character code" (p070) and "Key binding refactoring" (p770) prompts (they build on this plan)
+Related: \_DONE_p603_gameplay-architecture-contracts.md (the contracts C1-C5 this plan builds, and the stub plans p421-p427 that build on it), p604_multiplayer-viability-study.md (step-index time, seeded RNG), p420_npc-simulation-tiers.md, the "Refactor dynamic character code" (p070) and "Key binding refactoring" (p770) prompts (they build on this plan)
 
 # Character and Input Action Architecture — Stub
 
