@@ -57,6 +57,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 - **ECS effects**: `HoverEffect` (bobbing), `FollowTool` (follow a target) and `SunShadowFit` (fits a directional light's shadow to the camera's view).
 - **TSL materials**: checkerboard, triplanar checkerboard and triplanar grid materials.
 - **Procedural geometry**: seeded noise terrain, foliage generation and scattering on surfaces.
+- **Models**: the Ækasha symbol, the Æ glyph extruded with a soft bevel, as a Draco-compressed GLB with its asset JSON, ready for `importAssetAsync`.
 
 ### Debug suite (debug builds only)
 
@@ -134,11 +135,12 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 
 ### URL flags (development and test builds)
 
-| Flag               | Effect                                                                    |
-| ------------------ | ------------------------------------------------------------------------- |
-| `?isDebug=true`    | Full debug tooling.                                                       |
-| `?isProdTest=true` | Production behavior with a subset of the debug tools.                     |
-| `?physicsProbe=N`  | Freezes physics N steps after each scene load and logs a state hash diff. |
+| Flag                    | Effect                                                                                                                           |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `?isDebug=true`         | Full debug tooling.                                                                                                              |
+| `?isProdTest=true`      | Production behavior with a subset of the debug tools.                                                                            |
+| `?startScene=<sceneId>` | With either of the above, starts in that scene instead of the usual start scene (eg. `?isDebug=true&startScene=examplePhysics`). |
+| `?physicsProbe=N`       | Freezes physics N steps after each scene load and logs a state hash diff.                                                        |
 
 ---
 
@@ -358,7 +360,9 @@ const config: AppConfig = {
 };
 ```
 
-The example scenes in [`src/app/`](src/app/) cover more: a physics and joints test, a physics simulation tiers demo (686 crates and a plough), a large procedural world with instancing and culling, a third-person character gym, a top-down character scene (world-fixed controls, hills, and sun shadows fitted to the view), and an ECS stress test.
+The Ækasha Hub's Examples section (`/hub/examples/`) walks through seven example scenes, each in [`src/app/examples/`](src/app/examples/) and named "Example: …" in the scene dropdowns: the quick start, physics, the toolkit's model and materials, the sky box and day-night, a component and system of your own, LOD and instancing, and a debug tab of your own. Each page opens its scene with `?startScene`.
+
+The other example scenes in [`src/app/`](src/app/) cover more: a physics and joints test, a physics simulation tiers demo (686 crates and a plough), a large procedural world with instancing and culling, a third-person character gym, a top-down character scene (world-fixed controls, hills, and sun shadows fitted to the view), and an ECS stress test.
 
 ---
 

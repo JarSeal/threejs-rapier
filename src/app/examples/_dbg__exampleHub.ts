@@ -104,7 +104,8 @@ export const saveHubImageAsync = async (sceneId: string, size: HubImageSize = 'C
 
 /**
  * The example scene's "Hub" tab (a scene tab: removed on the scene's exit, created again on every
- * visit). Create it from the scene file, in the debug env only, through a dynamic import.
+ * visit). `registerExampleHubTabs` creates it for the scenes the Hub shows; for another scene,
+ * create it on its enter, in the debug env only, through a dynamic import.
  * @param sceneId (string) the example scene's id
  * @param size ({@link HubImageSize}) the image's size, default `CARD`
  */
