@@ -6,7 +6,7 @@ import type { PhysicsProbeReport } from '../core/Debug/_dbg__PhysicsDeterminism'
 export const TEST_BRIDGE_QUERY_PARAM = 'aekTest';
 
 /** The bridge's protocol version: bump it when a method's arguments or results change */
-export const TEST_BRIDGE_VERSION = 1;
+export const TEST_BRIDGE_VERSION = 2;
 
 export type TestBridgeSceneReady =
   /** `backend`: what the renderer runs on (WebGPU falls back to WebGL2 without `navigator.gpu`) */
@@ -41,10 +41,16 @@ export type AekTestBridge = {
   whenSceneReady: (opts?: { timeoutMs?: number }) => Promise<TestBridgeSceneReady>;
   /** Resolves with the determinism probe's report for the current scene, once the probe has
    * frozen physics at its step. Freeze only after it: a paused app loop never reaches the step. */
-  whenProbeDone: (opts?: { timeoutMs?: number }) => Promise<TestBridgeProbeResult>;
+  whenProbeDone: (opts?: {
+    timeoutMs?: number;
+    /** Freeze (as {@link AekTestBridge.freeze}) in the frame the report arrives, and resolve once
+     * frozen: a separate freeze() call would let frames run during its round trip */
+    freeze?: boolean;
+  }) => Promise<TestBridgeProbeResult>;
   /** Pauses the app and master loops and the day-night cycle, so a snapshot doesn't depend on
-   * timing. TSL's `time` node keeps running (three updates it per render). */
-  freeze: () => void;
+   * timing. Physics interpolation is pinned to the newest snapshot first (two frames), so moving
+   * bodies show the step the probe hashed. The test clock's TSL `time` stops with them. */
+  freeze: () => Promise<void>;
   /** `takeSnapshotAsync` of what the canvas shows (debug helpers hidden, PostFX included) */
   snapshot: (opts: { width: number; height: number }) => Promise<TestBridgeSnapshot>;
 };
@@ -58,6 +64,8 @@ declare global {
 /**
  * Installs `window.__AEK_TEST__` ({@link AekTestBridge}) when the page has `?aekTest=true`, in the
  * debug env and prod test mode only (never in a production build). Before the first scene load.
+ * It also starts the test clock: every frame advances by 1/60 s (`setFixedFrameDelta`, and three's
+ * TSL `time`), so what a page shows depends on how many frames ran, not on how long they took.
  */
 export const registerTestBridge = async () => {
   if (!IS_DEBUG_ENV && !IS_PROD_TEST_MODE) return;

@@ -66,6 +66,8 @@ let rootScene: THREE.Scene | null = null;
 let currentScene: THREE.Group | null = null;
 let currentSceneId: string | null = null;
 let currentSceneOpts: SceneOptions | null = null;
+/** The scene whose code is running in `loadScene` (set by the scene loader), until it's current */
+let loadingSceneId: string | null = null;
 const sceneMainLoopers: { [sceneId: string]: (Looper | null)[] } = {};
 const sceneMainLateLoopers: { [sceneId: string]: (Looper | null)[] } = {};
 const sceneAppLoopers: { [sceneId: string]: (Looper | null)[] } = {};
@@ -274,6 +276,7 @@ export const setCurrentScene = (id: string | null) => {
   currentSceneId = id;
   currentScene = nextScene;
   currentSceneOpts = id && sceneOpts[id] ? sceneOpts[id] : null;
+  refreshCurrentSceneLoopers();
 
   if (nextScene) {
     rootScene.background = null;
@@ -376,13 +379,36 @@ export const setSceneOpts = (id: string, opts: Partial<SceneOptions>) => {
 export const isCurrentScene = (id?: string) => id === currentSceneId;
 
 /**
+ * Marks the scene whose code `loadScene` runs next (null when it's current or the load failed),
+ * so the scene functions below that take an optional scene id default to it while it loads. Set
+ * by the scene loader only.
+ * @param sceneId (string | null) the loading scene's id
+ */
+export const setLoadingSceneId = (sceneId: string | null) => {
+  loadingSceneId = sceneId;
+};
+
+/** An optional scene id's default: the loading scene while its code runs, else the current one.
+ * (The current scene is still the previous one then: it changes after the scene code resolves.) */
+const resolveSceneId = (sceneId?: string) => sceneId || loadingSceneId || currentSceneId;
+
+/** Points the running looper lists at the current scene's loopers */
+const refreshCurrentSceneLoopers = () => {
+  const id = currentSceneId;
+  curSceneMainLoopers = id ? ((sceneMainLoopers[id] || []).filter(Boolean) as Looper[]) : [];
+  curSceneMainLateLoopers = id
+    ? ((sceneMainLateLoopers[id] || []).filter(Boolean) as Looper[])
+    : [];
+  curSceneAppLoopers = id ? ((sceneAppLoopers[id] || []).filter(Boolean) as Looper[]) : [];
+};
+
+/**
  * Returns all scene's main loopers
  * @param sceneId (string) scene id
  * @returns ({@link Looper}[])
  */
 export const getSceneMainLoopers = (sceneId?: string) => {
-  let id = currentSceneId;
-  if (sceneId) id = sceneId;
+  const id = resolveSceneId(sceneId);
   if (id) return sceneMainLoopers[id] || [];
   lwarn(`Could not find scene with id ${id} in getSceneMainLoopers.`);
   return [];
@@ -394,8 +420,7 @@ export const getSceneMainLoopers = (sceneId?: string) => {
  * @returns ({@link Looper}[])
  */
 export const getSceneMainLateLoopers = (sceneId?: string) => {
-  let id = currentSceneId;
-  if (sceneId) id = sceneId;
+  const id = resolveSceneId(sceneId);
   if (id) return sceneMainLateLoopers[id] || [];
   lwarn(`Could not find scene with id ${id} in getSceneMainLateLoopers.`);
   return [];
@@ -404,34 +429,33 @@ export const getSceneMainLateLoopers = (sceneId?: string) => {
 /**
  * Creates a scene main looper
  * @param looper ({@link Looper}) the looper function to be executed
- * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ * @param sceneId (string) optional scene id. If no scene id is provided then the loading scene (while its code runs) or the current scene is selected.
  * @param isLateLooper (boolean) whether the looper is a scene main late looper or not (default is false).
  */
 export const createSceneMainLooper = (looper: Looper, sceneId?: string, isLateLooper?: boolean) => {
-  let id = currentSceneId;
-  if (sceneId) id = sceneId;
+  const id = resolveSceneId(sceneId);
   if (isLateLooper) {
     if (id && sceneMainLateLoopers[id]) {
       sceneMainLateLoopers[id].push(looper);
       const index = sceneMainLateLoopers[id].length - 1;
-      curSceneMainLateLoopers = sceneMainLateLoopers[id].filter(Boolean) as Looper[];
+      if (id === currentSceneId) refreshCurrentSceneLoopers();
       return index;
     } else if (id) {
       sceneMainLateLoopers[id] = [looper];
       const index = sceneMainLateLoopers[id].length - 1;
-      curSceneMainLateLoopers = sceneMainLateLoopers[id].filter(Boolean) as Looper[];
+      if (id === currentSceneId) refreshCurrentSceneLoopers();
       return index;
     }
   } else {
     if (id && sceneMainLoopers[id]) {
       sceneMainLoopers[id].push(looper);
       const index = sceneMainLoopers[id].length - 1;
-      curSceneMainLoopers = sceneMainLoopers[id].filter(Boolean) as Looper[];
+      if (id === currentSceneId) refreshCurrentSceneLoopers();
       return index;
     } else if (id) {
       sceneMainLoopers[id] = [looper];
       const index = sceneMainLoopers[id].length - 1;
-      curSceneMainLoopers = sceneMainLoopers[id].filter(Boolean) as Looper[];
+      if (id === currentSceneId) refreshCurrentSceneLoopers();
       return index;
     }
   }
@@ -442,7 +466,7 @@ export const createSceneMainLooper = (looper: Looper, sceneId?: string, isLateLo
 /**
  * Deletes a scene main looper by index
  * @param index (number | number[]) a number or array of numbers of the indexes to be removed from the main looper.
- * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ * @param sceneId (string) optional scene id. If no scene id is provided then the loading scene (while its code runs) or the current scene is selected.
  * @param isLateLooper (boolean) whether the looper is a scene main late looper or not (default is false).
  */
 export const deleteSceneMainLooper = (
@@ -450,33 +474,32 @@ export const deleteSceneMainLooper = (
   sceneId?: string,
   isLateLooper?: boolean
 ) => {
-  let id = currentSceneId;
-  if (sceneId) id = sceneId;
+  const id = resolveSceneId(sceneId);
   if (id) {
     if (isLateLooper) {
       if (!sceneMainLateLoopers[id]) return;
       if (typeof index === 'number') {
         sceneMainLateLoopers[id][index] = null;
-        curSceneMainLateLoopers = sceneMainLateLoopers[id].filter(Boolean) as Looper[];
+        if (id === currentSceneId) refreshCurrentSceneLoopers();
         return;
       } else {
         for (let i = 0; i < index.length; i++) {
           sceneMainLateLoopers[id][index[i]] = null;
         }
-        curSceneMainLateLoopers = sceneMainLateLoopers[id].filter(Boolean) as Looper[];
+        if (id === currentSceneId) refreshCurrentSceneLoopers();
         return;
       }
     } else {
       if (!sceneMainLoopers[id]) return;
       if (typeof index === 'number') {
         sceneMainLoopers[id][index] = null;
-        curSceneMainLoopers = sceneMainLoopers[id].filter(Boolean) as Looper[];
+        if (id === currentSceneId) refreshCurrentSceneLoopers();
         return;
       } else {
         for (let i = 0; i < index.length; i++) {
           sceneMainLoopers[id][index[i]] = null;
         }
-        curSceneMainLoopers = sceneMainLoopers[id].filter(Boolean) as Looper[];
+        if (id === currentSceneId) refreshCurrentSceneLoopers();
         return;
       }
     }
@@ -531,8 +554,7 @@ export const runSceneMainLateLoopers = (delta: number) => {
  * @returns ({@link Looper}[])
  */
 export const getSceneAppLoopers = (sceneId?: string) => {
-  let id = currentSceneId;
-  if (sceneId) id = sceneId;
+  const id = resolveSceneId(sceneId);
   if (id) return sceneAppLoopers[id] || [];
   lwarn(`Could not find scene with id ${id} in getSceneAppLoopers.`);
   return [];
@@ -541,20 +563,19 @@ export const getSceneAppLoopers = (sceneId?: string) => {
 /**
  * Creates a scene app looper
  * @param looper ({@link Looper}) the looper function to be executed
- * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ * @param sceneId (string) optional scene id. If no scene id is provided then the loading scene (while its code runs) or the current scene is selected.
  */
 export const createSceneAppLooper = (looper: Looper, sceneId?: string) => {
-  let id = currentSceneId;
-  if (sceneId) id = sceneId;
+  const id = resolveSceneId(sceneId);
   if (id && sceneAppLoopers[id]) {
     sceneAppLoopers[id].push(looper);
     const index = sceneAppLoopers[id].length - 1;
-    curSceneAppLoopers = sceneAppLoopers[id].filter(Boolean) as Looper[];
+    if (id === currentSceneId) refreshCurrentSceneLoopers();
     return index;
   } else if (id) {
     sceneAppLoopers[id] = [looper];
     const index = sceneAppLoopers[id].length - 1;
-    curSceneAppLoopers = sceneAppLoopers[id].filter(Boolean) as Looper[];
+    if (id === currentSceneId) refreshCurrentSceneLoopers();
     return index;
   }
   lwarn(`Could not find scene with id ${id} in createSceneAppLoopers.`);
@@ -564,26 +585,21 @@ export const createSceneAppLooper = (looper: Looper, sceneId?: string) => {
 /**
  * Deletes a scene app looper by index
  * @param index (number | number[]) a number or array of numbers of the indexes to be removed from the app looper.
- * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ * @param sceneId (string) optional scene id. If no scene id is provided then the loading scene (while its code runs) or the current scene is selected.
  */
 export const deleteSceneAppLooper = (index: number | number[], sceneId?: string) => {
-  let id = currentSceneId;
-  if (sceneId) id = sceneId;
+  const id = resolveSceneId(sceneId);
   if (id) {
     if (!sceneAppLoopers[id]) return;
     if (typeof index === 'number') {
       sceneAppLoopers[id][index] = null;
-      if (!sceneId || sceneId === currentSceneId) {
-        curSceneAppLoopers = sceneAppLoopers[id].filter(Boolean) as Looper[];
-      }
+      if (id === currentSceneId) refreshCurrentSceneLoopers();
       return;
     } else {
       for (let i = 0; i < index.length; i++) {
         sceneAppLoopers[id][index[i]] = null;
       }
-      if (!sceneId || sceneId === currentSceneId) {
-        curSceneAppLoopers = sceneAppLoopers[id].filter(Boolean) as Looper[];
-      }
+      if (id === currentSceneId) refreshCurrentSceneLoopers();
       return;
     }
   }
@@ -607,12 +623,11 @@ export const runSceneAppLoopers = (delta: number) => {
 
 /**
  * Returns all scene's resizers
- * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ * @param sceneId (string) optional scene id. If no scene id is provided then the loading scene (while its code runs) or the current scene is selected.
  * @returns (array of functions) (() => void)[]
  */
 export const getSceneResizers = (sceneId?: string) => {
-  let id = currentSceneId;
-  if (sceneId) id = sceneId;
+  const id = resolveSceneId(sceneId);
   if (id) return sceneResizers[id];
   lwarn(`Could not find scene with id ${id} in getSceneResizers.`);
 };
@@ -620,11 +635,10 @@ export const getSceneResizers = (sceneId?: string) => {
 /**
  * Creates a scene resizer
  * @param resizer (() => void) scene resizer function to be added
- * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ * @param sceneId (string) optional scene id. If no scene id is provided then the loading scene (while its code runs) or the current scene is selected.
  */
 export const createSceneResizer = (resizer: () => void, sceneId?: string) => {
-  let id = currentSceneId;
-  if (sceneId) id = sceneId;
+  const id = resolveSceneId(sceneId);
   if (id && sceneResizers[id]) {
     sceneResizers[id].push(resizer);
     return;
@@ -638,11 +652,10 @@ export const createSceneResizer = (resizer: () => void, sceneId?: string) => {
 /**
  * Deletes a scene resizers by index
  * @param index (number | number[]) a number or array of numbers of the indexes to be removed from the resizers.
- * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ * @param sceneId (string) optional scene id. If no scene id is provided then the loading scene (while its code runs) or the current scene is selected.
  */
 export const deleteSceneResizer = (index: number | number[], sceneId?: string) => {
-  let id = currentSceneId;
-  if (sceneId) id = sceneId;
+  const id = resolveSceneId(sceneId);
   if (id) {
     if (!sceneResizers[id]) return;
     if (typeof index === 'number') {

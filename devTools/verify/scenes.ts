@@ -9,8 +9,9 @@
  *                      [--url <url>] [--webgl] [--headed]
  *
  * Baselines are local (`.cache/verify/scenes/<backend>/`): snapshots depend on the GPU, the driver
- * and the backend. `--update` records the runs without errors as the baseline (merged: `--only`
- * updates only those scenes). The workflow is "update on `main`, then run on the branch".
+ * and the backend. `--update` compares nothing with the baseline and records every run without
+ * errors or timeouts as the new one (merged: `--only` updates only those scenes). The workflow is
+ * "update on `main`, then run on the branch".
  *
  * It starts its own dev server (port 8092 or the next free one) unless `--url` points at one.
  * Headless WebGPU can't render on WSL2, so there (and with `--webgl`) the page gets no
@@ -346,6 +347,9 @@ type LoadContext = {
   browser: Browser;
   baseUrl: string;
   useWebGL: boolean;
+  /** `--update`: nothing is compared with the baseline, so a run that passes the other checks
+   * (errors, timeouts, the probe config) is recorded even where the baseline differs */
+  isRecording: boolean;
   /** Read on first use, per backend */
   baselines: Map<Backend, BaselineFile>;
   /** What the first page rendered on (WebGPU falls back to WebGL2 where it isn't available) */
@@ -451,7 +455,7 @@ const runOne = async (
       await page.waitForTimeout(PROD_TEST_SETTLE_MS);
     } else {
       const probe: TestBridgeProbeResult = await page.evaluate(
-        (timeoutMs) => window.__AEK_TEST__!.whenProbeDone({ timeoutMs }),
+        (timeoutMs) => window.__AEK_TEST__!.whenProbeDone({ timeoutMs, freeze: true }),
         PROBE_TIMEOUT_MS
       );
       if (probe.status !== 'DONE') {
@@ -469,12 +473,11 @@ const runOne = async (
             `ran as "${probe.config}", expected "${def.expectProbeConfig}…" (the configuration didn't apply)`
           );
         }
-        compareHash(baseline.entries[runKey(sceneId, config)], result);
+        if (!ctx.isRecording) compareHash(baseline.entries[runKey(sceneId, config)], result);
         if (probe.characterCount && !sceneConfig.unstableHash) {
           result.notes.push(`${probe.characterCount} character(s), not hashed`);
         }
 
-        await page.evaluate(() => window.__AEK_TEST__!.freeze());
         if (sceneConfig.snapshot && 'skip' in sceneConfig.snapshot) {
           result.notes.push(`snapshot skipped: ${sceneConfig.snapshot.reason}`);
         } else {
@@ -482,7 +485,12 @@ const runOne = async (
             (size) => window.__AEK_TEST__!.snapshot(size),
             SNAPSHOT_SIZE
           );
-          await handleSnapshot(backend, baseline, result, Buffer.from(shot.pngBase64, 'base64'));
+          await handleSnapshot(
+            backend,
+            ctx.isRecording ? null : baseline,
+            result,
+            Buffer.from(shot.pngBase64, 'base64')
+          );
         }
       }
     }
@@ -512,13 +520,17 @@ const compareHash = (entry: BaselineEntry | undefined, result: RunResult) => {
   }
   if (entry.hash === result.hash) return;
   const msg = `probe hash ${result.hash}, baseline ${entry.hash} (${entry.commit})`;
-  if (sceneConfig.unstableHash) result.warnings.push(`${msg}: ${sceneConfig.unstableHash.reason}`);
-  else result.failures.push(msg);
+  const unstable = sceneConfig.unstableHash;
+  if (unstable && (!unstable.configs || unstable.configs.includes(result.config))) {
+    result.warnings.push(`${msg}: ${unstable.reason}`);
+  } else {
+    result.failures.push(msg);
+  }
 };
 
 const handleSnapshot = async (
   backend: Backend,
-  baseline: BaselineFile,
+  baseline: BaselineFile | null,
   result: RunResult,
   png: Buffer
 ) => {
@@ -530,6 +542,7 @@ const handleSnapshot = async (
   fs.writeFileSync(currentFile, png);
   fs.rmSync(diffFile, { force: true });
   result.snapshotFile = fileName;
+  if (!baseline) return; // Recording: the image only
 
   const entry = baseline.entries[runKey(result.sceneId, result.config)];
   const baselineFile = entry?.snapshot ? path.join(paths.baselineDir, entry.snapshot) : null;
@@ -643,7 +656,14 @@ const main = async () => {
       `${args.update ? ', recording baselines' : ''}\n`
   );
 
-  const ctx: LoadContext = { browser, baseUrl, useWebGL, baselines: new Map(), backend: null };
+  const ctx: LoadContext = {
+    browser,
+    baseUrl,
+    useWebGL,
+    isRecording: args.update,
+    baselines: new Map(),
+    backend: null,
+  };
   const results: RunResult[] = [];
   const started = Date.now();
   try {

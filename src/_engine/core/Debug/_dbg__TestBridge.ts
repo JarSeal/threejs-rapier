@@ -3,8 +3,11 @@
 // Console and page errors aren't collected here: the logger is the console, and the runner's
 // browser listeners see everything from the first script on, before this can install.
 
+import { NodeFrame } from 'three/webgpu';
 import { IS_DEBUG_ENV } from '../Config';
-import { toggleAppPlay, toggleMainPlay } from '../MainLoop';
+import { getECSWorld } from '../ECS';
+import { setFixedFrameDelta, toggleAppPlay, toggleMainPlay } from '../MainLoop';
+import { setPhysicsInterpolationPinnedToNewest } from '../PhysicsManager';
 import { getRenderer } from '../Renderer';
 import { getCurrentSceneId } from '../Scene';
 import { hasFirstSceneBeenLoaded, isCurrentlyLoading } from '../SceneLoader';
@@ -19,9 +22,16 @@ import { encodeRGBA8PNG } from './_dbg__PNGEncoder';
 import { TEST_BRIDGE_VERSION, type AekTestBridge } from '../../debug/TestBridge';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+/** Every frame of a test page advances by this (the physics timestep: one step a frame) */
+const TEST_FRAME_DELTA = 1 / 60;
+/** Set by freeze(): TSL `time` stops too (three's own animation loop keeps calling update) */
+let isTestClockFrozen = false;
 
 /** The latest probe report per scene id (a page load probes one scene, a revisit replaces it) */
 const probeReports = new Map<string, PhysicsProbeReport>();
+/** whenProbeDone({ freeze: true }) is waiting: freeze in the report's own listener call */
+let freezeOnProbeReport = false;
+let freezing: Promise<void> | null = null;
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
@@ -53,20 +63,48 @@ const whenSceneReady: AekTestBridge['whenSceneReady'] = async (opts) => {
 
 const whenProbeDone: AekTestBridge['whenProbeDone'] = async (opts) => {
   if (getPhysicsDeterminismProbeSteps() === null) return { status: 'NOT_ARMED' };
+  if (opts?.freeze) {
+    const sceneId = getCurrentSceneId();
+    // Already reported (a late call): freeze now, frames have run since
+    if (sceneId && probeReports.has(sceneId)) freezing ??= freeze();
+    else freezeOnProbeReport = true;
+  }
   const report = await pollFrames(() => {
     const sceneId = getCurrentSceneId();
     return (sceneId && probeReports.get(sceneId)) || null;
   }, opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  freezeOnProbeReport = false;
   if (!report) {
     return { status: 'TIMEOUT', sceneId: getCurrentSceneId() ?? null };
   }
+  if (freezing) await freezing;
   return { status: 'DONE', ...report };
 };
 
-const freeze = () => {
+const freeze: AekTestBridge['freeze'] = async () => {
+  // Interpolation draws a pose between the last two steps that depends on frame timing: two
+  // frames at the newest snapshot (the step the probe hashed) before the loops stop
+  setPhysicsInterpolationPinnedToNewest(getECSWorld(), true);
+  await nextFrame();
+  await nextFrame();
   toggleAppPlay(false);
   pauseDayNight();
   toggleMainPlay(false);
+  isTestClockFrozen = true;
+};
+
+// The test clock: what a frame draws depends on how many frames ran, not on how long they took
+// (SwiftShader frames take anything from 20 ms to seconds). The main loop and physics take the
+// fixed delta; three's TSL `time` (clouds, star twinkle) advances in `NodeFrame.update()` from
+// `performance.now()`, once per animation frame, so that method is replaced (three r186's fields,
+// re-check on a three upgrade).
+const useTestClock = () => {
+  setFixedFrameDelta(TEST_FRAME_DELTA);
+  NodeFrame.prototype.update = function (this: NodeFrame) {
+    this.frameId++;
+    this.deltaTime = isTestClockFrozen ? 0 : TEST_FRAME_DELTA;
+    this.time += this.deltaTime;
+  };
 };
 
 const toBase64 = async (blob: Blob) => {
@@ -92,7 +130,14 @@ const snapshot: AekTestBridge['snapshot'] = async ({ width, height }) => {
 
 export const _installTestBridge = () => {
   if (window.__AEK_TEST__) return;
-  onPhysicsProbeReport((report) => probeReports.set(report.sceneId, report));
+  useTestClock();
+  onPhysicsProbeReport((report) => {
+    probeReports.set(report.sceneId, report);
+    if (freezeOnProbeReport && report.sceneId === getCurrentSceneId()) {
+      freezeOnProbeReport = false;
+      freezing ??= freeze();
+    }
+  });
   window.__AEK_TEST__ = {
     version: TEST_BRIDGE_VERSION,
     mode: IS_DEBUG_ENV ? 'DEBUG' : 'PROD_TEST',

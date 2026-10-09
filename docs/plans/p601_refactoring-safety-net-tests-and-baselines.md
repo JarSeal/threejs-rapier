@@ -204,6 +204,49 @@ As built (steps 2-3):
 - `physicsTiers`, all four configurations: about 95 s on SwiftShader; recorded, then passed again.
   Its dotted rings move a few pixels between loads (inside the tolerance; to look at in step 4).
 
+As built (step 4):
+
+- The first run over every scene (24 scenes × 4 configurations, SwiftShader) failed on snapshots
+  of anything that moves with time: objects turned by frame-time systems and loopers, the day-night
+  sky, the clouds and star twinkle (three's TSL `time`), and `physicsTiers`' plough. The time
+  between scene ready and the freeze differs per load, so they did too.
+- **The test clock** (the bridge, from its install): every frame advances by 1/60 s.
+  `setFixedFrameDelta` (`MainLoop.ts`, debug and test only) gives the main loop and physics
+  stepping (`stepPhysics`, which has its own timer) that delta, so one physics step per frame,
+  and the bridge replaces `NodeFrame.prototype.update` so TSL `time` advances by it too (three
+  r186's fields; re-check on a three upgrade). What a page shows then depends on how many frames
+  ran, not how long they took. It stops TSL `time` on freeze (three's own animation loop keeps
+  calling `update`).
+- **The freeze is in the probe report's frame:** `whenProbeDone({ freeze: true })` freezes inside
+  the report listener, so no frames run during a round trip to the runner. `freeze()` is async:
+  it first pins physics interpolation to the newest snapshot for two frames
+  (`setPhysicsInterpolationPinnedToNewest`, `PhysicsManager.ts`), so moving bodies show the step
+  the probe hashed, not a timing-dependent blend of the last two (`physicsTiers`' rings).
+  `TEST_BRIDGE_VERSION` 2.
+- Cost: the probe takes its steps in frames, so loads are 2-3× longer on SwiftShader; the full
+  matrix takes about 57 min a pass. `PROBE_TIMEOUT_MS` is 300 s.
+- `--update` compares nothing with the baseline: it records every run without errors, timeouts
+  or a wrong probe config (before, a changed snapshot blocked its own re-recording).
+  `unstableHash` takes `configs`, like `skip`.
+- Found and fixed: `docs/issues/scene-loopers-registered-on-the-previous-scene.md`. A scene looper
+  created by scene code without a scene id went nowhere on a first load (`scene01`'s sphere never
+  turned) or to the previous scene after a switch. `Scene.ts` now defaults to the loading scene
+  (`setLoadingSceneId`, set by `loadScene`), and the running looper lists follow the current scene.
+  A runtime fix: Phase 4 bumps the engine's patch version for it too.
+- `scenes.config.ts`: `textureArrays` and `textureAtlases` allow the errors they trigger on purpose;
+  `largeWorld` probes 30 steps (no bodies, about 1 s a frame on SwiftShader); `space`'s worker
+  targets and `thirdPersonGymScene` have an `unstableHash` (`MutualGravity` reads the worker's last
+  synced poses, its own JSDoc; characters aren't deterministic).
+- Not acted on: every page warns "using deprecated parameters for the initialization function"
+  from inside `@dimforge/rapier3d-compat` 0.19.3's own `init()` (our call passes nothing);
+  SwiftShader's GL performance messages in heavy scenes. Warnings are recorded, not compared.
+- Result on SwiftShader, recorded then rechecked: all 96 loads pass (92 in the full recheck, 57 min;
+  `largeWorld` and `space` again after their config). Most snapshots are pixel-identical; the rest
+  differ by at most 20/255 on 0.00 % of the pixels.
+- For p604: with the test clock the gym's characters hashed alike in every target and run; their
+  wall clock and `Math.random` remain. For the toolkit: `MutualGravity` could read per-step poses
+  (`readBodyPositionsAtStep`, as the tier policy does) to be deterministic in the worker.
+
 ### Phase 3: baselines
 
 1. `devTools/verify/baselines.ts`: reads the visualizer data, the TypeDoc model (built with the

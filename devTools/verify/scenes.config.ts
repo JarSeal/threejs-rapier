@@ -73,9 +73,11 @@ export const DEFAULT_PROBE_STEPS = 120;
 /** How long prod test mode runs after the scene is ready, to catch errors of its first frames */
 export const PROD_TEST_SETTLE_MS = 3000;
 
-/** Per page load: the scene's load, then the probe */
+/** Per page load: the scene's load, then the probe. The test clock runs one physics step per
+ * rendered frame, so the probe takes its steps in frames: a heavy scene on SwiftShader (about 1 s a
+ * frame) needs minutes. The limit only catches a page that never gets there. */
 export const READY_TIMEOUT_MS = 180_000;
-export const PROBE_TIMEOUT_MS = 120_000;
+export const PROBE_TIMEOUT_MS = 300_000;
 
 /** An error that doesn't fail a run, matched against the console line or page error message */
 export type AllowedError = { pattern: RegExp; reason: string };
@@ -89,13 +91,51 @@ export type SceneVerifyConfig = {
   /** Not loaded at all, or not in these configurations */
   skip?: { reason: string; configs?: VerifyConfigName[] };
   allowedErrors?: AllowedError[];
-  /** A changed hash only warns (eg. characters: not hashed, but they push bodies around) */
-  unstableHash?: { reason: string };
-  /** No snapshot comparison, or a looser tolerance (eg. TSL `time` animation the freeze can't stop) */
+  /** A changed hash only warns (eg. characters: not hashed, but they push bodies around), in every
+   * configuration or only in these */
+  unstableHash?: { reason: string; configs?: VerifyConfigName[] };
+  /** No snapshot comparison, or a looser tolerance (eg. characters, which aren't deterministic) */
   snapshot?:
     | { skip: true; reason: string }
     | { tolerance: Partial<SnapshotTolerance>; reason: string };
 };
 
 /** By scene id. A scene that isn't listed runs with the defaults */
-export const SCENE_VERIFY_CONFIG: Record<string, SceneVerifyConfig> = {};
+export const SCENE_VERIFY_CONFIG: Record<string, SceneVerifyConfig> = {
+  // No physics bodies (an empty hash): the steps only set the frames before the snapshot, and
+  // its frames take about 1 s each on SwiftShader
+  largeWorld: { probeSteps: 30 },
+  space: {
+    unstableHash: {
+      reason:
+        "MutualGravity reads the worker's last synced poses, up to a frame stale, so the worker targets aren't deterministic (its JSDoc); MAIN_THREAD is",
+      configs: ['workerSab', 'workerMsg'],
+    },
+  },
+  thirdPersonGymScene: {
+    unstableHash: {
+      reason:
+        "its characters aren't deterministic yet (wall clock, Math.random, async shape casts in the worker: CLAUDE.md, Physics) and push the hashed bodies around",
+    },
+  },
+  textureArrays: {
+    allowedErrors: [
+      {
+        pattern:
+          /^\[console\.error\] Could not load texture array "textureArrays\/(noOutputFallback|noOutput|layerCountMismatch)"/,
+        reason:
+          'The scene tests how loadTextureAsync fails for a texture array asset (it logs "Expected: the next 3 errors" first)',
+      },
+    ],
+  },
+  textureAtlases: {
+    allowedErrors: [
+      {
+        pattern:
+          /^\[console\.error\] Could not load texture atlas slot "textureAtlases\/(noOutputFallback|noOutput|tooManyLevels|droppedPlusStored|sizeMismatch|fullChainAsProtected)"/,
+        reason:
+          'The scene tests how loadTextureAsync fails for an atlas slot (it logs "Expected: the next 6 errors" first)',
+      },
+    ],
+  },
+};

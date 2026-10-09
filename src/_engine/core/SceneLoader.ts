@@ -13,6 +13,7 @@ import {
   runOnSceneExit,
   SceneData,
   setCurrentScene,
+  setLoadingSceneId,
 } from './Scene';
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
@@ -585,6 +586,8 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       }
 
       loader.phase = 'LOAD';
+      // From here until it is current, optional scene ids (loopers, resizers) mean the next scene
+      setLoadingSceneId(sceneId);
 
       createCameras(sceneData);
 
@@ -605,6 +608,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
             `Scene loader could not find scene with scene id '${sceneId}'.`
           );
           setCurrentScene(sceneId);
+          setLoadingSceneId(null);
           await activateSceneDefaultSkyBox(sceneId);
           await createNextSceneObject3Ds(sceneData);
           // The next scene has taken refs on, or re-tagged, what it shares with the previous one:
@@ -653,6 +657,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       );
     })
     .catch((reason) => {
+      setLoadingSceneId(null);
       const msg = `Could not load scene (phase '${loader.phase}')`;
       lerror(msg, reason);
       handleDraggableWindowsOnSceneChangeEnd(true);
