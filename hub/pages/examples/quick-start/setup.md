@@ -25,3 +25,33 @@ A phone on your network needs a secure context for WebGPU and `SharedArrayBuffer
 self-signed certificate: open `https://<your computer's address>:8443/?isDebug=true` on the phone
 and accept the certificate.
 :::
+
+::: dev-only
+
+## Check your changes
+
+```bash
+yarn test               # unit tests (Vitest), about a second
+yarn verify:baselines   # bundle sizes, API surface, JSDoc coverage
+yarn verify:scenes      # every scene vs. your last good run
+```
+
+- `yarn test` runs the `*.test.ts` files next to the modules they test. The agents' Stop hook runs
+  it after every change in `src/` or `devTools/`.
+- `yarn verify:baselines` builds the app and diffs `devTools/verify/baselines/`. When a change
+  grows a chunk, adds or moves an export or drops a folder's JSDoc coverage on purpose, record it
+  with `--update` and commit the files with that change.
+- `yarn verify:scenes` loads every scene in debug (with the physics worker over a
+  `SharedArrayBuffer`, over messages, and on the main thread) and in prod test mode, and fails on
+  console errors, a changed determinism hash or a snapshot that looks different. Its baselines
+  are kept on your machine (`.cache/verify/scenes/`), because snapshots depend on the GPU: record
+  them on `main` with `--update`, then run it on your branch. `--only <scene id>` and
+  `--config quick` keep a run short; the full run takes up to an hour.
+
+Both verify commands write to one log, which you can follow from any terminal:
+
+```bash
+tail -f .cache/verify/progress.log
+```
+
+:::

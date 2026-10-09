@@ -4,6 +4,33 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-09 — mega-refactoring-safety-net
+
+### Engine 4.15.0 (Afternoon)
+
+**Added**
+
+- A test bridge for the scene runner (`debug/TestBridge.ts` → `core/Debug/_dbg__TestBridge.ts`): `?aekTest=true`, next to `?isDebug=true` or `?isProdTest=true`, installs `window.__AEK_TEST__` before the first scene load (never in a production build). `whenSceneReady()` resolves once the first scene has loaded and the physics hold is released (with the renderer's backend), `whenProbeDone({ freeze? })` with the determinism probe's report (optionally freezing in that frame), `freeze()` pauses the app and master loops and the day-night cycle, and `snapshot({ width, height })` returns a byte-exact PNG of what the canvas shows. It also runs a test clock: every frame advances 1/60 s, TSL's `time` included, so what a page shows depends on how many frames ran, not on how long they took. `TEST_BRIDGE_VERSION` is its protocol version.
+- `setFixedFrameDelta(seconds | null)` / `getFixedFrameDelta()` (`core/MainLoop.ts`, debug and test): every loop frame, and physics stepping, uses that delta instead of the measured one.
+- `setPhysicsInterpolationPinnedToNewest(world, isPinned)` (`core/PhysicsManager.ts`, debug and test): interpolated bodies are drawn at the newest physics snapshot, with no blend, so a still frame shows the exact step.
+- `onPhysicsProbeReport` (`core/Debug/_dbg__PhysicsDeterminism.ts`): the determinism probe's report as data, not only as a log line.
+
+**Fixed**
+
+- ECS: an entity slot reused 4096 times gave entities that were never alive and couldn't be deleted (the stored generation outgrew the id's 12 bits). `deleteEntity` now wraps it at 12 bits; an id repeats after 4096 reuses of its slot (`docs/issues/ecs-generation-wrap-after-4096-reuses.md`).
+- Scene loopers and resizers created by scene code without a scene id went nowhere on a first load (`scene01`'s sphere never turned) or to the previous scene after a switch: scene code runs before its scene is current. An omitted scene id now means the loading scene while its code runs (`setLoadingSceneId`, set by `loadScene`), and the running looper lists follow the current scene (`docs/issues/scene-loopers-registered-on-the-previous-scene.md`).
+
+### Project
+
+**Added**
+
+- Unit tests: `yarn test` / `yarn test:watch` (Vitest 5.0.3, `vitest.config.ts`, Node environment). The first tests cover the ECS (entity ids and generations, storages, hooks), `deepMerge`, `CellKey`, `SkyTime`, the octahedral impostor maps, `ImpostorFormat` and the asset schemas (every gathered JSON in `src/` validates through the gatherer, and broken copies of repo assets fail at the expected field). The Stop hook runs them when `src/`, `devTools/` or `vitest.config.ts` changed. Tests are left out of the API docs.
+- The scene runner, `yarn verify:scenes [--only <sceneId|glob>] [--config <name|set>] [--update] [--url <url>] [--webgl] [--headed]` (`devTools/verify/scenes.ts`, `scenes.config.ts`): every scene in four configurations (the physics worker with and without `SharedArrayBuffer` and the main thread in debug, plus prod test mode), failing on console or page errors that aren't allowed, a changed determinism hash, a snapshot over the tolerance (with a diff image), or a load that ran in another physics configuration. Its baselines are local, per backend (`.cache/verify/scenes/`); `--update` records the current run. On WSL2 it renders on WebGL2 (SwiftShader) unless `--headed`. New dev dependency `playwright-core` 1.63.0.
+- `yarn verify:baselines [--update] [--no-build]` (`devTools/verify/baselines.ts`): bundle sizes per chunk and per main-chunk module group, the documented API's exports and the JSDoc coverage per folder, diffed against the committed `devTools/verify/baselines/*.json`. It fails on a chunk that grew over 1 % or 2 kB gzip, a new chunk, an added, removed or moved export, or a coverage drop.
+- Both verify commands log to `.cache/verify/progress.log`, so `tail -f .cache/verify/progress.log` follows a run from any terminal.
+- The Hub's `::: dev-only [title]` blocks: content only the dev server's Hub shows, left out of `yarn hub:build` before parsing (no text, TOC entry or search result). A directive gets the same with `devOnly: true`. The Quick start's "Check your changes" (the test and verify commands) and the debug suite page's "Test bridge" use it.
+- CLAUDE.md: the test and verify commands, the verification every p600 refactoring plan runs, the watch command, and the test bridge. The run-aekasha-js skill points at the scene runner for checking every scene. The readme lists the new commands and `?aekTest=true`.
+
 ## 2026-10-08 — aekasha-hub
 
 ### Engine 4.14.0 (Afternoon)

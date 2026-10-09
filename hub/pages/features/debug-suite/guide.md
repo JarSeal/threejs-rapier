@@ -89,6 +89,17 @@ file in your editor: the scene data is gathered again and the page reloads.
   `AEK_DEV_FILES_LAN=true` lets a phone on your network write too, and `AEK_DEV_FILES=false`
   turns it off.
 
+::: dev-only
+
+## Test bridge
+
+`?aekTest=true`, next to `?isDebug=true` or `?isProdTest=true`, installs `window.__AEK_TEST__`, the
+page side of `yarn verify:scenes`: it tells when the first scene is ready, waits for the
+determinism probe, freezes the loops and takes a snapshot. It also runs a test clock, every frame
+1/60 s, so what a page shows depends on how many frames ran, not on how fast the machine is. See
+the [Quick start](hub:examples/quick-start#check-your-changes) for the commands.
+:::
+
 ## Physics and characters
 
 - Collider wireframes coloured by body state and simulation tier, ray helpers, and live body

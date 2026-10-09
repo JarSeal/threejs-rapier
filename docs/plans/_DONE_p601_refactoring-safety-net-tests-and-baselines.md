@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: implemented (Phases 1-4)
 Category: Testing, Dev tooling
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p606_layering-inversion-and-public-entry.md (no Stage B or C plan starts without it)
@@ -289,7 +289,7 @@ As built:
   move, an added undocumented export, a coverage drop) gave exactly the expected findings, the
   50 B one not flagged.
 
-### Phase 4: docs and versioning
+### Phase 4: docs and versioning — done
 
 1. CLAUDE.md: the commands, the "no test suite" sentence replaced, the verification line every
    p600 plan uses. With the watch command: an agent that starts `verify:scenes` or
@@ -299,6 +299,24 @@ As built:
 2. The Hub: the commands on the getting-started page (`hub/pages/`), `yarn hub:build`.
 3. `CHANGELOG.md` entry: Project (the tooling; the bridge is dev-only) and Engine (a patch bump
    for Phase 1's ECS generation fix); mark the plan done.
+
+As built:
+
+- CLAUDE.md: the three commands under Commands (the "no test suite" sentence replaced), the watch
+  command after them, `?aekTest=true` with the URL flags, the verification line under Plans, a
+  "Test bridge" bullet under Debug system and a pointer from the probe paragraph under Physics.
+  The readme's commands and URL flag tables too (Workflow's rule for new commands).
+- The Hub has no getting-started page: the commands went to the Quick start
+  (`hub/pages/examples/quick-start/setup.md`, "Check your changes"), and a "Test bridge" section to
+  the debug suite page. Both are local only, at the user's request: a new `::: dev-only [title]`
+  directive (`HubDirective.devOnly`, `devTools/hub/markdown.ts`) whose lines a `public` build skips
+  before parsing, so nothing of it is in `dist-hub/` (text, TOC, search) and `hub:build` doesn't
+  check its links (the dev server does). Documented in `docs/techniques/hub-authoring.md` and
+  CLAUDE.md's Hub section.
+- Engine 4.15.0, a minor bump, not the patch step 3 planned: the branch adds exported API (the
+  test bridge module, `setFixedFrameDelta` / `getFixedFrameDelta`,
+  `setPhysicsInterpolationPinnedToNewest`, `setLoadingSceneId`), next to Phase 1's and Phase 2's
+  fixes. Toolkit and app unchanged.
 
 ## 5. Risks and open questions
 
