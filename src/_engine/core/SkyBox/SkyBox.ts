@@ -131,7 +131,10 @@ type SkyBoxChangeListener = (active: ActiveSkyBox | null, reason: SkyBoxChangeRe
 
 export { SKYBOX_MANAGER_ID } from './SkyLights';
 
-/** @internal The debug tab's override store: `{ [sceneId]: { [skyBoxId]: SkyBoxOverrides } }`. */
+/**
+ * The debug tab's override store: `{ [sceneId]: { [skyBoxId]: SkyBoxOverrides } }`.
+ * @internal
+ */
 export const SKYBOX_DEBUG_OVERRIDES_LS_KEY = 'AEK_debugSkyBox';
 
 /** Definitions by scene, in registration order. */
@@ -197,7 +200,10 @@ export const getSceneDefaultSkyBoxId = (sceneId: string) => {
   return sceneDefs.keys().next().value ?? null;
 };
 
-/** @internal Debug accessor: the registry (read it, don't change it). */
+/**
+ * Debug accessor: the registry (read it, don't change it).
+ * @internal
+ */
 export const _getSkyBoxRegistry = (): ReadonlyMap<string, ReadonlyMap<string, SkyBoxDef>> =>
   registry;
 

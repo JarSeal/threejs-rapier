@@ -5,7 +5,6 @@
  * forbids `performance.now()` in simulation code and allows this one instead, so every wall-clock
  * read there says what it's for. Milliseconds since the thread's time origin, like
  * `performance.now()`: a worker's reading needs the main thread's offset to compare.
- *
  * @internal
  */
 export const readStatsClock = () => performance.now();

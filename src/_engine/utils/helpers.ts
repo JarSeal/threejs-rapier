@@ -475,7 +475,7 @@ export const isMainThread = () =>
  */
 export const isMainThreadSimple = () => typeof window !== 'undefined';
 
-/** * A container for a module that will be loaded asynchronously.
+/** A container for a module that will be loaded asynchronously.
  */
 export interface DebugModuleRef<T> {
   current: T | null;

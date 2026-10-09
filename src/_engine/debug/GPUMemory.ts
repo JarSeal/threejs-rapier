@@ -64,5 +64,8 @@ export const registerGPUMemorySource = (source: GPUMemorySource) => {
   };
 };
 
-/** @internal The registered sources (the GPU memory tab). */
+/**
+ * The registered sources (the GPU memory tab).
+ * @internal
+ */
 export const _getGPUMemorySources = (): ReadonlyMap<string, GPUMemorySource> => sources;

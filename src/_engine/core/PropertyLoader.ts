@@ -12,7 +12,7 @@ export interface LoadableProps {
   [key: string]: unknown;
 }
 
-/** * Generic property loader.
+/** Generic property loader.
  * Merges hardcoded props with LocalStorage data (in debug) and eventually files.
  */
 export const loadPersistentProps = <T extends LoadableProps>(

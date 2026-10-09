@@ -53,7 +53,6 @@ type MountedTab = {
  * cleanup, and runs `refreshIntervalMs` only while the host is visible. The owner keeps its own
  * menu, ordering and state (the debug drawer and the profiler window each use one host).
  * @param opts ({@link TabHostOpts})
- * @returns {@link TabHost}
  */
 export const createTabHost = (opts: TabHostOpts): TabHost => {
   const { getContainer, isVisible, onMount, label = 'Debugger tab' } = opts;

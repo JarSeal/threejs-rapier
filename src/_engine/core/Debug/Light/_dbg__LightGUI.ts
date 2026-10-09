@@ -1431,9 +1431,9 @@ export const clearLightFromLS = (appId: string) => {
   lsSetItem(LS_LIGHTS_KEY, currentData);
 };
 
-/** * Helper for saving specific light debug properties to LocalStorage.
- * @param K - A generic extending the keys of the debug state.
- * @param value - Automatically typed based on the key provided.
+/** Helper for saving specific light debug properties to LocalStorage.
+ * @template K A generic extending the keys of the debug state.
+ * @param value Automatically typed based on the key provided.
  */
 const saveLightToLS = <K extends keyof LightEntityDebugState>(
   entityId: number,

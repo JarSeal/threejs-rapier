@@ -29,10 +29,11 @@ A function that isn't exported gets a comment when its purpose isn't obvious fro
 | Tag | When | How |
 | --- | --- | --- |
 | `@param` | When the parameter needs more than its name and type: units, valid range, what `null` means | `@param geometryId a registered geometry (not a LOD level)`: the name, a space and the text, no hyphen, no type |
-| `@returns` | When the result has cases: `null`, a remover, the argument it wrote into | `@returns the chain, or null when it was refused (warned)` |
+| `@returns` | When the result has cases: `null`, a remover, the argument it wrote into | `@returns the chain, or null when it was refused (warned)`; words first, since `@returns {@link X}` reads as a type |
+| `@template` | A type parameter that needs explaining | `@template K a key of the debug state` (TypeDoc shows it as a type parameter) |
 | `@example` | Every entry-point API: the functions an app calls first | A fenced `ts` block showing the call; imports are left out |
 | `@remarks` | A trap the reader would hit: a three quirk, an order the caller must keep, a cost | After the summary and the tags it explains |
-| `@internal` | Every export that isn't part of a public entry | An empty tag, the reason in the summary |
+| `@internal` | Every export that isn't part of a public entry | An empty tag on its own line, the reason in the summary |
 | `@deprecated` | An export that's going away | What replaces it, and the major that removes it |
 | `{@link X}` | A reference to another export | Only for names TypeDoc resolves (our own exports); three's classes and outside names go in backticks |
 
@@ -57,8 +58,17 @@ export const getSunDirection = (out: THREE.Vector3, i = 0) => {
 ```
 
 ```ts
-/** The registered stats sources, for the profiler. @internal */
+/**
+ * The registered stats sources, for the profiler.
+ * @internal
+ */
 ```
+
+The lint (`eslint-plugin-jsdoc`, in `eslint.config.js`) checks the shape, as errors: tag names
+(TypeDoc's included), a `@param` naming a real parameter (one property of a destructured or options
+parameter as `opts.id`), an empty `@internal`, no types or hyphens in tags, no blank line between
+the summary and the tags, the tags' order, an `@` word in prose in backticks, and a tag or summary
+that only repeats its name. `yarn lint --fix` fixes the layout ones.
 
 ### Types
 

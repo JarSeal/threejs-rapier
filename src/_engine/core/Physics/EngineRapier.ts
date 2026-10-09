@@ -1758,7 +1758,10 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
     this.isCreatedFixed = rb.isFixed();
   }
 
-  /** @internal Points the proxy at its re-created Rapier body (reattachRigidBody, p352). */
+  /**
+   * Points the proxy at its re-created Rapier body (reattachRigidBody, p352).
+   * @internal
+   */
   _rebind(rb: Rapier.RigidBody) {
     this.rb = rb;
   }
@@ -2194,7 +2197,10 @@ class EngineColliderProxyAPI implements ColliderAPI {
     );
   }
 
-  /** @internal Points the proxy at its re-created Rapier collider (reattachRigidBody, p352). */
+  /**
+   * Points the proxy at its re-created Rapier collider (reattachRigidBody, p352).
+   * @internal
+   */
   _rebind(coll: Rapier.Collider) {
     this.coll = coll;
   }

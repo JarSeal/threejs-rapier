@@ -688,7 +688,6 @@ const clearAllMaterialEditorData = () => {
 /**
  * The texture ids a material asset uses: its `params` texture slots and its TSL node string
  * inputs (a string not starting with `#` is a texture id, as in createMaterial).
- * @param asset (MaterialAsset)
  * @returns (string[]) the texture ids, without duplicates
  */
 export const getMaterialTextureIds = (asset: MaterialAsset) => {

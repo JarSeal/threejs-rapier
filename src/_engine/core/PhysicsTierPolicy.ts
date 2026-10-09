@@ -175,7 +175,6 @@ const deletePolicy = (world: ECSWorld) => {
  *
  * Removing the policy, or an entity from it, leaves its tier as it is. The determinism probe
  * freezes a `FRAMES` policy, and tests a `STEPS` one.
- *
  * @example
  * setPhysicsTierPolicy({
  *   rings: [

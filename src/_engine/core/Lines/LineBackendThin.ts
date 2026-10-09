@@ -3,11 +3,11 @@ import type { LineBackend, LineColorNode, LineOpacityNode } from './LineBackend'
 import { FLOATS_PER_SEGMENT } from './LineWriter';
 
 /**
- * @internal
  * `THREE.LineSegments` + `LineBasicNodeMaterial`: always 1px (line width is ignored by
  * every modern graphics API), and free — WebGPURenderer already ships this material, it
  * converts every classic LineBasicMaterial through it at render time. Using the node
  * material directly skips that conversion.
+ * @internal
  */
 class ThinLineBackend implements LineBackend {
   readonly kind = 'THIN' as const;

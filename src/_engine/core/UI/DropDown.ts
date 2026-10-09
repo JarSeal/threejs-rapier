@@ -78,7 +78,6 @@ const swallowNextKeyUp = (key: string) => {
  * Space or a click picks, and Escape, Tab or a click outside closes it without a change. The
  * list's keys reach no key binding (their keyups included).
  * @param props (object) {@link DropDownProps}
- * @returns {@link TDropDown}
  */
 export const createDropDown = (props: DropDownProps): TDropDown => {
   const placement = props.placement || 'bottom';

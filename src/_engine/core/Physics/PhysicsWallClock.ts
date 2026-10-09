@@ -4,7 +4,6 @@
  * deterministic. The simulation lint (`SIMULATION_FILES` in `eslint.config.js`) allow-lists this
  * file alone; p610 replaces `getPhysGameTime()` with step-index time and deletes it. Measurement
  * reads use `readStatsClock` (`utils/StatsClock.ts`) instead.
- *
  * @internal
  */
 export const readPhysicsWallClock = () => performance.now();

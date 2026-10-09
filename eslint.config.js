@@ -1,6 +1,7 @@
 import globals from 'globals';
 import prettier from 'eslint-plugin-prettier';
 import typescriptEslint from '@typescript-eslint/eslint-plugin';
+import jsdoc from 'eslint-plugin-jsdoc';
 import { FlatCompat } from '@eslint/eslintrc';
 
 const compat = new FlatCompat();
@@ -90,6 +91,41 @@ export default [
         es6: true,
         ...globals.browser,
       },
+    },
+  },
+
+  // JSDoc's shape (the coding standards' JSDoc style). Only the shape: whether an export has a
+  // comment at all is the documentation ratchet's (`yarn verify:baselines`), so no `require-*`
+  // rule. Types live in TypeScript, never in a tag, and `@param name text` has no hyphen.
+  {
+    files: ['src/**/*.ts', 'devTools/**/*.ts'],
+    ignores: ['src/_engine/generatedApp*'],
+    plugins: { jsdoc },
+    settings: { jsdoc: { mode: 'typescript' } },
+    rules: {
+      // Only where it adds: a tag may document some parameters, or one property of a destructured
+      // one (`opts.id`), without the others
+      'jsdoc/check-param-names': [
+        'error',
+        { disableMissingParamChecks: true, checkDestructured: false },
+      ],
+      'jsdoc/check-tag-names': [
+        'error',
+        {
+          // TypeDoc's tags. A type parameter is `@template` (TypeDoc reads it as `@typeParam`)
+          definedTags: ['remarks', 'privateRemarks', 'defaultValue', 'category'],
+        },
+      ],
+      'jsdoc/empty-tags': 'error',
+      'jsdoc/no-types': 'error',
+      'jsdoc/escape-inline-tags': 'error',
+      'jsdoc/check-alignment': 'error',
+      'jsdoc/no-multi-asterisks': 'error',
+      'jsdoc/require-asterisk-prefix': 'error',
+      'jsdoc/tag-lines': ['error', 'never', { startLines: 0 }],
+      'jsdoc/sort-tags': 'error',
+      'jsdoc/require-hyphen-before-param-description': ['error', 'never'],
+      'jsdoc/informative-docs': 'error',
     },
   },
 

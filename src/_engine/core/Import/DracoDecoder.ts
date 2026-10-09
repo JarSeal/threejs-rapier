@@ -23,7 +23,7 @@ let activeDecoder: { decoderPath: string; decoderType: 'wasm' | 'js' } | null = 
 
 /** True once the decoder files have been requested (GLTFLoader calls `preload()` as soon as it
  * parses a file that uses KHR_draco_mesh_compression): the decoder path and type are locked from
- * then on. `decoderPending` is a plain DRACOLoader field that @types/three doesn't declare. */
+ * then on. `decoderPending` is a plain DRACOLoader field that `@types/three` doesn't declare. */
 const isDecoderLocked = (loader: DRACOLoader) =>
   Boolean((loader as unknown as { decoderPending: Promise<void> | null }).decoderPending);
 

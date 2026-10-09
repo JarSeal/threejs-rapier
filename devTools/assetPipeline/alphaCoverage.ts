@@ -37,7 +37,7 @@ const getWholeRegion = (img: Img): CoverageRegion => [0, 0, img.width, img.heigh
  * resolves to, which the schema only sees when the JSON names it: throws for a slot whose alpha
  * isn't coverage (a normal map's, data, `normalMode`'s Y), and warns that it does nothing without
  * mip levels (`codec: "none"`, `mipmaps: false`) or alpha.
- * @param label Where the cut is set, eg. `optimize.alphaCoverage`
+ * @param opts.label Where the cut is set, eg. `optimize.alphaCoverage`
  */
 export const resolveCoverageCut = (
   cut: number | undefined,

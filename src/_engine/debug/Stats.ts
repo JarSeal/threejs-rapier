@@ -85,7 +85,6 @@ export const getStats = () => useDebug(debugGUI)?._getStats();
 
 /**
  * Returns the stats configurations
- * @returns {@link StatsOptions}
  */
 export const getStatsConfig = () => useDebug(debugGUI)?._getStatsConfig();
 

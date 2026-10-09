@@ -121,7 +121,7 @@ export class ECSWorld {
   private static onDeleteEntityHooks: Map<ComponentType, ComponentHook[]> = new Map();
   private static transformResetListeners: TransformResetListener[] = [];
 
-  /** * Global registration methods.
+  /** Global registration methods.
    * Managers call these once at app startup.
    */
   public static registerPlugin(plugin: WorldPlugin) {
@@ -535,7 +535,6 @@ export class ECSWorld {
 
   /**
    * Removes a component from an entity.
-   * @param entityId The ID of the entity.
    * @param type The type of component to remove.
    */
   public removeComponent(entityId: number, type: ComponentType): void {
@@ -588,7 +587,7 @@ export class ECSWorld {
     return storage;
   }
 
-  /** * Hard reset of the entire engine state.
+  /** Hard reset of the entire engine state.
    * Everything is wiped, and ID counters start over.
    */
   public clearWorld(): void {

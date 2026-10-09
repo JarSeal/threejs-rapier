@@ -2972,8 +2972,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   /** Bumped by every detach and reattach (p352), so a reply to an older one is ignored. */
   private attachGeneration = 0;
 
-  /** @internal detachRigidBody: the slot is the worker's to reuse from now on. Returns the
-   * detach's generation. */
+  /**
+   * detachRigidBody: the slot is the worker's to reuse from now on. Returns the
+   * detach's generation.
+   * @internal
+   */
   _detach() {
     this.slot = -1;
     this.pendingPos = undefined;
@@ -2983,18 +2986,27 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     return ++this.attachGeneration;
   }
 
-  /** @internal reattachRigidBody, before its request. Returns the reattach's generation. */
+  /**
+   * reattachRigidBody, before its request. Returns the reattach's generation.
+   * @internal
+   */
   _beginReattach() {
     return ++this.attachGeneration;
   }
 
-  /** @internal Whether no detach/reattach has been requested since `generation`'s. */
+  /**
+   * Whether no detach/reattach has been requested since `generation`'s.
+   * @internal
+   */
   _isAttachGeneration(generation: number) {
     return this.attachGeneration === generation;
   }
 
-  /** @internal reattachRigidBody's reply: the new slot, and its pose read until a transform
-   * write-back includes it (as at creation). */
+  /**
+   * reattachRigidBody's reply: the new slot, and its pose read until a transform
+   * write-back includes it (as at creation).
+   * @internal
+   */
   _attach(slot: number, pose: RigidBodyPose) {
     this.slot = slot;
     const visibleAt = getWriteVisibleStep();

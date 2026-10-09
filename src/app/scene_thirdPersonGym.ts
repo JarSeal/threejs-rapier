@@ -74,9 +74,8 @@ const snapToStep = (value: number, step: number) => Math.round(value / step) * s
  * covers the area around it wherever it goes. The light's direction and distance stay as authored
  * (its position - target offset). The frustum moves in whole shadow map texels in light space, or
  * shadow edges would shimmer as it slides. The light is looked up lazily: a scene's JSON lights are
- * created after its scene function runs.
- * @param centerOffset shifts the frustum center from the followed entity (eg. toward where the
- * camera sees more ground)
+ * created after its scene function runs. `centerOffset` shifts the frustum center from the
+ * followed entity (eg. toward where the camera sees more ground).
  */
 const followWithSun = (
   sunAppId: string,

@@ -37,7 +37,7 @@ export type GPUAssetRow = {
 type MemoryMapEntry = number | { size: number; type: string };
 type MemoryMap = WeakMap<object, MemoryMapEntry>;
 
-/** `info.memoryMap` is three's own (Info.js) and missing from @types/three. */
+/** `info.memoryMap` is three's own (Info.js) and missing from `@types/three`. */
 const getMemoryMap = (renderer: Renderer) =>
   (renderer.info as unknown as { memoryMap: MemoryMap }).memoryMap;
 

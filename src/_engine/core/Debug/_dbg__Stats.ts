@@ -294,7 +294,6 @@ export const _getStats = () => stats;
 
 /**
  * Returns the stats configurations
- * @returns {@link StatsOptions}
  */
 export const _getStatsConfig = () => statsConfig;
 

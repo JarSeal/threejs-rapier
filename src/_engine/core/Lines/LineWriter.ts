@@ -4,9 +4,9 @@ import type * as THREE from 'three/webgpu';
 export const FLOATS_PER_SEGMENT = 6;
 
 /**
- * @internal
  * What a {@link LineWriter} writes into. `positions` may be replaced by `reserve`, so the
  * writer re-reads it after every reservation and never caches it.
+ * @internal
  */
 export interface LineWriteTarget {
   readonly positions: Float32Array;
@@ -84,7 +84,10 @@ export class LineWriter {
   }
 }
 
-/** @internal A fixed-size target for the one-shot `*ToSegments` builders. */
+/**
+ * A fixed-size target for the one-shot `*ToSegments` builders.
+ * @internal
+ */
 export const createArrayWriteTarget = (segmentCount: number): LineWriteTarget => {
   const positions = new Float32Array(segmentCount * FLOATS_PER_SEGMENT);
   return { positions, reserve: (floatCount) => floatCount <= positions.length };

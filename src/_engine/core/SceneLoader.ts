@@ -87,10 +87,9 @@ export type SceneLoader = {
   id: string;
 
   /**
-   * Next scene loader function, returns true when loading is done.
+   * Next scene loader function, resolves when loading is done.
    * @param loader SceneLoader ({@link SceneLoader})
-   * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
-   * @returns Promise<boolean>
+   * @param nextSceneFn runs the next scene's code with its data (the default loadFn only awaits it)
    */
   loadFn?: (
     loader: SceneLoader,
@@ -100,7 +99,6 @@ export type SceneLoader = {
   /**
    * Load start function, returns true when done
    * @param loader SceneLoader ({@link SceneLoader})
-   * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
    * @returns Promise<boolean>
    */
   loadStartFn?: (loader: SceneLoader) => Promise<boolean>;
@@ -108,7 +106,6 @@ export type SceneLoader = {
   /**
    * Load end function, returns true when done
    * @param loader SceneLoader ({@link SceneLoader})
-   * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
    * @returns Promise<boolean>
    */
   loadEndFn?: (loader: SceneLoader) => Promise<boolean>;

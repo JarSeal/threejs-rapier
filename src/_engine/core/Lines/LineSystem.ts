@@ -12,7 +12,6 @@ const lineTimeSystem = () => {
 };
 
 /**
- * @internal
  * Registers the line time system on every world (a core plugin, on `MAIN`, which runs
  * whenever the master loop plays — so pulses keep going while only the app loop is
  * paused). Idempotent.
@@ -20,6 +19,7 @@ const lineTimeSystem = () => {
  * Lines belong to no world, yet this is the only per-frame hook: with several worlds it
  * runs once per world, which is harmless (the same monotonic value is written each time);
  * with none, pulses would stand still. InitApp always creates the default world.
+ * @internal
  */
 export const registerLineTimeSystem = () => {
   if (registered) return;

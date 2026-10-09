@@ -1,6 +1,9 @@
 import type { LineObject } from './LineObject';
 
-/** @internal Every live line, by id. Lines belong to no ECS world, so this is module-wide. */
+/**
+ * Every live line, by id. Lines belong to no ECS world, so this is module-wide.
+ * @internal
+ */
 const lines = new Map<string, LineObject>();
 let autoIdCounter = 0;
 

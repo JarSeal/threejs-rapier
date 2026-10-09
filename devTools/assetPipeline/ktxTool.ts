@@ -42,7 +42,7 @@ type Release = {
   file: string;
   sha256: string;
   format: 'deb' | 'pkg';
-  /** The library name the `ktx` binary loads (its NEEDED / @rpath entry) */
+  /** The library name the `ktx` binary loads (its NEEDED / `@rpath` entry) */
   libName: string;
 };
 

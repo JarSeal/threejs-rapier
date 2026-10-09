@@ -237,7 +237,10 @@ export const registerStatsSource = <T>(source: StatsSource<T>) => {
   };
 };
 
-/** @internal The registered stats sources (the profiler). */
+/**
+ * The registered stats sources (the profiler).
+ * @internal
+ */
 export const _getStatsSources = (): ReadonlyMap<string, AnyStatsSource> => statsSources;
 
 // ENTITY WINDOWS (the Objects tab's heaviest objects)
@@ -272,7 +275,10 @@ export const registerEntityWindowOpener = (opener: EntityWindowOpener) => {
   entityWindowOpeners.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 };
 
-/** @internal The opener of an entity's edit window, or null (the profiler). */
+/**
+ * The opener of an entity's edit window, or null (the profiler).
+ * @internal
+ */
 export const _getEntityWindowOpener = (world: ECSWorld, entityId: number) => {
   if (!world.isAlive(entityId)) return null;
   for (let i = 0; i < entityWindowOpeners.length; i++) {

@@ -2,13 +2,15 @@ import type * as THREE from 'three/webgpu';
 import { lwarn } from '../../utils/Logger';
 import type { LineBackendChoice, LineBackendKind } from './LineTypes';
 
-/** @internal What a line material's colorNode/opacityNode accept. */
+/**
+ * What a line material's colorNode/opacityNode accept.
+ * @internal
+ */
 export type LineColorNode = NonNullable<THREE.NodeMaterial['colorNode']>;
 /** @internal */
 export type LineOpacityNode = NonNullable<THREE.NodeMaterial['opacityNode']>;
 
 /**
- * @internal
  * One renderer for a LineObject. The LineObject owns every piece of state (the segment
  * buffer, colour, width, transform, attachment); a backend is a disposable view of it, so
  * swapping backends is re-applying that state to a new one. Both backends read the same
@@ -16,6 +18,7 @@ export type LineOpacityNode = NonNullable<THREE.NodeMaterial['opacityNode']>;
  *
  * Imports no addons: this module and the THIN backend are static, the FAT one is a
  * dynamic import.
+ * @internal
  */
 export interface LineBackend {
   readonly kind: LineBackendKind;
@@ -56,8 +59,11 @@ let fatLineModule: FatLineModule | null = null;
 let fatLinePromise: Promise<boolean> | null = null;
 let warnedFatLineLoad = false;
 
-/** @internal Loads the FAT backend once (a dynamic import, its own chunk). Resolves false
- * if it could not be loaded; a later call retries. */
+/**
+ * Loads the FAT backend once (a dynamic import, its own chunk). Resolves false
+ * if it could not be loaded; a later call retries.
+ * @internal
+ */
 export const loadFatLineBackend = (): Promise<boolean> => {
   if (fatLineModule) return Promise.resolve(true);
   fatLinePromise ??= import('./LineBackendFat').then(
@@ -77,5 +83,8 @@ export const loadFatLineBackend = (): Promise<boolean> => {
   return fatLinePromise;
 };
 
-/** @internal The FAT backend factory, or null until loadFatLineBackend has resolved. */
+/**
+ * The FAT backend factory, or null until loadFatLineBackend has resolved.
+ * @internal
+ */
 export const getFatLineBackendFactory = () => fatLineModule?.createFatLineBackend ?? null;

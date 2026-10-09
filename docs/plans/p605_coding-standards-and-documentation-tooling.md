@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: in progress | Phases 1-4 implemented
 Category: Documentation, Dev tooling, Standards
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md (the standard they apply)
@@ -387,7 +387,7 @@ Documents only.
   this branch (`--only scene01V2 --update`; `main` doesn't have the change), then 2 of 2 runs
   passed in every configuration with exact snapshots.
 
-### Phase 4: JSDoc lint
+### Phase 4: JSDoc lint — done
 
 1. `eslint-plugin-jsdoc` 63.3.3 as a devDependency (S3).
 2. Rules for `src/**/*.ts` and `devTools/**/*.ts` (minus `generatedApp*`), as errors:
@@ -401,6 +401,48 @@ Documents only.
    misnamed `@param`s are renamed to the parameter (or the destructured path, `opts.id`).
 4. Verification: `yarn lint`, `yarn hub:build` (comments render the same; the API pages' warnings
    don't grow), `yarn verify:baselines` (`docs.json` only grows).
+
+**As built:**
+
+- The rules cover `src/` and `devTools/` (§2.2's dry run was `src/` only, without the hyphen rule),
+  so the counts were 105 hyphens (99 in `PhysicsAPITypes.ts`), 96 `check-param-names`, 89
+  `check-indentation`, 45 `tag-lines`, 35 `empty-tags`, 11 `informative-docs`, 6
+  `no-multi-asterisks`, 5 `escape-inline-tags`, 5 `no-types`, 2 `sort-tags`.
+- **`check-indentation` dropped:** all 89 hits were deliberate formatting (57 wrapped Markdown list
+  items, hanging `@param` continuations, indented usage lines in file headers), and the rule has no
+  option for descriptions (`excludeTags` only). Enforcing it meant unindenting all of them.
+- **`check-param-names` with `{ disableMissingParamChecks: true, checkDestructured: false }`:** by
+  default it fails a block that documents only some parameters (positions are compared) or one
+  property of a destructured parameter, which is the house style ("only where it adds"). With
+  these options 16 hits were left, all real: tags on getters naming the setter's argument (`dt`,
+  `niter`, `substeps`; now prose), `groups` for `filterGroups`, `EventQueue` for `eventQueue`, and
+  `SceneLoader`'s three callbacks sharing one copied `updateLoaderStatusFn` tag. Misnamed
+  destructured ones were renamed to their path (`input.files`, `params.jsonFile`, `opts.label`). A
+  typo in an `opts.x` path goes unchecked.
+- The plugin loses the name of a parameter whose default is an object literal (`c: T = { x: 0 }`):
+  `scene_thirdPersonGym.ts`'s `centerOffset`, the one case, is described in the summary instead.
+- **Type parameters are `@template`**, not `@typeParam`: in `typescript` mode `check-tag-names`
+  prefers it, `sort-tags` places it before `@param`, and TypeDoc reads it as a type parameter. The
+  code had no `@template` and no other `@typeParam`. `typeParam` isn't in `definedTags`.
+- **Two fixers delete text:** `empty-tags` drops an `@internal` tag's text, and `no-types` reads
+  `@returns {@link X}` as a type and leaves `@returns` empty. The 35 `@internal` blocks were
+  rewritten by a script first (the text moved verbatim into the summary, the tag alone on the
+  block's last tag line, before any other tag); the 5 emptied `@returns` were removed (the
+  signature has the type). The hooks run `--fix` on every edit, so CLAUDE.md's JSDoc line says to
+  write them that way.
+- The Hub page's own `@internal` example failed the lint: only the multi-line form passes (`…
+  @internal */` on the summary's line is an inline tag, and `* @internal */` is a multi-asterisk
+  end line). The page now has that form, a `@template` row, the `@returns {@link X}` trap and a
+  paragraph naming the lint.
+- `informative-docs`: the tags that only repeated a name were removed; the two summaries that did
+  (`buildResetListButton`, `SkyBoxMoonTextureDef`) were rewritten, since removing them would leave
+  the export undocumented. The two `@TODO`s were `friction` / `restitution`'s unknown defaults: now
+  Rapier 0.19.3's, 0.5 and 0. **Found for p614:** `EngineRapier.ts` sets friction and restitution
+  only when truthy (`if (params.friction)`), so `friction: 0` is ignored and keeps 0.5.
+- `hub:build`: 288 pages, the warnings 23 → 10 (TypeDoc's unused `@param`s are gone; the rest are
+  unresolved `{@link}`s, Phase 5's `invalidLink`). Search index 1,018 kB. `verify:baselines`: all
+  three unchanged (`docs.json` too: TypeDoc already counted the `@internal`-first blocks as
+  documented).
 
 ### Phase 5: the documentation ratchet and TypeDoc validation
 

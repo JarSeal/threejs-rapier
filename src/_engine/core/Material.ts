@@ -199,7 +199,7 @@ export const setMaterialPersistence = (id: string, state: boolean) => {
 
 /**
  * Creates a Three.js Material supporting both standard descriptions and modern dynamic TSL graphs.
- * @param props - Material configuration settings.
+ * @param props Material configuration settings.
  * @returns An instantiated, indexed Three.js material.
  */
 export const createMaterial = (props: MatProps) => {
@@ -521,7 +521,6 @@ const hashString = (str: string) => {
  * texture objects), since they form the variant's cache key.
  * @param baseId registered material id (created with createMaterial)
  * @param overrides params, staticDefines and TSL node inputs to override
- * @returns the variant material
  */
 export const getMaterialVariant = (baseId: string, overrides: MaterialVariantOverrides) => {
   const base = existsOrThrow(
@@ -569,7 +568,6 @@ export const getMaterialVariant = (baseId: string, overrides: MaterialVariantOve
 
 /**
  * Returns a material or undefined based on the id
- * @param id material id
  * @returns Three.js material | undefined
  */
 export const getMaterial = (id: string) => materials[id]?.resource;

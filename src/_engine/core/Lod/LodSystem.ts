@@ -941,9 +941,7 @@ export type LodMeasure = {
  * The sphere the selection measures a `LOD` entity by, in world space (level 0's bounds), without
  * the camera terms: for the debug overlay's per-entity loop. False when there is nothing to
  * measure.
- * @param entityId the entity
  * @param lod its `LOD` data
- * @param world the entity's world
  * @param out written in place
  */
 export const getLodWorldSphere = (
@@ -971,8 +969,6 @@ const _measureTerms: CameraTerms = { k: 0, isOrtho: false, position: new THREE.V
  * Measures a `LOD` entity the way the selection does, against {@link getLodSelectionCamera} now:
  * for the debug tools (the overlay and the LOD window). Writes into `out`; false when there is
  * nothing to measure (no `LOD`, no levels, no mesh or Transform, no usable camera).
- * @param entityId the entity
- * @param world the entity's world
  * @param out written in place
  */
 export const measureLodEntity = (entityId: number, world: ECSWorld, out: LodMeasure) => {
