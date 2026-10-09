@@ -1,6 +1,7 @@
 Status: stub — not-implemented
 Category: Characters, AI
-Related: p350_lod-system-research.md (§6 physics simulation tiers, §8 roadmap), \_DONE_p352_physics-simulation-tiers.md (generic rigid bodies; it refuses tier changes on characters and leaves them to this plan), p353_macro-streaming-grid.md (cells around the player), \_DONE_p351_impostor-billboard-lod.md (`CROWD` rendering), p102_physics-world-bounds.md
+Blocked by: p603_gameplay-architecture-contracts.md (soft: the actor, controller and brain contracts the tiers are written in)
+Related: p350_lod-system-research.md (§6 physics simulation tiers, §8 roadmap), \_DONE_p352_physics-simulation-tiers.md (generic rigid bodies; it refuses tier changes on characters and leaves them to this plan), p353_macro-streaming-grid.md (cells around the player), \_DONE_p351_impostor-billboard-lod.md (`CROWD` rendering), p102_physics-world-bounds.md, p604_multiplayer-viability-study.md (the determinism rules an `ABSTRACT` simulation would follow)
 
 # NPC Simulation Tiers — Stub
 

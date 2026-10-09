@@ -1,6 +1,7 @@
 Status: draft | not-implemented
 Category: Physics
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
+Related: p604_multiplayer-viability-study.md (this plan is the prerequisite for client prediction and rollback)
 
 # Restore Physics Snapshot — Plan
 

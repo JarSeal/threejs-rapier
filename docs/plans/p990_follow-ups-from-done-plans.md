@@ -18,7 +18,6 @@ Each item names the plan it came from; the full plan text is in git history (e.g
 
 - **A batched physics query message** (`WORLD_QUERY_BATCH`, p142/p143) if gameplay or a multi-ray tester needs many queries per frame in `WORKER_THREAD` mode.
 - **Ray tester extensions** (p143): multi-ray fire patterns (fan, grid, cone) on the existing `rays[]` state, a shape-cast tester (`castShape`) with a shape outline helper, and `countInStats` on `PickOpts` (`Input/InputPicking.ts`) so a tester's pick click isn't counted as a Three.js ray.
-- **Remove the deprecated `RayCastOpts` aliases** (p140, the `@deprecated` fields in `core/Raycast.ts`) in a later major release.
 
 ## Debugger undo/redo
 
@@ -38,10 +37,8 @@ Each item names the plan it came from; the full plan text is in git history (e.g
 - **Deferred epic ideas** (p110 non-goals): auto-exposure / eye adaptation for night scenes (a PostFX pass), a precomputed-LUT atmosphere layer (Hillaire 2020 multiple scattering), volumetric 3D clouds and weather (the surface side of weather, i.e. wetness, puddles, rain ripples and snow coverage as global state that materials read, is planned in `p307_wet-and-dry-surface-states.md`; precipitation, clouds and a weather driver remain open here), day-night events (`onSunrise` / `onSunset`; today games poll the getters), a JSON write-back endpoint (the Skybox tab's "Copy JSON" covers authoring), the sky in viewports other than the env ball, sky boxes in secondary ECS worlds.
 - **A lit material-preview env ball** (p115): a metal and dielectric pair next to the unlit ball. Overlaps with the material editor (p084).
 
-## Bundle size and rendering
+## Rendering
 
-- **The line core (~12 kB) ships in production** although the app draws lines only in debug tooling (p058). Registering the line time system on the first `createLines` and having `LineManager` hook into scene teardown itself (instead of `SceneLoader` importing `disposeNonPersistentLines`) would make it ~0 for apps that don't draw lines.
-- **Every SVG icon's raw string is in the main chunk** (p071, ~0.5 kB per icon), because `SvgIcon.ts` imports them all statically and is imported by always-bundled code. Fixing it means restructuring the icon registry for all icons.
 - **More PostFX passes** (p070/p071): bloom, DoF, FXAA/SMAA/TRAA, SSR, god rays, … each a small follow-up on the existing pass registry (`core/PostFX.ts`); an AA pass also fixes the MSAA + screen-space AO edge problem (`docs/analysis/ambient-occlusion-options.md`). A per-pass stats readout (`getPostFxPassStats()` is console-only today) fits the p220 profiler.
 - **Viewports** (p080): in the scene/asset JSON schema, and a debugger tab listing them.
 
