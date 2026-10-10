@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../ECS/SystemStages';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
 import { lwarn } from '../../../utils/Logger';
 import { getCharacterById } from '../../Character';

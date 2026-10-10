@@ -8,7 +8,7 @@
 
 import * as THREE from 'three/webgpu';
 
-import { ECSSystemStage } from '../../AppECSRegistry';
+import { ECSSystemStage } from './ECS/SystemStages';
 import { existsOrThrow } from '../utils/assert';
 import { lerror, lwarn } from '../utils/Logger';
 import { IS_DEBUG_ENV } from './Config';

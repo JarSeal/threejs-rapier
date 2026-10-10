@@ -43,9 +43,6 @@ import { registerLodDebugGUI } from './core/Lod/LodSystem';
 import { registerSpatialIndexDebugGUI } from './core/Spatial/SpatialIndexSystem';
 import './core/MeshManager';
 
-// App Plugins
-import '../AppECSPlugins';
-
 import { initECSWorld, registerECSModule } from './core/ECS';
 import { initDebugCamera, registerCameraManager } from './core/CameraManager';
 import { registerLightManager } from './core/LightManager';

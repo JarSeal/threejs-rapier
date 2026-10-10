@@ -1,7 +1,7 @@
 import { getECSWorld, type ECSWorld } from '../../../_engine/core/ECS';
 import { registerOnAllSceneExits } from '../../../_engine/core/Scene';
 import type { PhysVector, RigidBodyAPI } from '../../../_engine/core/Physics/PhysicsAPITypes';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../../../_engine/core/ECS/SystemStages';
 
 /**
  * Mutual (N-body) Newtonian gravity between registered dynamic bodies, for zero-g scenes: every

@@ -7,7 +7,7 @@ import {
   type IntervalCounterSnapshot,
 } from '../utils/stats/IntervalCounterStats';
 import { DEFAULT_ECS_WORLD_ID, ECSWorld } from './ECS';
-import { ECSSystemStage } from '../../AppECSRegistry';
+import { ECSSystemStage } from './ECS/SystemStages';
 import { RAY_STATS_WINDOWS, type RayDebugOpts } from './RayDebugTypes';
 
 export type { RayDebugOpts, RayHelperKind } from './RayDebugTypes';

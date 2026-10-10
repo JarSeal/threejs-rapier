@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { ECSWorld } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
-import { ECSSystemStage } from '../../../../AppECSRegistry';
+import { ECSSystemStage } from '../../ECS/SystemStages';
 import { markDebugHelper } from '../../../debug/Profiler';
 
 // Register hook to clean up the helper when the camera entity dies

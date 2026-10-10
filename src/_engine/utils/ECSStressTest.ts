@@ -8,7 +8,7 @@ import { getECSWorld } from '../core/ECS';
 import { ComponentType } from '../core/ECS/ECSCoreComponents';
 import { isDebugEnvironment } from '../core/Config';
 import { getRootScene } from '../core/Scene';
-import { ECSSystemStage } from '../../AppECSRegistry';
+import { ECSSystemStage } from '../core/ECS/SystemStages';
 
 let instancedMesh: THREE.InstancedMesh | null = null;
 const MAX_INSTANCES = 50000; // High ceiling for the stress test

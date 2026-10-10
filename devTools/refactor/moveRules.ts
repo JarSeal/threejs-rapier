@@ -68,6 +68,11 @@ const ENGINE_RULES: MoveRule[] = [
   { from: `${E}core/ECS.test.ts`, to: `${K}ecs/ECS.test.ts` },
   { from: `${E}core/ECS/`, to: `${K}ecs/` },
   {
+    from: `${E}core/ECS/SystemStages.ts`,
+    to: `${K}loop/SystemStages.ts`,
+    note: 'the loop owns the stages (p602 D2): every world runs them in this order',
+  },
+  {
     from: `${E}core/ECS/LightObjectCullingSystem.ts`,
     to: `${F}spatial/LightObjectCullingSystem.ts`,
     note: 'the spatial feature owns light culling (p602 D2)',

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../ECS/SystemStages';
 import { ECSWorld, getECSWorld } from '../ECS';
 import type { ComponentData } from '../ECS/ECSCoreComponents';
 import { ComponentType } from '../ECS/ECSCoreComponents';

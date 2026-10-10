@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { ECSSystemStage } from '../AppECSRegistry';
+import { ECSSystemStage } from '../_engine/core/ECS/SystemStages';
 import {
   createCameraEntity,
   getActiveCameraId,

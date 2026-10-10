@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 import { ECSWorld } from '../../ECS';
 import { getCanvasElem } from '../../Renderer';
-import { ECSSystemStage } from '../../../../AppECSRegistry';
+import { ECSSystemStage } from '../../ECS/SystemStages';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import type { DebugCamLSProps } from '../../CameraManager';
 import { getDebugCamProps, saveDebugCameraToLS, updateCamerasDebuggerGUI } from './_dbg__CameraGUI';

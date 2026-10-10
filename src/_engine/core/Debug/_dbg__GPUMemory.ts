@@ -5,7 +5,7 @@ import { createProfilerTab, updateProfilerTab } from '../../debug/Profiler';
 import { CMP } from '../../utils/CMP';
 import { IS_DEBUG_ENV } from '../Config';
 import { llog } from '../../utils/Logger';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../ECS/SystemStages';
 import { ECSWorld, getECSWorld } from '../ECS';
 import { getRenderer, onRendererCreated } from '../Renderer';
 import { getCurrentSceneId, registerOnAllSceneEnterings } from '../Scene';

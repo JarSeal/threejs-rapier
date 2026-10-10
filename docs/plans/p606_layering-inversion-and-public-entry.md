@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Architecture, Refactoring
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage B, engine major)
 Blocks: p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p510_headless-simulation-runtime.md
@@ -286,13 +286,36 @@ what it adds.
   `PhysicsAPI.ts`, `three/webgpu` and 18 more packages.
 - `esbuild` 0.25.12 is a direct devDependency; `moveRules.ts` maps the test next to the worker.
 
-### Phase 2: the engine owns its stages; the app registers its own plugins
+### Phase 2: the engine owns its stages; the app registers its own plugins — done
 
 1. `core/ECS/SystemStages.ts` (§4.1); the 31 engine files, the 4 toolkit effects, the app and
    `ECS.test.ts` import it.
 2. `InitApp.ts`'s `import '../AppECSPlugins'` moves to `src/index.ts`. The scene runner confirms the
    system order (registration order breaks ties within a stage and order) didn't change.
 3. Engine → app root left: `Config.ts`'s `CONFIG` and `ECSCoreComponents.ts`'s component types.
+
+**As built:**
+
+- `core/ECS/SystemStages.ts` holds the enum and the constant verbatim; 30 engine files,
+  `ECS.test.ts`, the 4 toolkit effects and 3 app files (`SpinSystem.ts`, `physicsTiers.ts`,
+  `scene_thirdPersonGym.ts`) import it. `readme.md`'s ECS example imports it too (Phase 7 turns it
+  into an entry import). `moveRules.ts` maps it to `kernel/loop/SystemStages.ts` (a file rule
+  beating the `core/ECS/` folder rule).
+- `src/index.ts` imports `./AppECSPlugins` right after `InitApp`, so the app's plugin now
+  registers after every engine module `InitApp.ts` imports (it used to sit between them). Checked
+  with every stage's `getSystemOrder` dumped in 5 runs (prodTest: `sceneTestECS`,
+  `thirdPersonGymScene`, `physicsTiers`; debug: `sceneTestECS`, `thirdPersonGymScene`) before and
+  after: identical except, in debug on the gym, `lightHelperSyncSystem` and
+  `cameraHelperSyncSystem` (`LATE_MAIN`, order 0) swapped. Those two register from `_dbg__`
+  modules that `registerLightManager` and `initDebugCamera` load with `import()` at init, so their
+  order was already a race between two loads; they sync independent debug helpers. Left as is.
+- The layout report's engine → app is down to `CONFIG.ts` and `AppECSRegistry.ts` (one importer
+  each), and toolkit → app is gone. `api.json` gains the two exports at their new home, which
+  `entryExports.json` lists as `public` in `aekasha`. The bundle moves about 0.2 kB gzip from the
+  app group to `_engine/core/ECS`.
+- Root `CLAUDE.md`'s ECS core line names the stages' new file (the rest of its update stays in
+  Phase 9).
+- `yarn verify:scenes`: 96 passed against the Phase 1 baselines.
 
 ### Phase 3: the entries and the aliases
 

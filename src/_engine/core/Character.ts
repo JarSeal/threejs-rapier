@@ -14,7 +14,7 @@ import type {
   LocomotionStateListener,
 } from './Character/CharacterTypes';
 import { createIntent } from './Character/CharacterIntent';
-import { ECSSystemStage } from '../../AppECSRegistry';
+import { ECSSystemStage } from './ECS/SystemStages';
 import { existsOrThrow } from '../utils/assert';
 import { lerror, lwarn } from '../utils/Logger';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';

@@ -1,6 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { createRenderer } from './_engine/core/Renderer';
 import { InitEngine } from './_engine/InitApp';
+// The app's and the toolkit's ECS plugins, registered after the engine's own
+import './AppECSPlugins';
 import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 import { CMP } from './_engine/utils/CMP';
 import { IS_DEBUG_ENV } from './_engine/core/Config';

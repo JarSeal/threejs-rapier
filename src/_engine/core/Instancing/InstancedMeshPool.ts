@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../ECS/SystemStages';
 import { ECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { incGeometryRef } from '../Geometry';

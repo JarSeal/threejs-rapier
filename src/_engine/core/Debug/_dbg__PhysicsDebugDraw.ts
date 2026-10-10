@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../ECS/SystemStages';
 import { existsOrThrow } from '../../utils/assert';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lwarn } from '../../utils/Logger';

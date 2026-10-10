@@ -1,4 +1,4 @@
-import { ECSSystemStage } from '../../../../AppECSRegistry';
+import { ECSSystemStage } from '../../ECS/SystemStages';
 import { IS_DEBUG_ENV } from '../../Config';
 import { getECSWorld } from '../../ECS';
 import {

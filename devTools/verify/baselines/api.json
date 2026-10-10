@@ -252,6 +252,10 @@
       "objectFrustumCullingSystem": "Function",
       "setFrustumCullingEnabled": "Function"
     },
+    "src/_engine/core/ECS/SystemStages.ts": {
+      "APP_RENDER_SYNC_ORDER": "Variable",
+      "ECSSystemStage": "Enum"
+    },
     "src/_engine/core/ECS/TypedArrayTransformStore.ts": {
       "createTransformBuffer": "Function",
       "TRANSFORM_FIELD_COUNT": "Variable",

@@ -22,7 +22,7 @@
 import * as THREE from 'three/webgpu';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { ECSWorld, getECSWorld } from '../ECS';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../ECS/SystemStages';
 import { getCanvasElem } from '../Renderer';
 import { CLICK_MAX_MOVE_PX } from '../Input/MouseInput';
 import {

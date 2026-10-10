@@ -25,7 +25,7 @@ import {
   createFollowObjectCameraRig,
   deleteFollowObjectCameraRig,
 } from '../_engine/utils/cameras/followObjectCameraRig';
-import { ECSSystemStage } from '../AppECSRegistry';
+import { ECSSystemStage } from '../_engine/core/ECS/SystemStages';
 import { createCharacterVisual } from './characterVisual';
 
 export const SCENE_THIRD_PERSON_GYM_META = {

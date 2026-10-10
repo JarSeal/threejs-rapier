@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../core/ECS';
-import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../core/ECS/SystemStages';
 import type { XYZObject } from '../commontTypes';
 import { smoothDampVec3 } from '../helpers';
 

@@ -8,7 +8,7 @@ import { createMeshEntity, getMeshByAppId } from '../../core/MeshManager';
 import { getECSWorld, type ECSWorld } from '../../core/ECS';
 import { createPhysicsEntity } from '../../core/PhysicsManager';
 import type { ColliderParams, RigidBodyParams } from '../../core/Physics/PhysicsAPITypes';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../../core/ECS/SystemStages';
 import { existsOrThrow } from '../assert';
 import { getLogger } from '../Logger';
 

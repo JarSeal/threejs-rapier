@@ -10,6 +10,7 @@ Fix or tweak these list items:
 - Make the Top-down test scene's and the GYM (3rd person) scene's key input's be in the scene scope. Now when I open the App key shortcuts dialog, it lists them under the All scenes list. In the Gym scene there is also the phyisc stress test. That should be scene scoped as well. Then in the ECS test scene there are the ECS stress test keys (two keys) and those should be scoped to the scene as well.
 - The on-screen tools' left top corner groups should have equal spacing. Now the AE symbol (about button) and the undo/redo buttons are in the same group but the view switchers are in a separate group. They should be in the same group.
 - Try to avoid plan document references in the actual jsDoc description. They will end up on the documentation page and I don't want that. I want to publish the Hub at one point and I want it to be clean.
+- In the Hub, make the A-Z index its own sub page in the Documentation. Also in there make Issues and Versions be one main menu element ("Versions & Issues") to save space on the main menu and be more clear. Use the Versions icon for it. Leave the Issues quick link on the Hub's home page.
 
 If any of these fixes/tweaks are large refactorings/fixes then produce a separate plan for each large one.
 

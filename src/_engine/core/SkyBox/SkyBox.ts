@@ -10,7 +10,7 @@ import { loadDebugModuleAsync, useDebug } from '../../utils/helpers';
 import { deepMerge, isIndexObject } from '../../utils/deepMerge';
 import { ECSWorld, getECSWorld } from '../ECS';
 import { getRenderer } from '../Renderer';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../ECS/SystemStages';
 import { getElapsedTime, isAppPlaying } from '../MainLoop';
 import type { SkyBoxBaseDef, SkyBoxDef, SkyBoxEnvDef, SkyBoxOverrides } from './SkyBoxTypes';
 import { fromLegacySkyBoxProps, isLegacySkyBoxProps, type LegacySkyBoxProps } from './legacySkyBox';

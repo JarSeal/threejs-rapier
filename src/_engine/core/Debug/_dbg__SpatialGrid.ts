@@ -6,7 +6,7 @@ import {
 } from '../../debug/DebuggerGUI';
 import { markDebugHelper } from '../../debug/Profiler';
 import { ECSWorld, getECSWorld } from '../ECS';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../ECS/SystemStages';
 import type { SpatialGrid } from '../Spatial/SpatialGrid';
 import type { LineObject } from '../LineManager';
 import { BOX_EDGE_SEGMENT_COUNT, createLines, writeBox3Edges } from '../LineManager';

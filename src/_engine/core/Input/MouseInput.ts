@@ -5,7 +5,7 @@ import { getECSWorld } from '../ECS';
 import { addOnWindowBlurFn } from '../MainLoop';
 import { getCanvasElem } from '../Renderer';
 import { getCurrentSceneId } from '../Scene';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../ECS/SystemStages';
 import { lwarn } from '../../utils/Logger';
 import { pickTargetsAt, type PickOpts } from './InputPicking';
 import { areAppInputsEnabled } from './InputState';

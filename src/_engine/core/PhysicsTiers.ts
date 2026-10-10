@@ -3,7 +3,7 @@
 // physics world (REMOVED), and put back (FULL). Self-registers on import, so an app that never
 // requests a tier pays nothing.
 
-import { ECSSystemStage } from '../../AppECSRegistry';
+import { ECSSystemStage } from './ECS/SystemStages';
 import { existsOrThrow } from '../utils/assert';
 import { lerror, lwarn } from '../utils/Logger';
 import { IS_DEBUG_ENV } from './Config';

@@ -13,7 +13,7 @@ import { CoreComponentType } from './ECS/ECSRegistry';
 import type { ECSStorageMode, IComponentStorage } from './ECS/ECSComponentStorage';
 import { getECSStorageLSOverride } from './ECS/ECSComponentStorage';
 import { TypedArrayTransformStore } from './ECS/TypedArrayTransformStore';
-import { ECSSystemStage } from '../../AppECSRegistry';
+import { ECSSystemStage } from './ECS/SystemStages';
 import type { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
 import { lerror } from '../utils/Logger';

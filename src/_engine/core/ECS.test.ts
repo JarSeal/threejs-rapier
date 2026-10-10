@@ -6,7 +6,7 @@ vi.hoisted(() => vi.stubGlobal('window', { location: { search: '' } }));
 
 import { ECSWorld, type ECSWorldOptions } from './ECS';
 import { ComponentType, Transform } from './ECS/ECSCoreComponents';
-import { ECSSystemStage } from '../../AppECSRegistry';
+import { ECSSystemStage } from './ECS/SystemStages';
 
 const INDEX_BITS = 20;
 

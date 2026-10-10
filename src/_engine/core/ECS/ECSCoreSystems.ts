@@ -1,4 +1,4 @@
-import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from './SystemStages';
 import { isAnyLightHelperVisible } from '../LightManager';
 import { IS_DEBUG_ENV } from '../Config';
 import { ECSWorld } from '../ECS';

@@ -318,7 +318,7 @@ export interface AppComponentData extends ExtraComponentData {
 import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../_engine/core/ECS';
 import { ComponentType } from '../../_engine/core/ECS/ECSCoreComponents';
-import { ECSSystemStage } from '../../AppECSRegistry';
+import { ECSSystemStage } from '../../_engine/core/ECS/SystemStages';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const step = new THREE.Quaternion(); // reused scratch, no per-frame allocation

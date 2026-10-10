@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../../_engine/core/ECS';
 import { CoreComponentType } from '../../../_engine/core/ECS/ECSRegistry';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../../../_engine/core/ECS/SystemStages';
 import { ComponentType } from '../../../_engine/core/ECS/ECSCoreComponents';
 
 /** Internal Key (Values) */

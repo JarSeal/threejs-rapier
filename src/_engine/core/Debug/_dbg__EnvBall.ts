@@ -19,7 +19,7 @@
 import * as THREE from 'three/webgpu';
 import { pmremTexture, reflectVector, uniform } from 'three/tsl';
 import { ECSWorld, getECSWorld } from '../ECS';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../ECS/SystemStages';
 import { getRootScene } from '../Scene';
 import { getActiveEnvironmentTexture, getActiveSkyBox, onSkyBoxChange } from '../SkyBox/SkyBox';
 import { isBaseFlipY, turnUpsideDown } from '../SkyBox/layers/base';

@@ -3,10 +3,10 @@ import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../../_engine/core/ECS';
 import { CoreComponentType } from '../../../_engine/core/ECS/ECSRegistry';
 import { lwarn } from '../../../_engine/utils/Logger';
-import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../_engine/core/ECS/SystemStages';
 
-// Only type-only imports from `_engine/core` here, besides ECSRegistry and Logger (no local
-// imports): AppECSRegistry.ts imports this file for SunShadowFitComponentType, inside the
+// Only type-only imports from `_engine/core` here, besides ECSRegistry, SystemStages and Logger (no
+// local imports): AppECSRegistry.ts imports this file for SunShadowFitComponentType, inside the
 // ECSCoreComponents ↔ AppECSRegistry import cycle (see InstancedMeshPoolTypes.ts). So the main camera
 // is looked up through the world, not with CameraManager's getMainCamera.
 

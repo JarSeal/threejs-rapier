@@ -1,4 +1,4 @@
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../ECS/SystemStages';
 import { ECSWorld } from '../ECS';
 import { getElapsedTime } from '../MainLoop';
 import { lineTimeUniform } from './LinePulse';

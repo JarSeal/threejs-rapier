@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { ECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../ECS/SystemStages';
 import { getRootScene } from '../Scene';
 import { existsOrThrow } from '../../utils/assert';
 import { getActiveCameraId } from '../CameraManager'; // ADD THIS IMPORT

@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { ECSWorld, getECSWorld } from '../ECS';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../ECS/SystemStages';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { IS_DEBUG_ENV } from '../Config';
 import { lwarn } from '../../utils/Logger';

@@ -668,6 +668,12 @@
       "action": "move",
       "plan": "p608"
     },
+    "src/_engine/core/ECS/SystemStages.ts": {
+      "to": "src/_engine/kernel/loop/SystemStages.ts",
+      "action": "move",
+      "plan": "p608",
+      "note": "the loop owns the stages (p602 D2): every world runs them in this order"
+    },
     "src/_engine/core/ECS/TypedArrayTransformStore.ts": {
       "to": "src/_engine/kernel/ecs/TypedArrayTransformStore.ts",
       "action": "move",

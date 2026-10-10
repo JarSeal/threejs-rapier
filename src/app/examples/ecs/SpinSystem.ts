@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../../_engine/core/ECS';
 import { ComponentType } from '../../../_engine/core/ECS/ECSCoreComponents';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSSystemStage } from '../../../_engine/core/ECS/SystemStages';
 
 // #region spin-system (shown in the Hub: hub/pages/examples/ecs/)
 // Scratch objects, reused every frame: a system that runs for every entity shouldn't allocate
