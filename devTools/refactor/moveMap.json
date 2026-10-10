@@ -377,6 +377,11 @@
       "action": "move",
       "plan": "p608"
     },
+    "src/_engine/core/Debug/CLAUDE.md": {
+      "to": "src/_engine/debug/CLAUDE.md",
+      "action": "move",
+      "plan": "p608"
+    },
     "src/_engine/core/Debug/DebuggerGUI.module.scss": {
       "to": "src/_engine/debug/DebuggerGUI.module.scss",
       "action": "move",
@@ -399,6 +404,11 @@
     },
     "src/_engine/core/Debug/Editors/_dbg__ViewCamera.ts": {
       "to": "src/_engine/debug/editors/_dbg__ViewCamera.ts",
+      "action": "move",
+      "plan": "p608"
+    },
+    "src/_engine/core/Debug/Editors/CLAUDE.md": {
+      "to": "src/_engine/debug/editors/CLAUDE.md",
       "action": "move",
       "plan": "p608"
     },
@@ -800,6 +810,11 @@
       "action": "move",
       "plan": "p608"
     },
+    "src/_engine/core/Instancing/CLAUDE.md": {
+      "to": "src/_engine/features/instancing/CLAUDE.md",
+      "action": "move",
+      "plan": "p608"
+    },
     "src/_engine/core/Instancing/InstancedMeshPool.ts": {
       "to": "src/_engine/features/instancing/InstancedMeshPool.ts",
       "action": "move",
@@ -872,6 +887,16 @@
     },
     "src/_engine/core/Lines/LineWriter.ts": {
       "to": "src/_engine/features/lines/LineWriter.ts",
+      "action": "move",
+      "plan": "p608"
+    },
+    "src/_engine/core/Lod/CLAUDE.md": {
+      "to": "src/_engine/features/lod/CLAUDE.md",
+      "action": "move",
+      "plan": "p608"
+    },
+    "src/_engine/core/Lod/Impostors/CLAUDE.md": {
+      "to": "src/_engine/features/lod/impostors/CLAUDE.md",
       "action": "move",
       "plan": "p608"
     },
@@ -1035,6 +1060,11 @@
       "action": "move",
       "plan": "p608"
     },
+    "src/_engine/core/Physics/PhysicsWallClock.ts": {
+      "to": "src/_engine/features/physics/PhysicsWallClock.ts",
+      "action": "move",
+      "plan": "p608"
+    },
     "src/_engine/core/PhysicsAPI.ts": {
       "to": "src/_engine/features/physics/PhysicsAPI.ts",
       "action": "move",
@@ -1094,6 +1124,11 @@
     },
     "src/_engine/core/SceneLoader.ts": {
       "to": "src/_engine/kernel/scene/SceneLoader.ts",
+      "action": "move",
+      "plan": "p608"
+    },
+    "src/_engine/core/SkyBox/CLAUDE.md": {
+      "to": "src/_engine/features/skybox/CLAUDE.md",
       "action": "move",
       "plan": "p608"
     },
@@ -1204,6 +1239,11 @@
     },
     "src/_engine/core/Spatial/CellKey.ts": {
       "to": "src/_engine/features/spatial/CellKey.ts",
+      "action": "move",
+      "plan": "p608"
+    },
+    "src/_engine/core/Spatial/CLAUDE.md": {
+      "to": "src/_engine/features/spatial/CLAUDE.md",
       "action": "move",
       "plan": "p608"
     },
@@ -1872,6 +1912,7 @@
         "removeObjectFromMemory": "src/_engine/kernel/assets/Disposal.ts",
         "removeObjectChildrenFromMemory": "src/_engine/kernel/assets/Disposal.ts",
         "removeObjectAndChildrenFromMemory": "src/_engine/kernel/assets/Disposal.ts",
+        "RemovalTypes": "src/_engine/kernel/assets/Disposal.ts",
         "ThreeVector3": "src/_engine/kernel/render/ThreeMath.ts",
         "ThreeQuoternion": "src/_engine/kernel/render/ThreeMath.ts",
         "ThreeEuler": "src/_engine/kernel/render/ThreeMath.ts",
@@ -1940,6 +1981,11 @@
       "action": "move",
       "plan": "p608",
       "note": "not debug/ (p602 D6): pure, and the ray and physics stats count with it at runtime"
+    },
+    "src/_engine/utils/StatsClock.ts": {
+      "to": "src/_engine/utils/StatsClock.ts",
+      "action": "keep",
+      "plan": "p608"
     },
     "src/_engine/utils/UI/PercentagePieHtml.ts": {
       "to": "src/_engine/debug/PercentagePieHtml.ts",

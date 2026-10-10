@@ -298,6 +298,7 @@ const ENGINE_RULES: MoveRule[] = [
       removeObjectFromMemory: `${K}assets/Disposal.ts`,
       removeObjectChildrenFromMemory: `${K}assets/Disposal.ts`,
       removeObjectAndChildrenFromMemory: `${K}assets/Disposal.ts`,
+      RemovalTypes: `${K}assets/Disposal.ts`,
       ThreeVector3: `${K}render/ThreeMath.ts`,
       ThreeQuoternion: `${K}render/ThreeMath.ts`,
       ThreeEuler: `${K}render/ThreeMath.ts`,
