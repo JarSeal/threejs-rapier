@@ -5,7 +5,7 @@
  * probe hash that differs from the baseline, or a snapshot that differs beyond the tolerance.
  *
  *   yarn verify:scenes [--only <sceneId|glob>[,…]] [--config <name|set>[,…]] [--update]
- *                      [--url <url>] [--webgl] [--headed]
+ *                      [--url <url>] [--webgl] [--headed] [--browser chromium|firefox]
  *
  * Baselines are local (`.cache/verify/scenes/<backend>/`): snapshots depend on the GPU, the driver
  * and the backend. `--update` compares nothing with the baseline and records every run without
@@ -16,13 +16,19 @@
  * Headless WebGPU can't render on WSL2, so there (and with `--webgl`) the page gets no
  * `navigator.gpu` and the engine renders on WebGL2 (SwiftShader): WebGPU-only regressions need a
  * `--headed` run on a real GPU.
+ *
+ * `--browser firefox` (Playwright's Firefox, `npx playwright-core install firefox`) is the
+ * cross-browser determinism run: the debug configurations only, always on WebGL2, and only their
+ * probe hashes, compared with Chromium's baseline for the same scene, configuration and steps
+ * (the `webgl` file's entry, else the `webgpu` one's: the hash doesn't depend on the backend). No
+ * snapshots (another rasterizer), no baseline of its own, so no `--update`. Its last run is in
+ * `.cache/verify/scenes/firefox/`.
  */
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
-import sharp from 'sharp';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
+import { chromium, firefox, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { ROOT } from '../assetPipeline/sources';
 import type {
   TestBridgeProbeResult,
@@ -39,13 +45,15 @@ import {
   READY_TIMEOUT_MS,
   SCENE_VERIFY_CONFIG,
   SNAPSHOT_SIZE,
+  VERIFY_BROWSERS,
   VERIFY_CONFIG_SETS,
   VERIFY_CONFIGS,
-  type SnapshotTolerance,
+  type VerifyBrowser,
   type VerifyConfigDef,
   type VerifyConfigName,
 } from './scenes.config';
 import { out, PROGRESS_LOG_WATCH } from './progressLog';
+import { compareSnapshots } from './snapshotDiff';
 
 /** Bump when the baseline file's shape changes: an old one is then ignored */
 const BASELINE_FORMAT_VERSION = 1;
@@ -63,6 +71,8 @@ const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
 
 type Backend = 'webgpu' | 'webgl';
+/** A folder under `.cache/verify/scenes/`: Chromium's per backend, Firefox's for its last run */
+type ResultDir = Backend | 'firefox';
 
 type Args = {
   only: string[];
@@ -71,6 +81,7 @@ type Args = {
   url: string | null;
   webgl: boolean;
   headed: boolean;
+  browser: VerifyBrowser;
 };
 
 type BaselineEntry = {
@@ -120,6 +131,7 @@ const parseArgs = (argv: string[]): Args => {
     url: null,
     webgl: false,
     headed: false,
+    browser: 'chromium',
   };
   let configArg = DEFAULT_CONFIG_SET;
   for (let i = 0; i < argv.length; i++) {
@@ -131,7 +143,13 @@ const parseArgs = (argv: string[]): Args => {
     else if (arg === '--update') args.update = true;
     else if (arg === '--webgl') args.webgl = true;
     else if (arg === '--headed') args.headed = true;
-    else fail(`Unknown argument: ${arg}`);
+    else if (arg === '--browser') {
+      const browser = value();
+      if (!VERIFY_BROWSERS.includes(browser as VerifyBrowser)) {
+        fail(`Unknown browser "${browser}" (${VERIFY_BROWSERS.join(', ')})`);
+      }
+      args.browser = browser as VerifyBrowser;
+    } else fail(`Unknown argument: ${arg}`);
   }
   const names = new Set<VerifyConfigName>();
   for (const name of configArg.split(',')) {
@@ -143,8 +161,29 @@ const parseArgs = (argv: string[]): Args => {
     }
   }
   args.configs = [...names];
+  if (args.browser === 'firefox') {
+    if (args.update) {
+      fail(
+        "--browser firefox has no baseline of its own: it compares with Chromium's (no --update)"
+      );
+    }
+    const skipped = args.configs.filter((name) => VERIFY_CONFIGS[name].mode !== 'DEBUG');
+    args.configs = args.configs.filter((name) => VERIFY_CONFIGS[name].mode === 'DEBUG');
+    if (!args.configs.length) {
+      fail(`--browser firefox runs the debug configurations only (not ${skipped.join(', ')})`);
+    }
+  }
   return args;
 };
+
+/** Whether a config entry (`skip`, `unstableHash`, an allowed error) applies to this run */
+const appliesTo = (
+  filter: { configs?: VerifyConfigName[]; browsers?: VerifyBrowser[] },
+  config: VerifyConfigName | null,
+  browser: VerifyBrowser
+) =>
+  (!filter.configs || (config !== null && filter.configs.includes(config))) &&
+  (!filter.browsers || filter.browsers.includes(browser));
 
 const globToRegExp = (glob: string) =>
   new RegExp(`^${glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
@@ -204,7 +243,18 @@ const findBrowserExecutable = () => {
   return candidates.find((p) => fs.existsSync(p));
 };
 
-const launchBrowser = async (useWebGL: boolean, headed: boolean) => {
+const launchBrowser = async (browser: VerifyBrowser, useWebGL: boolean, headed: boolean) => {
+  if (browser === 'firefox') {
+    try {
+      // Playwright's own build: a system Firefox has no remote protocol Playwright can drive
+      return await firefox.launch({ headless: !headed });
+    } catch (err) {
+      return fail(
+        `Firefox didn't launch: ${(err as Error).message}\n` +
+          "Install Playwright's Firefox once: npx playwright-core install firefox"
+      );
+    }
+  }
   const executablePath = findBrowserExecutable();
   const launchArgs = useWebGL
     ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
@@ -248,8 +298,8 @@ const readJSON = <T>(file: string): T | null => {
   }
 };
 
-const getPaths = (backend: Backend) => {
-  const dir = path.join(CACHE_DIR, backend);
+const getPaths = (resultDir: ResultDir) => {
+  const dir = path.join(CACHE_DIR, resultDir);
   return {
     baselineFile: path.join(dir, 'baseline.json'),
     baselineDir: path.join(dir, 'baseline'),
@@ -269,69 +319,11 @@ const readBaseline = (backend: Backend): BaselineFile => {
 const runKey = (sceneId: string, config: VerifyConfigName) => `${sceneId}|${config}`;
 const snapshotFileName = (sceneId: string, config: VerifyConfigName) => `${sceneId}.${config}.png`;
 
-// --- Snapshot comparison ---
-
-const readRGBA = async (png: Buffer | string) => {
-  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  return { data, width: info.width, height: info.height };
-};
-
-type SnapshotDiff = { meanDelta: number; changedRatio: number; maxDelta: number };
-
-/** Compares two RGBA8 images over RGB; when they differ beyond the tolerance, writes `diffFile`
- * (the current image dimmed, the changed pixels red) */
-const compareSnapshots = async (
-  currentPng: Buffer,
-  baselineFile: string,
-  tolerance: SnapshotTolerance,
-  diffFile: string
-): Promise<SnapshotDiff | { sizeMismatch: string }> => {
-  const current = await readRGBA(currentPng);
-  const baseline = await readRGBA(baselineFile);
-  if (current.width !== baseline.width || current.height !== baseline.height) {
-    return {
-      sizeMismatch: `${current.width} × ${current.height}, baseline ${baseline.width} × ${baseline.height}`,
-    };
-  }
-  const pixels = current.width * current.height;
-  const diff = Buffer.alloc(pixels * 4);
-  let sum = 0;
-  let changed = 0;
-  let maxDelta = 0;
-  for (let p = 0; p < pixels; p++) {
-    const i = p * 4;
-    let pixelMax = 0;
-    for (let c = 0; c < 3; c++) {
-      const d = Math.abs(current.data[i + c] - baseline.data[i + c]);
-      sum += d;
-      if (d > pixelMax) pixelMax = d;
-    }
-    if (pixelMax > maxDelta) maxDelta = pixelMax;
-    const isChanged = pixelMax > tolerance.pixelThreshold;
-    if (isChanged) changed++;
-    const grey = (current.data[i] + current.data[i + 1] + current.data[i + 2]) / 12;
-    diff[i] = isChanged ? 255 : grey;
-    diff[i + 1] = isChanged ? 0 : grey;
-    diff[i + 2] = isChanged ? 0 : grey;
-    diff[i + 3] = 255;
-  }
-  const result = { meanDelta: sum / (pixels * 3), changedRatio: changed / pixels, maxDelta };
-  if (
-    result.meanDelta > tolerance.maxMeanDelta ||
-    result.changedRatio > tolerance.maxChangedRatio
-  ) {
-    await sharp(diff, { raw: { width: current.width, height: current.height, channels: 4 } })
-      .png()
-      .toFile(diffFile);
-  }
-  return result;
-};
-
 // --- One page load ---
 
-const isAllowed = (sceneId: string, message: string) =>
-  [...GLOBAL_ALLOWED_ERRORS, ...(SCENE_VERIFY_CONFIG[sceneId]?.allowedErrors ?? [])].some((a) =>
-    a.pattern.test(message)
+const isAllowed = (sceneId: string, message: string, browser: VerifyBrowser) =>
+  [...GLOBAL_ALLOWED_ERRORS, ...(SCENE_VERIFY_CONFIG[sceneId]?.allowedErrors ?? [])].some(
+    (a) => appliesTo(a, null, browser) && a.pattern.test(message)
   );
 
 const buildUrl = (baseUrl: string, sceneId: string, def: VerifyConfigDef, steps: number) => {
@@ -345,6 +337,7 @@ const buildUrl = (baseUrl: string, sceneId: string, def: VerifyConfigDef, steps:
 
 type LoadContext = {
   browser: Browser;
+  browserName: VerifyBrowser;
   baseUrl: string;
   useWebGL: boolean;
   /** `--update`: nothing is compared with the baseline, so a run that passes the other checks
@@ -356,13 +349,39 @@ type LoadContext = {
   backend: Backend | null;
 };
 
-const getBaseline = (ctx: LoadContext, backend: Backend) => {
+type BaselineContext = Pick<LoadContext, 'baselines'>;
+
+const getBaseline = (ctx: BaselineContext, backend: Backend) => {
   let baseline = ctx.baselines.get(backend);
   if (!baseline) {
     baseline = readBaseline(backend);
     ctx.baselines.set(backend, baseline);
   }
   return baseline;
+};
+
+/** What Firefox compares with: Chromium's entry with a hash, the `webgl` file's first */
+const getChromiumEntry = (ctx: BaselineContext, key: string) => {
+  for (const backend of ['webgl', 'webgpu'] as const) {
+    const entry = getBaseline(ctx, backend).entries[key];
+    if (entry?.hash) return { entry, backend };
+  }
+  return null;
+};
+
+/** The runs both Chromium baselines hashed, at the same steps, with different hashes. Any means
+ * the hash depends on the render backend, and Firefox (WebGL2) should compare with `webgl` only */
+const findBackendHashMismatches = (ctx: BaselineContext) => {
+  const webgpu = getBaseline(ctx, 'webgpu').entries;
+  const mismatches: string[] = [];
+  let shared = 0;
+  for (const [key, gl] of Object.entries(getBaseline(ctx, 'webgl').entries)) {
+    const gpu = webgpu[key];
+    if (!gl.hash || !gpu?.hash || gl.steps !== gpu.steps) continue;
+    shared++;
+    if (gl.hash !== gpu.hash) mismatches.push(`${key} webgl ${gl.hash}, webgpu ${gpu.hash}`);
+  }
+  return { shared, mismatches };
 };
 
 const runOne = async (
@@ -391,10 +410,7 @@ const runOne = async (
     return result;
   };
 
-  if (
-    sceneConfig.skip &&
-    (!sceneConfig.skip.configs || sceneConfig.skip.configs.includes(config))
-  ) {
+  if (sceneConfig.skip && appliesTo(sceneConfig.skip, config, ctx.browserName)) {
     result.status = 'SKIPPED';
     result.notes.push(sceneConfig.skip.reason);
     return finish();
@@ -473,12 +489,24 @@ const runOne = async (
             `ran as "${probe.config}", expected "${def.expectProbeConfig}…" (the configuration didn't apply)`
           );
         }
-        if (!ctx.isRecording) compareHash(baseline.entries[runKey(sceneId, config)], result);
+        if (ctx.browserName === 'firefox') {
+          const chromium = getChromiumEntry(ctx, runKey(sceneId, config));
+          compareHash(
+            chromium?.entry,
+            result,
+            ctx.browserName,
+            `Chromium ${chromium?.backend ?? ''}`
+          );
+        } else if (!ctx.isRecording) {
+          compareHash(baseline.entries[runKey(sceneId, config)], result, ctx.browserName);
+        }
         if (probe.characterCount && !sceneConfig.unstableHash) {
           result.notes.push(`${probe.characterCount} character(s), not hashed`);
         }
 
-        if (sceneConfig.snapshot && 'skip' in sceneConfig.snapshot) {
+        if (ctx.browserName === 'firefox') {
+          // Hashes only: Firefox rasterizes differently, and has no baseline of its own
+        } else if (sceneConfig.snapshot && 'skip' in sceneConfig.snapshot) {
           result.notes.push(`snapshot skipped: ${sceneConfig.snapshot.reason}`);
         } else {
           const shot: TestBridgeSnapshot = await page.evaluate(
@@ -496,7 +524,7 @@ const runOne = async (
     }
 
     result.warnings.push(...[...warnings].map((w) => `[console.warn] ${w}`));
-    const unallowed = result.errors.filter((e) => !isAllowed(sceneId, e));
+    const unallowed = result.errors.filter((e) => !isAllowed(sceneId, e, ctx.browserName));
     if (unallowed.length) {
       result.failures.push(`${unallowed.length} error(s) not allowed in scenes.config.ts`);
     }
@@ -508,20 +536,27 @@ const runOne = async (
   return finish();
 };
 
-const compareHash = (entry: BaselineEntry | undefined, result: RunResult) => {
+/** `source` names whose baseline it is in the messages (Firefox compares with Chromium's) */
+const compareHash = (
+  entry: BaselineEntry | undefined,
+  result: RunResult,
+  browser: VerifyBrowser,
+  source?: string
+) => {
   const sceneConfig = SCENE_VERIFY_CONFIG[result.sceneId] ?? {};
+  const of = source ? ` (${source.trim()})` : '';
   if (!entry?.hash) {
-    result.notes.push('no baseline hash');
+    result.notes.push(`no baseline hash${of}`);
     return;
   }
   if (entry.steps !== result.steps) {
-    result.notes.push(`no baseline hash at ${result.steps} steps (baseline: ${entry.steps})`);
+    result.notes.push(`no baseline hash at ${result.steps} steps${of} (baseline: ${entry.steps})`);
     return;
   }
   if (entry.hash === result.hash) return;
-  const msg = `probe hash ${result.hash}, baseline ${entry.hash} (${entry.commit})`;
+  const msg = `probe hash ${result.hash}, baseline ${entry.hash} (${source ? `${source}, ` : ''}${entry.commit})`;
   const unstable = sceneConfig.unstableHash;
-  if (unstable && (!unstable.configs || unstable.configs.includes(result.config))) {
+  if (unstable && appliesTo(unstable, result.config, browser)) {
     result.warnings.push(`${msg}: ${unstable.reason}`);
   } else {
     result.failures.push(msg);
@@ -572,7 +607,7 @@ const handleSnapshot = async (
 
 const formatDuration = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
-const printResult = (r: RunResult) => {
+const printResult = (r: RunResult, browser: VerifyBrowser) => {
   const colour = { PASS: GREEN, UPDATED: GREEN, NEW: YELLOW, SKIPPED: DIM, FAIL: RED }[r.status];
   const hash = r.hash ? ` ${DIM}${r.hash}${RESET}` : '';
   out(
@@ -581,7 +616,7 @@ const printResult = (r: RunResult) => {
   for (const f of r.failures) out(`        ${RED}✗ ${f}${RESET}`);
   if (r.status === 'FAIL' || r.errors.length) {
     for (const e of r.errors) {
-      const allowed = isAllowed(r.sceneId, e);
+      const allowed = isAllowed(r.sceneId, e, browser);
       out(`        ${allowed ? DIM : RED}${allowed ? '(allowed) ' : ''}${e.slice(0, 400)}${RESET}`);
     }
   }
@@ -625,6 +660,32 @@ const recordBaseline = (
   fs.writeFileSync(paths.baselineFile, `${JSON.stringify(baseline, null, 2)}\n`);
 };
 
+/** Firefox: fails without a Chromium baseline to compare with, and warns when the two Chromium
+ * baselines hash a run differently (Firefox then compares with the `webgl` one, its own backend) */
+const checkChromiumBaselines = (ctx: BaselineContext) => {
+  const hashed = (backend: Backend) =>
+    Object.values(getBaseline(ctx, backend).entries).filter((e) => e.hash).length;
+  const counts = { webgl: hashed('webgl'), webgpu: hashed('webgpu') };
+  if (!counts.webgl && !counts.webgpu) {
+    fail(
+      "--browser firefox compares with Chromium's baseline, and there's none: record one first " +
+        '(yarn verify:scenes --update, on the same commit)'
+    );
+  }
+  out(`Chromium baseline: ${counts.webgl} webgl and ${counts.webgpu} webgpu hash(es)`);
+  const { shared, mismatches } = findBackendHashMismatches(ctx);
+  if (mismatches.length) {
+    out(
+      `${YELLOW}! the webgl and webgpu baselines hash ${mismatches.length} of ${shared} shared run(s) ` +
+        `differently, so the hash depends on the backend: Firefox's webgpu fallbacks aren't valid\n` +
+        mismatches.map((m) => `    ${m}`).join('\n') +
+        RESET
+    );
+  } else if (shared) {
+    out(`${DIM}The webgl and webgpu baselines agree on all ${shared} run(s) both hashed${RESET}`);
+  }
+};
+
 // --- Main ---
 
 const main = async () => {
@@ -633,11 +694,14 @@ const main = async () => {
   if (!generated) fail(`Can't read ${path.relative(ROOT, GENERATED_DATA)}: run yarn gatherAppData`);
   const sceneIds = selectScenes(Object.keys(generated!.scenes), args.only);
 
-  const useWebGL = args.webgl || (isWSL() && !args.headed);
+  const isFirefox = args.browser === 'firefox';
+  const useWebGL = isFirefox || args.webgl || (isWSL() && !args.headed);
   const requested: Backend = useWebGL ? 'webgl' : 'webgpu';
+  const baselines = new Map<Backend, BaselineFile>();
+  if (isFirefox) checkChromiumBaselines({ baselines });
   const own = args.url ? null : await startOwnServer();
   const baseUrl = own ? own.url : args.url!;
-  const browser = await launchBrowser(useWebGL, args.headed);
+  const browser = await launchBrowser(args.browser, useWebGL, args.headed);
   const commit = getCommit();
 
   const close = async () => {
@@ -648,19 +712,24 @@ const main = async () => {
     void close().then(() => process.exit(130));
   });
 
+  const renderer = isFirefox
+    ? `Firefox ${browser.version()}, WebGL2, hashes against Chromium's baseline`
+    : requested === 'webgl'
+      ? `WebGL2 (SwiftShader${args.webgl ? '' : ', WSL2'})`
+      : 'WebGPU';
   out(
     `Scene runner against ${baseUrl}: ${sceneIds.length} scene(s) × ${args.configs.join(', ')}, ` +
-      `${requested === 'webgl' ? `WebGL2 (SwiftShader${args.webgl ? '' : ', WSL2'})` : 'WebGPU'}` +
-      `${args.update ? ', recording baselines' : ''}`
+      `${renderer}${args.update ? ', recording baselines' : ''}`
   );
   out(`${DIM}Watch it: ${PROGRESS_LOG_WATCH}${RESET}\n`);
 
   const ctx: LoadContext = {
     browser,
+    browserName: args.browser,
     baseUrl,
     useWebGL,
     isRecording: args.update,
-    baselines: new Map(),
+    baselines,
     backend: null,
   };
   const results: RunResult[] = [];
@@ -677,7 +746,7 @@ const main = async () => {
           );
         }
         sceneResults.push(r);
-        printResult(r);
+        printResult(r, args.browser);
       }
       const mismatch = checkCrossTargetHashes(sceneResults);
       if (mismatch)
@@ -690,11 +759,11 @@ const main = async () => {
 
   const backend = ctx.backend ?? requested;
   if (args.update) recordBaseline(backend, getBaseline(ctx, backend), results, commit);
-  const paths = getPaths(backend);
+  const paths = getPaths(isFirefox ? 'firefox' : backend);
   fs.mkdirSync(path.dirname(paths.lastRunFile), { recursive: true });
   fs.writeFileSync(
     paths.lastRunFile,
-    `${JSON.stringify({ commit, at: new Date().toISOString(), baseUrl, backend, results }, null, 2)}\n`
+    `${JSON.stringify({ commit, at: new Date().toISOString(), baseUrl, browser: args.browser, backend, results }, null, 2)}\n`
   );
 
   const count = (status: RunStatus) => results.filter((r) => r.status === status).length;

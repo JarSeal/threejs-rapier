@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-5 implemented
+Status: in progress | Phases 1-5 implemented, Phase 6 steps 1, 2 and 4 (step 3, the Firefox run, pending)
 Category: Documentation, Dev tooling, Standards
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md (the standard they apply)
@@ -529,7 +529,7 @@ Documents only.
 - Not run: `yarn verify:scenes`. The engine changes are type exports and comments (erased under
   `verbatimModuleSyntax`), and `bundle.json` and every chunk are within the baseline.
 
-### Phase 6: the cross-browser determinism run
+### Phase 6: the cross-browser determinism run — steps 1, 2, 4 done
 
 1. `scenes.ts`: `--browser chromium|firefox` (default `chromium`). Firefox:
    - `firefox.launch` from playwright-core (the install hint `npx playwright-core install
@@ -547,6 +547,42 @@ Documents only.
    `unstableHash`-style entry per browser with the reason, never a silent skip.
 4. CLAUDE.md's `verify:scenes` entry, and the refactoring verification for p610 and p614 (which
    change simulation code): `--browser firefox` before the PR.
+
+**As built (steps 1, 2 and 4; step 3 not run yet):**
+
+- Run on macOS (Apple M1), not the WSL2 machine §2.6 was grounded on: no scene baselines existed
+  there, and Playwright's Firefox (revision 1543, Firefox 155) wasn't installed (`npx playwright-core
+  install firefox`; a system Firefox can't be driven). Headless Firefox there renders WebGL2 on the
+  GPU ("Apple M1, or similar"), not a software rasterizer, and has no `navigator.gpu`.
+- `--browser firefox` refuses `--update`, a config set without a debug configuration (the default
+  `all` drops `prodTest`), and a run without any Chromium baseline hash (fails before the server
+  starts, "record one first, on the same commit"). It takes no snapshots. The last run goes to
+  `.cache/verify/scenes/firefox/last-run.json` (with `browser`), so it never overwrites Chromium's.
+- The fallback is per entry: the `webgl` file's entry with a hash, else `webgpu`'s. At start the
+  run counts both files' hashes and diffs the runs both hashed (`findBackendHashMismatches`); any
+  mismatch is printed as a warning saying the `webgpu` fallbacks aren't valid.
+- `scenes.config.ts`: `VerifyBrowser`; `skip`, `unstableHash` and `AllowedError` take `browsers`
+  (one `appliesTo` filter for all three). A Firefox-only `unstableHash`'s reason names its issue
+  file.
+- `scenes.ts` reached 838 lines: the snapshot diff (`compareSnapshots`) moved to
+  `devTools/verify/snapshotDiff.ts` (779 + 62).
+- Step 2: the Chromium WebGPU baseline was recorded on this branch's commit (96 runs, 386 s), not
+  on `main`, so a Firefox difference can only be the browser's. The WebGL2 recording was stopped
+  after 26 of 96 runs to save a laptop's battery (SwiftShader is CPU-bound, about 35 min more), so
+  no `webgl` baseline was written. Its printed hashes agree with the `webgpu` baseline on all 19
+  runs both hashed (`assetCompare`, `testDebugScene`, `largeWorld`, `lodShowcase`, `oneMoreScene`,
+  `physicsTest`, `physicsTiers`): the hash doesn't depend on the backend, and Firefox compares with
+  `webgpu` on this machine.
+- A `yarn dev` started during the WebGL2 run failed one load (`lodShowcase workerSab`: "Execution
+  context was destroyed"): its `gatherAppData` rewrites `generatedAppData.json` and
+  `generatedAppFns.ts` even when unchanged, and the runner's own dev server reloads the page that
+  imports them. Not a regression; the other configurations of that scene passed with the same hash.
+  Writing the generated files only when they change would prevent it (not in this plan).
+- Step 4: CLAUDE.md's `verify:scenes` entry, p610's and p614's "Done when", the standards page's
+  simulation section and the quick start's dev-only "Check your changes".
+- **Step 3 is pending:** the full `yarn verify:scenes --browser firefox` (about 72 page loads on the
+  GPU) runs before Phase 8, then its findings (issue files, `browsers: ['firefox']` entries) are
+  added here. Phase 7 doesn't depend on it.
 
 ### Phase 7: the CLAUDE.md split
 

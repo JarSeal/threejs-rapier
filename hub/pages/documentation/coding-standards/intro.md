@@ -128,6 +128,9 @@ and commands.
 
 The determinism probe (`?physicsProbe=N`, see the [debug suite](hub:features/debug-suite)) and the
 scene runner check that a scene simulates identically on every load and in every physics target.
+The runner's Firefox run checks it in a second JavaScript engine: Firefox's hashes must equal
+Chromium's, so a simulation that depends on a `Math` function's last bit or on iteration order
+shows up there.
 
 ## Type hygiene
 

@@ -46,6 +46,15 @@ export const VERIFY_CONFIG_SETS: Record<string, VerifyConfigName[]> = {
 
 export const DEFAULT_CONFIG_SET = 'all';
 
+/**
+ * `--browser`: Chromium runs every configuration against its own baselines; Firefox runs the debug
+ * configurations on WebGL2 and compares only their probe hashes, against Chromium's baseline (a
+ * difference means the simulation depends on the JS engine)
+ */
+export type VerifyBrowser = 'chromium' | 'firefox';
+
+export const VERIFY_BROWSERS: VerifyBrowser[] = ['chromium', 'firefox'];
+
 /** The snapshot's size (16:9) */
 export const SNAPSHOT_SIZE = { width: 512, height: 288 };
 
@@ -79,8 +88,9 @@ export const PROD_TEST_SETTLE_MS = 3000;
 export const READY_TIMEOUT_MS = 180_000;
 export const PROBE_TIMEOUT_MS = 300_000;
 
-/** An error that doesn't fail a run, matched against the console line or page error message */
-export type AllowedError = { pattern: RegExp; reason: string };
+/** An error that doesn't fail a run, matched against the console line or page error message, in
+ * every browser or only in `browsers` */
+export type AllowedError = { pattern: RegExp; reason: string; browsers?: VerifyBrowser[] };
 
 /** Allowed in every scene and configuration */
 export const GLOBAL_ALLOWED_ERRORS: AllowedError[] = [];
@@ -88,12 +98,14 @@ export const GLOBAL_ALLOWED_ERRORS: AllowedError[] = [];
 export type SceneVerifyConfig = {
   /** Fixed steps before the probe freezes physics (default {@link DEFAULT_PROBE_STEPS}) */
   probeSteps?: number;
-  /** Not loaded at all, or not in these configurations */
-  skip?: { reason: string; configs?: VerifyConfigName[] };
+  /** Not loaded at all, or not in these configurations / browsers */
+  skip?: { reason: string; configs?: VerifyConfigName[]; browsers?: VerifyBrowser[] };
   allowedErrors?: AllowedError[];
   /** A changed hash only warns (eg. characters: not hashed, but they push bodies around), in every
-   * configuration or only in these */
-  unstableHash?: { reason: string; configs?: VerifyConfigName[] };
+   * configuration and browser or only in these. In Firefox, "changed" is against Chromium's
+   * baseline: a Firefox-only entry is a finding (the simulation depends on the JS engine), so its
+   * reason names its issue file */
+  unstableHash?: { reason: string; configs?: VerifyConfigName[]; browsers?: VerifyBrowser[] };
   /** No snapshot comparison, or a looser tolerance (eg. characters, which aren't deterministic) */
   snapshot?:
     | { skip: true; reason: string }
