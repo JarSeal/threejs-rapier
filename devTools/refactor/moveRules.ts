@@ -49,6 +49,8 @@ const WRAPPER_NOTE =
 const ENGINE_RULES: MoveRule[] = [
   // Engine root
   { from: `${E}InitApp.ts`, to: `${K}init/InitEngine.ts` },
+  { from: `${E}index.ts`, to: `${E}index.ts`, note: 'the `aekasha` entry (p606)' },
+  { from: `${E}features/`, to: F, note: 'the feature entries (p606): the code moves under them' },
   { from: `${E}types/`, to: `${E}types/` },
   {
     from: `${E}generatedAppData.json`,
@@ -229,6 +231,7 @@ const ENGINE_RULES: MoveRule[] = [
   { from: `${E}core/Viewports.module.scss`, to: `${F}viewports/Viewports.module.scss` },
 
   // UI kit (p602 D5)
+  { from: `${E}ui/`, to: `${E}ui/`, note: 'the `aekasha/ui` entry (p606)' },
   { from: `${E}utils/CMP.ts`, to: `${E}ui/CMP.ts` },
   { from: `${E}utils/Window.ts`, to: `${E}ui/Window.ts` },
   { from: `${E}core/HUD.ts`, to: `${E}ui/HUD.ts` },
@@ -376,6 +379,14 @@ const ENGINE_RULES: MoveRule[] = [
 
 /** The toolkit's categories (p609, from the p450 prompt) */
 const TOOLKIT_RULES: MoveRule[] = [
+  ...['ecs', 'geometry', 'materials'].map(
+    (category): MoveRule => ({
+      from: `${T}${category}/index.ts`,
+      to: `${T}${category}/index.ts`,
+      plan: 'p609',
+      note: `the \`aekasha/toolkit/${category}\` entry (p606)`,
+    })
+  ),
   { from: `${T}ecs/effects/`, to: `${T}ecs/effects/`, plan: 'p609' },
   {
     from: `${T}ecs/InstancedMeshPool.ts`,

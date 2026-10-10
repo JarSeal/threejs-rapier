@@ -17,6 +17,25 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    // The public entries (p606): devTools/aliases.ts is the list, aliases.test.ts checks this copy
+    "paths": {
+      "aekasha": ["./src/_engine/index.ts"],
+      "aekasha/character": ["./src/_engine/features/character/index.ts"],
+      "aekasha/instancing": ["./src/_engine/features/instancing/index.ts"],
+      "aekasha/lines": ["./src/_engine/features/lines/index.ts"],
+      "aekasha/lod": ["./src/_engine/features/lod/index.ts"],
+      "aekasha/physics": ["./src/_engine/features/physics/index.ts"],
+      "aekasha/postfx": ["./src/_engine/features/postfx/index.ts"],
+      "aekasha/skybox": ["./src/_engine/features/skybox/index.ts"],
+      "aekasha/spatial": ["./src/_engine/features/spatial/index.ts"],
+      "aekasha/viewports": ["./src/_engine/features/viewports/index.ts"],
+      "aekasha/ui": ["./src/_engine/ui/index.ts"],
+      "aekasha/debug": ["./src/_engine/debug/index.ts"],
+      "aekasha/schemas": ["./src/_engine/schemas/index.ts"],
+      "aekasha/toolkit/ecs": ["./src/toolkit/ecs/index.ts"],
+      "aekasha/toolkit/geometry": ["./src/toolkit/geometry/index.ts"],
+      "aekasha/toolkit/materials": ["./src/toolkit/materials/index.ts"]
+    },
     "typeRoots": ["./src/types", "./node_modules/@types"],
     // Only these @types are global; the rest come in through imports. Without the list, every
     // folder in the typeRoots is, and with typeRoots set explicitly, tsc fails on one that has
@@ -26,7 +45,7 @@
   },
   "typedocOptions": {
     "entryPoints": ["src/_engine/**/*.ts", "src/toolkit/**/*.ts"],
-    "exclude": ["**/_dbg__*", "**/generatedApp*", "**/*.test.ts"],
+    "exclude": ["**/_dbg__*", "**/generatedApp*", "**/*.test.ts", "**/index.ts"],
     "out": "docs-api",
     "theme": "default",
     "excludePrivate": true,

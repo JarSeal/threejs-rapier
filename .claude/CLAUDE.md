@@ -180,7 +180,7 @@ Simulation tiers (`_DONE_p352`, `core/PhysicsTiers.ts`): a `DYNAMIC` `createPhys
 - `server.fs.allow: [<repo root>]`: `/@fs/` serves the repo (`node_modules`, `.tools/`) but nothing outside it, since the dev server is on the LAN (`--host`).
 - Custom `sceneGathererPlugin` (see data pipeline above), the dev-only `devFilesPlugin` (see Debug system), the dev-only `hubPlugin` (after `devFilesPlugin`; `/hub/`, see Ækasha Hub) and an `html-transform` plugin that injects `%APP_NAME%`/`%VERSION_CHECKSUM%`/etc. placeholders (sourced from `package.json`'s `app_metadata`/`engine_metadata`/`toolkit_metadata` through `devTools/projectMetadata.ts`) into `index.html`.
 - `rollup-plugin-visualizer` writes a bundle treemap to `dist-stats/bundle-stats.html`.
-- No TS path aliases are configured (`tsconfig.json` has no `paths`) — imports are relative.
+- The public entries' aliases (`aekasha`, `aekasha/<feature>`, `aekasha/toolkit/<category>`, p606) come from one list, `devTools/aliases.ts`: `resolve.alias` here and in `vitest.config.ts`, and `tsconfig.json`'s `paths` (a copy `devTools/aliases.test.ts` checks). Nothing imports them yet; engine code imports engine code by relative path.
 
 ## Coding standards
 

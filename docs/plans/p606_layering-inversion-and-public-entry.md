@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Architecture, Refactoring
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage B, engine major)
 Blocks: p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p510_headless-simulation-runtime.md
@@ -130,7 +130,10 @@ the seams without the contract would be guesswork.
 - **schemas → feature imports** (`impostorSchema`, `lodSchema`, `skyBoxSchema`): the feature's
   schema moves into its feature in p608 (a `moveRules.ts` change here), and the feature's entry
   exports it. `aekasha/schemas` keeps the shared and kernel schemas and re-exports the feature ones
-  for the devTools.
+  for the devTools. **Changed in Phase 3:** the move alone leaves `meshSchema → lodSchema`,
+  `sceneSchema → skyBoxSchema` and `core/Scene.ts → impostorSchema`, so the three stay in
+  `schemas/` and `aekasha/schemas`; composing the scene and mesh schemas from features is a seam
+  for p607 (no `moveRules.ts` change).
 - **`ui/` → kernel** (`DraggableWindow.ts` reads `Config.ts` and `addResizer`): p617's, with the UI
   kit. **`utils/PromiseResolver.ts` → `Config.ts`:** fixed here (Phase 5), as p602 D6 says.
 
@@ -317,13 +320,47 @@ what it adds.
   Phase 9).
 - `yarn verify:scenes`: 96 passed against the Phase 1 baselines.
 
-### Phase 3: the entries and the aliases
+### Phase 3: the entries and the aliases — done
 
 1. The aliases (§4.4) in the three configs.
 2. The entry files with the D3 contents; the user reviews each entry's list before they're
    committed.
 3. `api.json` gains the entries' export lists (`devTools/verify/baselines.ts`).
 4. Nothing imports the entries yet, so the bundle is unchanged.
+
+**As built:**
+
+- `devTools/aliases.ts` (`ENTRY_FILES`) is the list: `getViteAliases` for `vite.config.ts` and
+  `vitest.config.ts`, and a copy in `tsconfig.json`'s `paths` that `devTools/aliases.test.ts`
+  checks. One exact alias per entry (`^aekasha$`, `^aekasha/physics$`), not §4.4's wildcards: an
+  unknown entry fails to resolve, and Vite's string aliases match by prefix.
+- 16 entries, 503 names, named re-exports from today's paths (`export { … } from` and separate
+  `export type { … } from`). The lists, as reviewed:
+  - every `public` export in `entryExports.json`, except the Rapier backend's `createJoint` /
+    `deleteJoint` (the facade's are exported) and the TSL materials' `colorNode` / `normalNode`
+    (asset files, imported by path from the generated code);
+  - 54 names added by hand where they complete an exported API, `crossEntry` / `internal` ones
+    included, since D3's rule alone exported `createKeyBinding` without `deleteKeyBinding`: the
+    input bindings' create / delete / enable, the time getters, the inverse operations
+    (`unregisterView`, `deleteSceneMainLooper`, `removeMeshLod`, `removeToast`, …), the ECS
+    transform helpers, the physics facade's async create / delete / get (not the `*Sync` ones),
+    `PhysicsCapacityError`, the lines' `*ToSegments` builders and `preloadFatLineBackend`,
+    `triplanarProjection`;
+  - the types an exported function's or class's own signature names, one level deep (options and
+    return types). Following them further pulled in the physics backend's internals through
+    `AppConfig`.
+  - Left out: raycasting, light aiming, the loop's play state, the `remove*FromMemory` helpers, the
+    LS helpers, the physics `*Sync` variants and snapshots, the UI kit past `CMP` and toasts (p617).
+- TypeDoc leaves the entries out (`**/index.ts` in `typedocOptions.exclude`, the Hub extract's
+  `EXCLUDED_FILE_REGEX`), so the per-module API and the docs ratchet are unchanged until p619.
+- `api.json` gains `entries` (entry → names, read with `parseModuleSource`; an `export *` fails
+  the run), diffed as added / removed names per entry.
+- `moveRules.ts`: keep rules for `src/_engine/index.ts`, `src/_engine/features/`, `src/_engine/ui/`
+  and the three toolkit `index.ts` files.
+- The bundle and `docs.json` unchanged; `verify:scenes` not run (nothing imports an entry, and the
+  bundle is the same).
+- Root `CLAUDE.md`'s "No TS path aliases" line rewritten now (it was false); the rest stays in
+  Phase 9.
 
 ### Phase 4: component types by declaration merging
 
@@ -357,13 +394,26 @@ what it adds.
    export lists. Fails on a name no entry exports (a gap in Phase 3's lists).
 2. Run on `src/app/`, `src/*.ts`, `src/toolkit/` and `src/generated/` (the gatherer emits entry
    imports); the toolkit's internal imports between categories go through entries too.
-3. `readme.md`'s examples and the Hub's code blocks use `aekasha` imports.
+3. First (found in Phase 3): the engine files whose target is outside the engine move there, ahead
+   of p608 (their `moveRules.ts` rules get `plan: 'p606'`). `utils/cameras/followObjectCameraRig.ts`
+   (with `utils/commontTypes.ts` merged in) and `utils/world/movingPlatform.ts` go to
+   `src/toolkit/ecs/`, so `aekasha/toolkit/ecs` stops re-exporting from `../../_engine/`; the gym's
+   `utils/PhysicsStressTest.ts`, `utils/world/characterTestObjects.ts` and
+   `characterTestObstacles.ts` (and `3dModels/characterObstacles.blend`) go to the app, since no
+   entry can export them.
+4. `refactor/importGraph.ts` resolves the aliases (`ENTRY_FILES`), or `moveMap.ts` loses every
+   consumer that imports an entry.
+5. `package.json` has no `sideEffects`: check the bundle baseline for modules a barrel import
+   pulls in (and the system order, risk 1).
+6. `readme.md`'s examples and the Hub's code blocks use `aekasha` imports.
 
 ### Phase 8: the boundary lint and the `@example` check
 
 1. `eslint-plugin-import` loaded; the rules in §4.5, errors everywhere (D1).
 2. The `@example` check (§4.6); `createLines`' example fixed so it parses.
-3. The done check: `grep` finds no engine import of the app, the toolkit, `src/*.ts` or
+3. The generated code's imports of the TSL material files (`*.tsl.ts`, toolkit and app) are asset
+   imports by path: an exception to the "only `aekasha*`" rule.
+4. The done check: `grep` finds no engine import of the app, the toolkit, `src/*.ts` or
    `src/generated/`.
 
 ### Phase 9: Hub, CLAUDE.md and the migration guide
@@ -377,7 +427,8 @@ what it adds.
    (`migrateToEntries.ts`). `devFiles/CLAUDE.md` and `hub/CLAUDE.md` paths. `readme.md`: the
    examples' imports and `InitEngine`'s signature.
 3. p602's `moveRules.ts` notes and p607 / p608 / p510's stubs updated for D2 and what this plan
-   did (p510 still cites the `LoopState` imports as open).
+   did (p510 still cites the `LoopState` imports as open). p607's stub gets the feature-schema seam
+   (D3, changed in Phase 3).
 
 ### Phase 10: versioning and mark done
 

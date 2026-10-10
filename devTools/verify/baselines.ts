@@ -9,13 +9,15 @@
  *   and the main chunk's modules summed per group (three, Rapier, each engine folder, toolkit,
  *   app; the visualizer's rendered and gzip sizes, before minification, as p600 §2.4 counts).
  * - `api.json`: every export of the documented API (the Hub's TypeDoc model: `src/_engine` and
- *   `src/toolkit` minus `_dbg__*`, `generatedApp*` and tests) by module, with its kind.
+ *   `src/toolkit` minus `_dbg__*`, `generatedApp*`, tests and the entries) by module, with its kind,
+ *   and each public entry's (`aekasha`, `aekasha/*`, p606) export names, read from its file.
  * - `docs.json`: documented / total exports and class and interface members per folder (the
  *   Hub's coverage rule: re-exports don't count), as p600 §2.5 counts them, and each folder's
  *   undocumented ones by name (`SceneLoader#loadScene`, `ECS#ECSWorld.addSystem`).
  *
  * It exits 1 when something needs a look: a chunk whose gzip grew by more than 1 % or 2 kB (and at
- * least 100 B), a new chunk, an export added, removed, moved or of another kind, or a folder with
+ * least 100 B), a new chunk, an export added, removed, moved or of another kind, a name added to or
+ * removed from an entry, or a folder with
  * more undocumented exports or members than recorded (the docs ratchet, p605 S4: it names each new
  * one with its file and line; a new folder starts at none). Shrinking and better coverage are
  * reported and pass, and so does deleting documented code. `--update` writes the current state as
@@ -34,7 +36,9 @@ import path from 'path';
 import zlib from 'zlib';
 import { spawn } from 'child_process';
 import { ROOT } from '../assetPipeline/sources';
+import { ENTRY_FILES } from '../aliases';
 import { loadApiModel } from '../hub/api/extract';
+import { parseModuleSource } from '../refactor/importGraph';
 import { getOwnMembers, indexApiModel, isDocumented, Kind } from '../hub/api/model';
 import { out, PROGRESS_LOG_WATCH, setProgressLogEnabled } from './progressLog';
 
@@ -71,6 +75,8 @@ type ApiBaseline = {
   formatVersion: number;
   /** Source path → export name → kind (`Function`, `Class`, … several joined by `, `) */
   modules: Record<string, Record<string, string>>;
+  /** Entry (`aekasha/physics`) → the names it exports; missing in a baseline from before p606 */
+  entries?: Record<string, string[]>;
 };
 type Coverage = { documented: number; total: number };
 type FolderCoverage = { exports: Coverage; members: Coverage };
@@ -308,6 +314,19 @@ const getSourceLocation = (reflection: { sources?: { fileName: string; line: num
   return source ? `${source.fileName}:${source.line}` : '?';
 };
 
+/** Each entry's export names, from its file's AST (an entry re-exports by name) */
+const collectEntries = (): Record<string, string[]> =>
+  sortKeys(
+    Object.fromEntries(
+      Object.entries(ENTRY_FILES).map(([entry, file]) => {
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf-8');
+        const { exports } = parseModuleSource(file, text);
+        if (exports.star.length) fail(`${file}: an entry re-exports by name, not \`export *\``);
+        return [entry, [...exports.local, ...Object.keys(exports.named)].sort()];
+      })
+    )
+  );
+
 const collectApiAndDocs = async () => {
   out(`${DIM}The TypeDoc model (converted only when its inputs changed)…${RESET}`);
   const result = await loadApiModel();
@@ -370,7 +389,11 @@ const collectApiAndDocs = async () => {
   docs.subtrees = sortKeys(docs.subtrees);
   docs.folders = sortKeys(docs.folders);
   return {
-    api: { formatVersion: API_FORMAT_VERSION, modules: sortKeys(modules) } as ApiBaseline,
+    api: {
+      formatVersion: API_FORMAT_VERSION,
+      modules: sortKeys(modules),
+      entries: collectEntries(),
+    } as ApiBaseline,
     docs,
     locations,
   };
@@ -414,6 +437,26 @@ const diffApi = (before: ApiBaseline, after: ApiBaseline): Finding[] => {
         attention: true,
       });
     }
+  }
+  // The public surface: what each entry exports
+  const beforeEntries = before.entries ?? {};
+  for (const [entry, names] of Object.entries(after.entries ?? {})) {
+    const old = beforeEntries[entry];
+    if (!old) {
+      findings.push({ line: `new entry ${entry}: ${names.length} exports`, attention: true });
+      continue;
+    }
+    const added = names.filter((n) => !old.includes(n));
+    const removed = old.filter((n) => !names.includes(n));
+    if (added.length) {
+      findings.push({ line: `${entry} exports ${added.join(', ')}`, attention: true });
+    }
+    if (removed.length) {
+      findings.push({ line: `${entry} no longer exports ${removed.join(', ')}`, attention: true });
+    }
+  }
+  for (const entry of Object.keys(beforeEntries)) {
+    if (!after.entries?.[entry]) findings.push({ line: `gone: entry ${entry}`, attention: true });
   }
   return findings;
 };
@@ -528,6 +571,7 @@ const main = async () => {
   const { api, docs, locations } = await collectApiAndDocs();
 
   const exportCount = Object.values(api.modules).reduce((n, m) => n + Object.keys(m).length, 0);
+  const entryExportCount = Object.values(api.entries ?? {}).reduce((n, e) => n + e.length, 0);
   const results = [
     ...(bundle
       ? [
@@ -540,7 +584,7 @@ const main = async () => {
           ),
           report(
             'api.json',
-            `${exportCount} exports in ${Object.keys(api.modules).length} modules`,
+            `${exportCount} exports in ${Object.keys(api.modules).length} modules; ${entryExportCount} in ${Object.keys(api.entries ?? {}).length} entries`,
             api,
             diffApi,
             args.update

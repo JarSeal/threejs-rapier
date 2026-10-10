@@ -12,6 +12,8 @@ import { devFilesPlugin } from './devTools/devFilesPlugin.ts';
 // Serves the Ækasha Hub at /hub/ and rebuilds it on save (p551)
 import { hubPlugin } from './devTools/hubPlugin.ts';
 import { getProjectMetadata } from './devTools/projectMetadata.ts';
+// The public entries' import aliases (`aekasha`, `aekasha/*`, p606)
+import { getViteAliases } from './devTools/aliases.ts';
 
 const REPO_ROOT = fileURLToPath(new URL('.', import.meta.url));
 
@@ -43,6 +45,8 @@ const meta = getProjectMetadata();
 
 export default defineConfig({
   root: './src',
+  // Workers resolve with these too
+  resolve: { alias: getViteAliases(REPO_ROOT) },
   build: {
     emptyOutDir: true,
     outDir: './../dist',

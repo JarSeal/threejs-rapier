@@ -1660,6 +1660,11 @@
       "action": "keep",
       "plan": "p608"
     },
+    "src/_engine/debug/index.ts": {
+      "to": "src/_engine/debug/index.ts",
+      "action": "keep",
+      "plan": "p608"
+    },
     "src/_engine/debug/MaterialEditor.ts": {
       "to": "src/_engine/debug/MaterialEditor.ts",
       "action": "keep",
@@ -1696,6 +1701,60 @@
       "action": "keep",
       "plan": "p608"
     },
+    "src/_engine/features/character/index.ts": {
+      "to": "src/_engine/features/character/index.ts",
+      "action": "keep",
+      "plan": "p608",
+      "note": "the feature entries (p606): the code moves under them"
+    },
+    "src/_engine/features/instancing/index.ts": {
+      "to": "src/_engine/features/instancing/index.ts",
+      "action": "keep",
+      "plan": "p608",
+      "note": "the feature entries (p606): the code moves under them"
+    },
+    "src/_engine/features/lines/index.ts": {
+      "to": "src/_engine/features/lines/index.ts",
+      "action": "keep",
+      "plan": "p608",
+      "note": "the feature entries (p606): the code moves under them"
+    },
+    "src/_engine/features/lod/index.ts": {
+      "to": "src/_engine/features/lod/index.ts",
+      "action": "keep",
+      "plan": "p608",
+      "note": "the feature entries (p606): the code moves under them"
+    },
+    "src/_engine/features/physics/index.ts": {
+      "to": "src/_engine/features/physics/index.ts",
+      "action": "keep",
+      "plan": "p608",
+      "note": "the feature entries (p606): the code moves under them"
+    },
+    "src/_engine/features/postfx/index.ts": {
+      "to": "src/_engine/features/postfx/index.ts",
+      "action": "keep",
+      "plan": "p608",
+      "note": "the feature entries (p606): the code moves under them"
+    },
+    "src/_engine/features/skybox/index.ts": {
+      "to": "src/_engine/features/skybox/index.ts",
+      "action": "keep",
+      "plan": "p608",
+      "note": "the feature entries (p606): the code moves under them"
+    },
+    "src/_engine/features/spatial/index.ts": {
+      "to": "src/_engine/features/spatial/index.ts",
+      "action": "keep",
+      "plan": "p608",
+      "note": "the feature entries (p606): the code moves under them"
+    },
+    "src/_engine/features/viewports/index.ts": {
+      "to": "src/_engine/features/viewports/index.ts",
+      "action": "keep",
+      "plan": "p608",
+      "note": "the feature entries (p606): the code moves under them"
+    },
     "src/_engine/generatedAppData.json": {
       "to": "src/generated/generatedAppData.json",
       "action": "move",
@@ -1707,6 +1766,12 @@
       "action": "move",
       "plan": "p606",
       "note": "app data, handed to the engine through InitEngine (p602 D9)"
+    },
+    "src/_engine/index.ts": {
+      "to": "src/_engine/index.ts",
+      "action": "keep",
+      "plan": "p608",
+      "note": "the `aekasha` entry (p606)"
     },
     "src/_engine/InitApp.ts": {
       "to": "src/_engine/kernel/init/InitEngine.ts",
@@ -1746,6 +1811,11 @@
     "src/_engine/schemas/impostorSchema.ts": {
       "to": "src/_engine/schemas/ImpostorSchema.ts",
       "action": "move",
+      "plan": "p608"
+    },
+    "src/_engine/schemas/index.ts": {
+      "to": "src/_engine/schemas/index.ts",
+      "action": "keep",
       "plan": "p608"
     },
     "src/_engine/schemas/lightSchema.ts": {
@@ -1842,6 +1912,12 @@
       "to": "src/_engine/types/typings.d.ts",
       "action": "keep",
       "plan": "p608"
+    },
+    "src/_engine/ui/index.ts": {
+      "to": "src/_engine/ui/index.ts",
+      "action": "keep",
+      "plan": "p608",
+      "note": "the `aekasha/ui` entry (p606)"
     },
     "src/_engine/utils/assert.ts": {
       "to": "src/_engine/utils/Assert.ts",
@@ -2357,6 +2433,12 @@
       "action": "keep",
       "plan": "p609"
     },
+    "src/toolkit/ecs/index.ts": {
+      "to": "src/toolkit/ecs/index.ts",
+      "action": "keep",
+      "plan": "p609",
+      "note": "the `aekasha/toolkit/ecs` entry (p606)"
+    },
     "src/toolkit/ecs/InstancedMeshPool.ts": {
       "to": null,
       "action": "delete",
@@ -2384,6 +2466,12 @@
       "action": "move",
       "plan": "p609"
     },
+    "src/toolkit/geometry/index.ts": {
+      "to": "src/toolkit/geometry/index.ts",
+      "action": "keep",
+      "plan": "p609",
+      "note": "the `aekasha/toolkit/geometry` entry (p606)"
+    },
     "src/toolkit/geometry/scatterOnSurface.ts": {
       "to": "src/toolkit/geometry/scatter/ScatterOnSurface.ts",
       "action": "move",
@@ -2403,6 +2491,12 @@
       "to": "src/toolkit/materials/asteroid/asteroid.tsl.ts",
       "action": "move",
       "plan": "p609"
+    },
+    "src/toolkit/materials/index.ts": {
+      "to": "src/toolkit/materials/index.ts",
+      "action": "keep",
+      "plan": "p609",
+      "note": "the `aekasha/toolkit/materials` entry (p606)"
     },
     "src/toolkit/materials/triplanarCheckerboard.material.json": {
       "to": "src/toolkit/materials/triplanarCheckerboard/triplanarCheckerboard.material.json",
