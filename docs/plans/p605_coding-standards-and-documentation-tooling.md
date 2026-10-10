@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-6 implemented
+Status: in progress | Phases 1-7 implemented
 Category: Documentation, Dev tooling, Standards
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md (the standard they apply)
@@ -588,7 +588,7 @@ Documents only.
   Firefox-only console errors (the allowed ones are the texture array / atlas scenes' own); 5
   distinct `console.warn`s, which don't fail a run.
 
-### Phase 7: the CLAUDE.md split
+### Phase 7: the CLAUDE.md split — done
 
 1. `devTools/hub/repoFiles.ts`:
    - `readClaudeMdSections` reads the root's Architecture `###` sections and every tracked
@@ -607,6 +607,42 @@ Documents only.
 5. Verification: `yarn hub:build` (no coverage warnings, the `claude-md` links resolve), the root
    at or under 45 kB, and every moved line present in exactly one file (a script diff of the
    section texts, before and after).
+
+**As built:**
+
+- Step 1: `readClaudeMdSections` lists the nested files with `git ls-files --cached --others
+  --exclude-standard`, so a new, not yet added file counts. Each section records its file. A name
+  can be a section in several files (`Debug system` in the root and `core/Debug/`, `Ækasha Hub` in
+  three): `aek:covers` covers them all and `::: claude-md` links each. The coverage check lists the
+  files once per build and the directives reuse that list; it returns every file it read to the
+  watcher.
+- Step 2: the root went from 122.7 kB (Phases 1-6 added 6.6 kB to §2.7's 116 kB) to 44.1 kB, with
+  13 nested files (84.6 kB). Besides S9's sections, the `## Commands` entries for the asset
+  pipeline, the dev files, `hub:build` and the verify commands kept one line in the root and moved
+  their detail to the nested file (sentence for sentence). Two new sections got Hub coverage:
+  `Asset pipeline` (the asset-optimization page's `aek:covers` and `::: claude-md`) and `Dev files`
+  (the debug-suite page's); `Verify commands` went into `coverageIgnore`.
+- Step 3: **`moveMap.ts --check` was already failing before step 3.** Its outputs date from p602,
+  and Phase 5 exported `RemovalTypes` from `utils/helpers.ts` without a split target (now
+  `kernel/assets/Disposal.ts`). The nested files under `src/_engine/` needed no rule: their
+  folders' rules move them (`core/Debug/CLAUDE.md` → `debug/CLAUDE.md`, `core/SkyBox/` →
+  `features/skybox/`, …). The report's "Paths outside the import graph" scanned only the root
+  `CLAUDE.md`, so step 2 had dropped its mentions from 56 to 38; it now scans every tracked
+  `CLAUDE.md`. The regenerated outputs also pick up Phases 2-5 (shifted import lines, the new
+  exports, `StatsClock.ts`, `PhysicsWallClock.ts`, `eslint.config.js`'s `SIMULATION_FILES`).
+  Nothing runs `--check` (no hook or test), which is how it drifted.
+- Step 4: one Workflow bullet next to the Hub and readme rules. The root is 44.4 kB, 0.6 kB under
+  the target.
+- Step 5: `hub:build` passed with 288 pages and no coverage or `claude-md` warnings. The links render
+  in dev only, so a script checked their data: all 25 sections point at their own heading, and
+  every one of the 15 `aek:covers` names exists. Of the 148 lines that left the root, none is in
+  two files. 19 aren't there verbatim: 7 headings (`###` → `##`), 8 split between the root and a
+  nested file (the 7 Commands lines and the Hub's snippet includes; every sentence found), and 4
+  that said "this file", reworded for their new home. Three
+  references pointed into another nested file, which a session may not have loaded (`Instancing` →
+  LOD selection, `Lod` → Instanced mesh pools, `devTools/hub` → Features and homepage); they now
+  name the file. References to root sections (Commands, Workflow, Versioning) are unchanged: the
+  root is always loaded.
 
 ### Phase 8: versioning and mark done
 

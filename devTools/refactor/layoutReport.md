@@ -223,7 +223,7 @@ Mentions of a moving file's path (from the repo root, or from `src/_engine/`) in
 | `.claude/CLAUDE.md` | 38 | 35 |
 | `src/_engine/core/Debug/CLAUDE.md` | 11 | 11 |
 | `eslint.config.js` | 9 | 9 |
-| `src/_engine/core/Lod/CLAUDE.md` | 5 | 5 |
+| `src/_engine/core/Lod/CLAUDE.md` | 6 | 6 |
 | `devTools/hub/api/model.ts` | 4 | 2 |
 | `docs/techniques/hub-authoring.md` | 4 | 4 |
 | `hub/pages/documentation/code-blocks/intro.md` | 3 | 2 |
@@ -236,6 +236,7 @@ Mentions of a moving file's path (from the repo root, or from `src/_engine/`) in
 | `docs/issues/ecs-generation-wrap-after-4096-reuses.md` | 2 | 2 |
 | `docs/issues/scene-loopers-registered-on-the-previous-scene.md` | 2 | 2 |
 | `docs/issues/three-instanced-node-attribute-leak.md` | 2 | 2 |
+| `src/_engine/core/Instancing/CLAUDE.md` | 2 | 2 |
 | `src/_engine/core/Lod/Impostors/CLAUDE.md` | 2 | 2 |
 | `src/_engine/core/SkyBox/CLAUDE.md` | 2 | 2 |
 | `src/_engine/core/Spatial/CLAUDE.md` | 2 | 2 |
@@ -255,5 +256,4 @@ Mentions of a moving file's path (from the repo root, or from `src/_engine/`) in
 | `hub/pages/features/lod/guide.md` | 1 | 1 |
 | `readme.md` | 1 | 1 |
 | `src/_engine/core/Debug/Editors/CLAUDE.md` | 1 | 1 |
-| `src/_engine/core/Instancing/CLAUDE.md` | 1 | 1 |
 | `vitest.config.ts` | 1 | 1 |
