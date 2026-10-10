@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { getECSWorld } from '../../../_engine/core/ECS';
-import { ComponentType } from '../../../_engine/core/ECS/ECSCoreComponents';
+import { SpinComponentType } from '../ecs/SpinComponent';
 import { saveBufferGeometry } from '../../../_engine/core/Geometry';
 import { getMaterial } from '../../../_engine/core/Material';
 import { createMeshEntity } from '../../../_engine/core/MeshManager';
@@ -43,7 +43,7 @@ export const scene = async () => {
       receiveShadow: true,
     });
     const axis = { x: Math.sin(opts.seed), y: 1, z: Math.cos(opts.seed) };
-    world.addComponent(entityId, ComponentType.SPIN, { axis, speed: opts.spin });
+    world.addComponent(entityId, SpinComponentType.SPIN, { axis, speed: opts.spin });
     return entityId;
   };
 
@@ -69,7 +69,7 @@ export const scene = async () => {
     },
     rotation: { x: 1.92, y: 0, z: -0.32 },
   });
-  world.addComponent(ringId, ComponentType.SPIN, { axis: { x: 0, y: 0, z: 1 }, speed: 0.08 });
+  world.addComponent(ringId, SpinComponentType.SPIN, { axis: { x: 0, y: 0, z: 1 }, speed: 0.08 });
 
   // Smaller ones to the right of it and behind it (the left is under the homepage's text), the
   // same every time

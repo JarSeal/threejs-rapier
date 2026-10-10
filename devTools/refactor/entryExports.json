@@ -69,10 +69,10 @@
       "unreferenced": 15
     },
     "aekasha/toolkit/ecs": {
-      "public": 19,
+      "public": 16,
       "crossEntry": 0,
       "internal": 1,
-      "unreferenced": 16
+      "unreferenced": 19
     },
     "aekasha/toolkit/geometry": {
       "public": 9,
@@ -10361,10 +10361,7 @@
       "src/toolkit/ecs/effects/FollowTool.ts": {
         "FollowComponentData": {
           "kind": "Interface",
-          "usage": "public",
-          "by": [
-            "app"
-          ]
+          "usage": "unreferenced"
         },
         "FollowToolComponentType": {
           "kind": "Enum",
@@ -10392,10 +10389,7 @@
       "src/toolkit/ecs/effects/HoverEffect.ts": {
         "HoverComponentData": {
           "kind": "Interface",
-          "usage": "public",
-          "by": [
-            "app"
-          ]
+          "usage": "unreferenced"
         },
         "HoverToolComponentType": {
           "kind": "Enum",
@@ -10488,10 +10482,7 @@
         },
         "SunShadowFitComponentData": {
           "kind": "Interface",
-          "usage": "public",
-          "by": [
-            "app"
-          ]
+          "usage": "unreferenced"
         },
         "SunShadowFitComponentType": {
           "kind": "Enum",

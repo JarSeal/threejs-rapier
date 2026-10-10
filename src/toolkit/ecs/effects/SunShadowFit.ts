@@ -1,14 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../../_engine/core/ECS';
 import { CoreComponentType } from '../../../_engine/core/ECS/ECSRegistry';
 import { lwarn } from '../../../_engine/utils/Logger';
 import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../_engine/core/ECS/SystemStages';
-
-// Only type-only imports from `_engine/core` here, besides ECSRegistry, SystemStages and Logger (no
-// local imports): AppECSRegistry.ts imports this file for SunShadowFitComponentType, inside the
-// ECSCoreComponents ↔ AppECSRegistry import cycle (see InstancedMeshPoolTypes.ts). So the main camera
-// is looked up through the world, not with CameraManager's getMainCamera.
 
 /** Internal Key (Values) */
 export enum SunShadowFitComponentType {
@@ -55,8 +49,10 @@ export interface SunShadowFitData {
   followEntityId?: number;
 }
 
-export interface SunShadowFitComponentData {
-  [SunShadowFitComponentType.SUN_SHADOW_FIT]: SunShadowFitData;
+declare module 'aekasha' {
+  interface ComponentDataMap {
+    [SunShadowFitComponentType.SUN_SHADOW_FIT]: SunShadowFitData;
+  }
 }
 
 /** Per-component runtime state, keyed by the component's data object (gone with it). */
@@ -218,7 +214,7 @@ const warnOnce = (data: SunShadowFitData, entityId: number, reason: string) => {
 
 /** ECS System */
 export const sunShadowFitSystem = (world: ECSWorld) => {
-  const storage = world.getStorage(SunShadowFitComponentType.SUN_SHADOW_FIT as any);
+  const storage = world.getStorage(SunShadowFitComponentType.SUN_SHADOW_FIT);
   if (!storage) return;
 
   for (const [entityId, data] of storage as Iterable<[number, SunShadowFitData]>) {

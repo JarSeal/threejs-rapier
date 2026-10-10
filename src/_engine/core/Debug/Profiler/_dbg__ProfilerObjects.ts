@@ -1,7 +1,6 @@
 import { CMP } from '../../../utils/CMP';
 import { IS_DEBUG_ENV } from '../../Config';
 import { getAllECSWorlds } from '../../ECS';
-import { ComponentType } from '../../ECS/ECSCoreComponents';
 import type { AnyDebuggerTabDef } from '../../../debug/DebuggerGUI';
 import {
   _getEntityWindowOpener,
@@ -308,9 +307,6 @@ const renderOwners = (settings: Readonly<ProfilerSettings>) => {
 
 // ECS
 
-/** Component type names by their value (the enum keys code uses, eg. 'MANAGED_BY'). */
-const COMPONENT_TYPE_NAMES = Object.entries(ComponentType) as [string, ComponentType][];
-
 const renderEcs = () => {
   const worlds = getAllECSWorlds();
   let worldRows = '';
@@ -322,10 +318,11 @@ const renderEcs = () => {
       `<tr><th>${esc(name)}</th>` +
       `<td class="profilerValue">${formatNumber(world.getEntityCount())}</td>` +
       `<td class="profilerSub">entities</td></tr>`;
-    for (let i = 0; i < COMPONENT_TYPE_NAMES.length; i++) {
-      const [key, type] = COMPONENT_TYPE_NAMES[i];
-      const size = world.getStorage(type).size;
-      if (size) counts.set(key, (counts.get(key) || 0) + size);
+    // By value (eg. 'CORE_MANAGED_BY', 'APP_SPIN'): app and toolkit types have no engine-side name
+    const types = world.getComponentTypes();
+    for (let i = 0; i < types.length; i++) {
+      const size = world.getStorage(types[i]).size;
+      if (size) counts.set(types[i], (counts.get(types[i]) || 0) + size);
     }
   }
   const sorted = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));

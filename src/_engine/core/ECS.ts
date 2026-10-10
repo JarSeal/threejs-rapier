@@ -396,6 +396,15 @@ export class ECSWorld {
   }
 
   /**
+   * The component types this world has a storage for: every engine type, plus each app or toolkit
+   * type once something added it or asked for its storage. A storage can be empty. For debug
+   * listings (the entity inspector, the profiler); allocates an array.
+   */
+  public getComponentTypes(): ComponentType[] {
+    return [...this.storages.keys()];
+  }
+
+  /**
    * Returns the TypedArray-backed Transform store when TRANSFORM storage is
    * in `TYPED_ARRAY` mode, or `undefined` in the default `MAP` mode.
    * Hot-path systems use this to branch once per call instead of paying the

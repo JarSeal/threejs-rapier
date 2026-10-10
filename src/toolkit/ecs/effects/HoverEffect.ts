@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { ECSWorld } from '../../../_engine/core/ECS';
 import { CoreComponentType } from '../../../_engine/core/ECS/ECSRegistry';
 import { ECSSystemStage } from '../../../_engine/core/ECS/SystemStages';
@@ -18,13 +17,15 @@ export interface HoverToolData {
   time: number;
 }
 
-export interface HoverComponentData {
-  [HoverToolComponentType.HOVER]: HoverToolData;
+declare module 'aekasha' {
+  interface ComponentDataMap {
+    [HoverToolComponentType.HOVER]: HoverToolData;
+  }
 }
 
 /** ECS System */
 export const hoverToolSystem = (world: ECSWorld, dt: number) => {
-  const storage = world.getStorage(HoverToolComponentType.HOVER as any);
+  const storage = world.getStorage(HoverToolComponentType.HOVER);
   if (!storage) return;
   const transformStore = world.getTypedTransformStore();
 

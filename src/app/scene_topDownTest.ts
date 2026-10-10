@@ -4,7 +4,7 @@ import { getMaterial, getMaterialVariant } from '../_engine/core/Material';
 import { createMeshEntity } from '../_engine/core/MeshManager';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { createDynamicCharacter } from '../_engine/core/Character/DynamicCharacter';
-import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
+import { SunShadowFitComponentType } from '../toolkit/ecs/effects/SunShadowFit';
 import { getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
 import { registerOnSceneEnter, registerOnSceneExit } from '../_engine/core/Scene';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
@@ -587,7 +587,7 @@ export const scene = async () => {
       lwarn(`Top-down test scene: could not find the sun light '${SUN_APP_ID}'.`);
       return;
     }
-    world.addComponent(sunId, ComponentType.SUN_SHADOW_FIT, {
+    world.addComponent(sunId, SunShadowFitComponentType.SUN_SHADOW_FIT, {
       maxDistance: 48,
       casterExtension: 25,
       followEntityId: playerEntityId,

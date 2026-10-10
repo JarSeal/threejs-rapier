@@ -22,6 +22,7 @@ export type { IComponentStorage } from './core/ECS/ECSComponentStorage';
 export { ComponentType, Transform } from './core/ECS/ECSCoreComponents';
 export type {
   ComponentData,
+  ComponentDataMap,
   ECSPosition,
   ECSRotation,
   ECSTransformProp,

@@ -165,7 +165,7 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 │   ├── toolkit/            # Reusable ECS effects, TSL materials and procedural geometry
 │   ├── app/                # Your game: *.scene.json + scene .ts files and asset JSON files
 │   ├── AppECSPlugins.ts    # Wires app and toolkit systems into the ECS
-│   ├── AppECSRegistry.ts   # App component types, data shapes and system stages (type-only)
+│   ├── AppECSRegistry.ts   # The app's own component keys (added to the engine's component map)
 │   ├── CONFIG.ts           # App configuration (physics, debug keys, debug camera…)
 │   ├── index.ts            # App entry: renderer, scene loader, first scene
 │   ├── public/aek-assets/  # Optimized asset outputs (generated, committed)
@@ -306,25 +306,25 @@ export const scene = async () => {
 ### 5. Write your own component and system
 
 ```ts
-// src/AppECSRegistry.ts: declare the component type and its data shape
-export const AppComponentType = { SPIN: 'APP_SPIN' /* , ... */ } as const;
-export interface AppComponentData extends ExtraComponentData {
-  [AppComponentType.SPIN]: { speed: number };
-}
-```
-
-```ts
 // src/app/systems/spin.ts
 import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../_engine/core/ECS';
 import { ComponentType } from '../../_engine/core/ECS/ECSCoreComponents';
 import { ECSSystemStage } from '../../_engine/core/ECS/SystemStages';
 
+// The component's key, and its data's type added to the engine's component map
+export const SpinComponentType = { SPIN: 'APP_SPIN' } as const;
+declare module 'aekasha' {
+  interface ComponentDataMap {
+    [SpinComponentType.SPIN]: { speed: number };
+  }
+}
+
 const UP = new THREE.Vector3(0, 1, 0);
 const step = new THREE.Quaternion(); // reused scratch, no per-frame allocation
 
 const spinSystem = (world: ECSWorld, dt: number) => {
-  for (const [entityId, { speed }] of world.getStorage(ComponentType.SPIN)) {
+  for (const [entityId, { speed }] of world.getStorage(SpinComponentType.SPIN)) {
     const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
     if (!transform) continue;
     transform.quaternion.multiply(step.setFromAxisAngle(UP, speed * dt));
@@ -344,7 +344,7 @@ ECSWorld.registerPlugin((world) => {
 });
 
 // Anywhere in scene code:
-ecsWorld.addComponent(ballId, ComponentType.SPIN, { speed: 2 });
+ecsWorld.addComponent(ballId, SpinComponentType.SPIN, { speed: 2 });
 ```
 
 > Anything that moves physics bodies (poses, velocities, impulses, kinematic targets) goes in an `APP_PHYSICS_STEP` system, so it stays in lockstep with the simulation and deterministic.

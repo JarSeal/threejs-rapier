@@ -1,6 +1,5 @@
 // #region spin-component (shown in the Hub: hub/pages/examples/ecs/)
-// The SPIN component: its key and its data's type. No imports, so src/AppECSRegistry.ts can take
-// it in without pulling any code along.
+// The SPIN component: its key and its data's type.
 
 export const SpinComponentType = {
   SPIN: 'APP_SPIN',
@@ -12,8 +11,13 @@ export type SpinData = {
   /** Radians per second */
   speed: number;
 };
-
-export interface SpinComponentData {
-  [SpinComponentType.SPIN]: SpinData;
-}
 // #endregion spin-component
+
+// #region spin-component-map (shown in the Hub: hub/pages/examples/ecs/)
+// Adds SPIN to the engine's component map, so addComponent and getStorage know its data's type
+declare module 'aekasha' {
+  interface ComponentDataMap {
+    [SpinComponentType.SPIN]: SpinData;
+  }
+}
+// #endregion spin-component-map

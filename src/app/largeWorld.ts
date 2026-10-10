@@ -12,6 +12,8 @@ import {
 } from '../_engine/core/CameraManager';
 import { createKeyBinding } from '../_engine/core/Input/KeyboardInput';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
+import { FollowToolComponentType } from '../toolkit/ecs/effects/FollowTool';
+import { HoverToolComponentType } from '../toolkit/ecs/effects/HoverEffect';
 import { getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
 import { getRootScene, registerOnSceneEnter, registerOnSceneExit } from '../_engine/core/Scene';
 import { onSkyBoxChange } from '../_engine/core/SkyBox/SkyBox';
@@ -464,7 +466,7 @@ export const scene = async () => {
   // before real physics exists (§1.3) — not a substitute for the eventual rigid body, just a
   // sine-wave bob via the existing HoverEffect toolkit component (already used elsewhere, e.g.
   // the bobbing ball in testECS.ts).
-  ecsWorld.addComponent(crateStackId, ComponentType.HOVER, {
+  ecsWorld.addComponent(crateStackId, HoverToolComponentType.HOVER, {
     speed: 1.2,
     amplitude: 0.4,
     baseY: crateBaseY,
@@ -541,7 +543,7 @@ export const scene = async () => {
     },
     ecsWorld
   );
-  ecsWorld.addComponent(dynamicCamId, ComponentType.FOLLOW, {
+  ecsWorld.addComponent(dynamicCamId, FollowToolComponentType.FOLLOW, {
     leaderId: crateStackId,
     offset: followOffset,
     targetOffset: new THREE.Vector3(0, 0, 0),

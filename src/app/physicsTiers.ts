@@ -9,6 +9,8 @@ import {
 import type { ECSWorld } from '../_engine/core/ECS';
 import { getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
+import { SunShadowFitComponentType } from '../toolkit/ecs/effects/SunShadowFit';
+import { FollowToolComponentType } from '../toolkit/ecs/effects/FollowTool';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createKeyBinding } from '../_engine/core/Input/KeyboardInput';
 import { createLines, polylineToSegments } from '../_engine/core/LineManager';
@@ -299,7 +301,7 @@ export const scene = async () => {
     },
     world
   );
-  world.addComponent(chaseId, ComponentType.FOLLOW, {
+  world.addComponent(chaseId, FollowToolComponentType.FOLLOW, {
     leaderId: ploughId,
     offset: chaseOffset,
     targetOffset: new THREE.Vector3(),
@@ -325,7 +327,7 @@ export const scene = async () => {
       lwarn("Physics tiers scene: could not find the sun light 'physicsTiersSun'.");
       return;
     }
-    world.addComponent(sunId, ComponentType.SUN_SHADOW_FIT, {
+    world.addComponent(sunId, SunShadowFitComponentType.SUN_SHADOW_FIT, {
       maxDistance: 160,
       casterExtension: 10,
     });

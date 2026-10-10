@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: in progress | Phases 1-4 implemented
 Category: Architecture, Refactoring
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage B, engine major)
 Blocks: p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p510_headless-simulation-runtime.md
@@ -362,7 +362,7 @@ what it adds.
 - Root `CLAUDE.md`'s "No TS path aliases" line rewritten now (it was false); the rest stays in
   Phase 9.
 
-### Phase 4: component types by declaration merging
+### Phase 4: component types by declaration merging — done
 
 1. `ComponentDataMap` (§4.2); `ECSCoreComponents.ts` loses its app imports.
 2. The toolkit effects and `SpinComponent` augment `'aekasha'`; the `as any` reads go.
@@ -371,6 +371,41 @@ what it adds.
    `getComponentTypes()`.
 4. The Hub regions `ecs-component-types` and `ecs-component-data` change shape: their page is
    updated here (`yarn hub:build`).
+
+**As built:**
+
+- `ECSCoreComponents.ts`: `interface ComponentDataMap extends CoreComponentData {}` (an
+  `eslint-disable` for `no-empty-object-type` with its reason), `type ComponentType = keyof
+  ComponentDataMap`, `type ComponentData = ComponentDataMap`, and the value `ComponentType` is
+  `CoreComponentType` itself. `aekasha` exports the `ComponentDataMap` type; `CoreComponentType`
+  stays exported next to the now identical `ComponentType` value (p612 picks one). `tsc` confirmed
+  the merge through `'aekasha'` while the toolkit and the app still import the engine by deep path.
+- **Not in the plan:** `utils/ECSStressTest.ts` (staying in the engine, `kernel/ecs/debug/`, p602
+  D6) read the app's `INSTANCED_STRESS_TEST_DATA` and the toolkit's `HOVER`, and its spheres only
+  bobbed because the app registers the toolkit's hover system. It now has two core debug keys,
+  `DEBUG_STRESS_TEST_INSTANCE` and `DEBUG_STRESS_TEST_HOVER`, and its own `APP_LOGIC` hover
+  system (`ecsStressTestHoverSystem`, the toolkit's motion, registered on the first spawn of either
+  mode). The engine can't augment the map itself: a relative path would be the second specifier.
+  p608's line sending `ECSStressTest` to the app contradicts `moveRules.ts`; Phase 9 fixes it.
+- The toolkit effects and `SpinComponent.ts` augment `'aekasha'` (`SpinComponent.ts` in a new
+  region, `spin-component-map`); the `as any` reads, the effects' file-level `no-explicit-any`
+  disables and `SunShadowFit`'s import-cycle comment are gone. The wrapper interfaces
+  `HoverComponentData`, `FollowComponentData`, `SunShadowFitComponentData` are removed;
+  `aekasha/toolkit/ecs` exports the data types (`HoverToolData`, `FollowToolData`,
+  `SunShadowFitData`) instead. `AppECSRegistry.ts` keeps only `HEALTH`, with no imports.
+- 9 app files use the modules' key objects (deep paths until Phase 7).
+- `ECSWorld.getComponentTypes()` (the types with a storage); the entity inspector's tag list and
+  the profiler's component counts show values (`CORE_TRANSFORM`). App and toolkit storages are
+  created on first use now; none of those types has hooks, so `deleteEntity`'s hook order is the
+  same.
+- Hub: the walkthrough's §2 is "Adding it to the component map" (`#spin-component-map`), the ECS
+  guide's paragraph and link follow, and `hub/CLAUDE.md` drops `AppECSRegistry.ts`'s regions.
+  Also updated now, since they'd be false until Phase 9: `readme.md`'s §5 component snippet and
+  its tree line, and root `CLAUDE.md`'s "Component types" line.
+- The layout report's engine → app is down to `Config.ts`. Baselines: `api.json` as above,
+  `bundle.json` +0.2 kB gzip in the `ECSStressTest` chunk (its hover system), the main app group
+  −0.1 kB.
+- `yarn verify:scenes`: 96 passed against the Phase 1 baselines.
 
 ### Phase 5: config flows in, the environment is read at init
 
@@ -428,7 +463,8 @@ what it adds.
    examples' imports and `InitEngine`'s signature.
 3. p602's `moveRules.ts` notes and p607 / p608 / p510's stubs updated for D2 and what this plan
    did (p510 still cites the `LoopState` imports as open). p607's stub gets the feature-schema seam
-   (D3, changed in Phase 3).
+   (D3, changed in Phase 3). p608's §"The moves" keeps `ECSStressTest` in the kernel
+   (`moveRules.ts`, p602 D6), not the app (found in Phase 4).
 
 ### Phase 10: versioning and mark done
 

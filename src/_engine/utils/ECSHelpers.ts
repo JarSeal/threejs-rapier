@@ -170,11 +170,9 @@ export const getEntityDiagnosticData = (id: number): EntityDiagnosticData | null
   }
 
   // Component Inventory (Iteration through registry)
-  for (const key in ComponentType) {
-    const type = ComponentType[key as keyof typeof ComponentType];
-    if (world.hasComponent(id, type)) {
-      data.activeTags.push(key);
-    }
+  const types = world.getComponentTypes();
+  for (let i = 0; i < types.length; i++) {
+    if (world.hasComponent(id, types[i])) data.activeTags.push(types[i]);
   }
 
   // Physics

@@ -222,6 +222,7 @@
     },
     "src/_engine/core/ECS/ECSCoreComponents.ts": {
       "ComponentData": "TypeAlias",
+      "ComponentDataMap": "Interface",
       "ComponentType": "TypeAlias, Variable",
       "CoreComponentData": "Interface",
       "ECSPosition": "TypeAlias",
@@ -2498,14 +2499,12 @@
     },
     "src/_engine/workers/physicsWorker.ts": {},
     "src/toolkit/ecs/effects/FollowTool.ts": {
-      "FollowComponentData": "Interface",
       "FollowToolComponentType": "Enum",
       "FollowToolData": "Interface",
       "followToolSystem": "Function",
       "registerFollowToolEffect": "Function"
     },
     "src/toolkit/ecs/effects/HoverEffect.ts": {
-      "HoverComponentData": "Interface",
       "HoverToolComponentType": "Enum",
       "HoverToolData": "Interface",
       "hoverToolSystem": "Function",
@@ -2525,7 +2524,6 @@
     },
     "src/toolkit/ecs/effects/SunShadowFit.ts": {
       "registerSunShadowFitEffect": "Function",
-      "SunShadowFitComponentData": "Interface",
       "SunShadowFitComponentType": "Enum",
       "SunShadowFitData": "Interface",
       "sunShadowFitSystem": "Function"
@@ -2608,6 +2606,7 @@
       "AtlasCellRect",
       "BuildTextureArrayProps",
       "ComponentData",
+      "ComponentDataMap",
       "ComponentHook",
       "ComponentType",
       "CoreComponentType",
@@ -3069,16 +3068,16 @@
     ],
     "aekasha/toolkit/ecs": [
       "DeleteMeshOptions",
-      "FollowComponentData",
       "FollowObjectCameraParams",
       "FollowToolComponentType",
-      "HoverComponentData",
+      "FollowToolData",
       "HoverToolComponentType",
+      "HoverToolData",
       "MovingPlatformReturn",
       "MutualGravityConfig",
       "PhysicsParams",
-      "SunShadowFitComponentData",
       "SunShadowFitComponentType",
+      "SunShadowFitData",
       "addGravityBody",
       "createFollowObjectCameraRig",
       "createMovingPlatform",

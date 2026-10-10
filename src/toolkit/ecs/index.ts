@@ -14,9 +14,9 @@ export type {
   PhysicsParams,
 } from '../../_engine/utils/world/movingPlatform';
 export { FollowToolComponentType, registerFollowToolEffect } from './effects/FollowTool';
-export type { FollowComponentData } from './effects/FollowTool';
+export type { FollowToolData } from './effects/FollowTool';
 export { HoverToolComponentType, registerHoverToolEffect } from './effects/HoverEffect';
-export type { HoverComponentData } from './effects/HoverEffect';
+export type { HoverToolData } from './effects/HoverEffect';
 export {
   addGravityBody,
   getMutualGravityConfig,
@@ -26,4 +26,4 @@ export {
 } from './effects/MutualGravity';
 export type { MutualGravityConfig } from './effects/MutualGravity';
 export { SunShadowFitComponentType, registerSunShadowFitEffect } from './effects/SunShadowFit';
-export type { SunShadowFitComponentData } from './effects/SunShadowFit';
+export type { SunShadowFitData } from './effects/SunShadowFit';

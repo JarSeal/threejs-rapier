@@ -15,6 +15,7 @@ const MAX_INSTANCES = 50000; // High ceiling for the stress test
 let totalCount = 0;
 let currentInstanceCount = 0;
 let stressSystemsRegistered = false;
+let hoverSystemRegistered = false;
 const individualEntityIds: number[] = [];
 const instancedEntityIds: number[] = [];
 
@@ -84,6 +85,10 @@ export const spawnECSStressTestBatch = (
   targetId?: number
 ) => {
   if (isInstanced) ensureInstancedMeshAndSystems(world, targetId);
+  if (!hoverSystemRegistered) {
+    world.addSystem(ECSSystemStage.APP_LOGIC, 'ecsStressTestHoverSystem', hoverSystem);
+    hoverSystemRegistered = true;
+  }
 
   for (let i = 0; i < count; i++) {
     totalCount++;
@@ -97,7 +102,7 @@ export const spawnECSStressTestBatch = (
       // --- MODE A: LIGHT ENTITY (INSTANCED) ---
       entityId = world.createEntity(); // Just a raw ID
       const index = currentInstanceCount++;
-      world.addComponent(entityId, ComponentType.INSTANCED_STRESS_TEST_DATA, {
+      world.addComponent(entityId, ComponentType.DEBUG_STRESS_TEST_INSTANCE, {
         mesh: instancedMesh!,
         index, // Simple index allocation
       });
@@ -117,7 +122,7 @@ export const spawnECSStressTestBatch = (
 
     // Both modes use the same Hover and Transform logic!
     world.setTransform(entityId, { pos: { x, y, z } });
-    world.addComponent(entityId, ComponentType.HOVER, {
+    world.addComponent(entityId, ComponentType.DEBUG_STRESS_TEST_HOVER, {
       speed: 1.0 + Math.random() * 2.0,
       amplitude: 0.5,
       baseY: y,
@@ -167,10 +172,35 @@ export const initECSStressTest = (batchSize: number = 100, targetId?: number) =>
   );
 };
 
+// HOVER SYSTEM: the engine's own, so the benchmark doesn't depend on the app registering the
+// toolkit's hover effect (the same motion as toolkit/ecs/effects/HoverEffect.ts)
+const hoverSystem = (world: ECSWorld, dt: number) => {
+  const storage = world.getStorage(ComponentType.DEBUG_STRESS_TEST_HOVER);
+  if (storage.size === 0) return;
+  const transformStore = world.getTypedTransformStore();
+
+  for (const [entityId, data] of storage) {
+    data.time += dt;
+    const y = data.baseY + Math.sin(data.time * data.speed) * data.amplitude;
+
+    if (transformStore) {
+      const slot = transformStore.getSlot(entityId);
+      if (slot === -1) continue;
+      transformStore.setPosition(slot, transformStore.posX[slot], y, transformStore.posZ[slot]);
+      continue;
+    }
+
+    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+    if (!transform) continue;
+    transform.position.y = y;
+    transform.setDirty();
+  }
+};
+
 const _tempMatrix = new THREE.Matrix4();
 
 export const instancedSyncSystem = (world: ECSWorld) => {
-  const storage = world.getStorage(ComponentType.INSTANCED_STRESS_TEST_DATA);
+  const storage = world.getStorage(ComponentType.DEBUG_STRESS_TEST_INSTANCE);
   if (storage.size === 0) return;
 
   let needsUpdate = false;
@@ -206,7 +236,7 @@ export const proximitySystem = (world: ECSWorld, targetId: number) => {
   const targetPos = targetTransform.position;
 
   // 2. Get the entities we want to check
-  const storage = world.getStorage(ComponentType.INSTANCED_STRESS_TEST_DATA);
+  const storage = world.getStorage(ComponentType.DEBUG_STRESS_TEST_INSTANCE);
 
   let needsColorUpdate = false;
   let masterMesh: THREE.InstancedMesh | null = null;

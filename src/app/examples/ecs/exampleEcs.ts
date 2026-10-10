@@ -1,5 +1,6 @@
 import { getECSWorld } from '../../../_engine/core/ECS';
-import { ComponentType } from '../../../_engine/core/ECS/ECSCoreComponents';
+import { SpinComponentType } from './SpinComponent';
+import { HoverToolComponentType } from '../../../toolkit/ecs/effects/HoverEffect';
 import { createMeshEntity } from '../../../_engine/core/MeshManager';
 
 // #region ecs-scene (shown in the Hub: hub/pages/examples/ecs/)
@@ -27,12 +28,12 @@ export const scene = async () => {
       position: { x, y: 1.6 },
       castShadow: true,
     });
-    world.addComponent(entityId, ComponentType.SPIN, { axis, speed });
+    world.addComponent(entityId, SpinComponentType.SPIN, { axis, speed });
     return entityId;
   });
 
   // Components combine: the last one hovers too, the toolkit's HOVER moving it as SPIN turns it
-  world.addComponent(ids[3], ComponentType.HOVER, {
+  world.addComponent(ids[3], HoverToolComponentType.HOVER, {
     speed: 1.5,
     amplitude: 0.4,
     baseY: 1.6,

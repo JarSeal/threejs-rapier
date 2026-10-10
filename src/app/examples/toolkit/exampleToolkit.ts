@@ -1,5 +1,5 @@
 import { getECSWorld } from '../../../_engine/core/ECS';
-import { ComponentType } from '../../../_engine/core/ECS/ECSCoreComponents';
+import { HoverToolComponentType } from '../../../toolkit/ecs/effects/HoverEffect';
 import { getMaterial } from '../../../_engine/core/Material';
 import { createMeshEntity } from '../../../_engine/core/MeshManager';
 import { existsOrThrow } from '../../../_engine/utils/assert';
@@ -44,7 +44,7 @@ export const scene = async () => {
       receiveShadow: true,
     });
     // The toolkit's HoverEffect, out of step so they don't bob together
-    world.addComponent(symbolId, ComponentType.HOVER, {
+    world.addComponent(symbolId, HoverToolComponentType.HOVER, {
       speed: 1.2,
       amplitude: 0.15,
       baseY,

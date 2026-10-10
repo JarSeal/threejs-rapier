@@ -4,18 +4,19 @@ A component is a key and the type of its data:
 
 <<< src/app/examples/ecs/SpinComponent.ts#spin-component
 
-## 2. Its types in the registry
+## 2. Adding it to the component map
 
-`src/AppECSRegistry.ts` lists the app's components next to the engine's, so
-[`addComponent`](api:ECSWorld.addComponent) and [`getStorage`](api:ECSWorld.getStorage) know
-`SPIN` and its data's type:
+The same file adds `SPIN` to the engine's component map, so
+[`addComponent`](api:ECSWorld.addComponent) and [`getStorage`](api:ECSWorld.getStorage) know it
+and its data's type:
 
-<<< src/AppECSRegistry.ts#ecs-component-types
+<<< src/app/examples/ecs/SpinComponent.ts#spin-component-map
 
-<<< src/AppECSRegistry.ts#ecs-component-data
-
-Keep this file to keys and types (`SpinComponent.ts` has no imports): everything that imports the
-ECS imports it.
+`declare module 'aekasha'` merges the key into the engine's `ComponentDataMap` interface, with no
+shared file to edit: the toolkit's components (`HOVER`, `FOLLOW`, `SUN_SHADOW_FIT`) add theirs the
+same way, and code uses each module's own key object (`SpinComponentType.SPIN`,
+`HoverToolComponentType.HOVER`). Always augment `'aekasha'`, never a path into the engine: the
+same interface augmented through two paths loses keys without an error.
 
 ## 3. The system
 

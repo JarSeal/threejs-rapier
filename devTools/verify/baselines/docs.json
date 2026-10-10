@@ -2,33 +2,33 @@
   "formatVersion": 2,
   "total": {
     "exports": {
-      "documented": 1338,
-      "total": 2071
+      "documented": 1342,
+      "total": 2069
     },
     "members": {
-      "documented": 209,
+      "documented": 212,
       "total": 441
     }
   },
   "subtrees": {
     "engine": {
       "exports": {
-        "documented": 1300,
-        "total": 2011
+        "documented": 1304,
+        "total": 2012
       },
       "members": {
-        "documented": 159,
-        "total": 357
+        "documented": 162,
+        "total": 360
       }
     },
     "toolkit": {
       "exports": {
         "documented": 38,
-        "total": 60
+        "total": 57
       },
       "members": {
         "documented": 50,
-        "total": 84
+        "total": 81
       }
     }
   },
@@ -53,8 +53,8 @@
         "total": 520
       },
       "members": {
-        "documented": 34,
-        "total": 63
+        "documented": 35,
+        "total": 64
       },
       "undocumented": {
         "exports": [
@@ -280,19 +280,16 @@
     },
     "engine/core/ECS": {
       "exports": {
-        "documented": 21,
-        "total": 35
+        "documented": 25,
+        "total": 36
       },
       "members": {
-        "documented": 10,
-        "total": 96
+        "documented": 12,
+        "total": 98
       },
       "undocumented": {
         "exports": [
           "ECSComponentStorage#ECSStorageLSOverride",
-          "ECSCoreComponents#ComponentData",
-          "ECSCoreComponents#ComponentType",
-          "ECSCoreComponents#ComponentType",
           "ECSCoreComponents#CoreComponentData",
           "ECSCoreComponents#ECSPosition",
           "ECSCoreComponents#ECSRotation",
@@ -1415,27 +1412,21 @@
     "toolkit/ecs/effects": {
       "exports": {
         "documented": 21,
-        "total": 25
+        "total": 22
       },
       "members": {
         "documented": 11,
-        "total": 18
+        "total": 15
       },
       "undocumented": {
         "exports": [
-          "FollowTool#FollowComponentData",
-          "HoverEffect#HoverComponentData",
-          "MutualGravity#GravityBody",
-          "SunShadowFit#SunShadowFitComponentData"
+          "MutualGravity#GravityBody"
         ],
         "members": [
-          "FollowTool#FollowComponentData.TOOL_FOLLOW",
-          "HoverEffect#HoverComponentData.TOOL_HOVER",
           "HoverEffect#HoverToolData.amplitude",
           "HoverEffect#HoverToolData.baseY",
           "HoverEffect#HoverToolData.speed",
-          "HoverEffect#HoverToolData.time",
-          "SunShadowFit#SunShadowFitComponentData.TOOL_SUN_SHADOW_FIT"
+          "HoverEffect#HoverToolData.time"
         ]
       }
     },

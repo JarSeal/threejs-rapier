@@ -22,9 +22,10 @@ A component is a type key and its data:
 [`getStorage`](api:ECSWorld.getStorage) gives every entity that has a component, with its data,
 which is what a system loops over.
 
-The engine's component types are in `src/_engine/core/ECS/ECSRegistry.ts`. The app adds its own
-in `src/AppECSRegistry.ts`, as types only, so the type checker knows each component's data
-everywhere. The [ECS example](hub:examples/ecs#2-its-types-in-the-registry) shows how.
+The engine's component types are in `src/_engine/core/ECS/ECSRegistry.ts`. An app or toolkit
+module adds its own next to its code, by augmenting the engine's `ComponentDataMap` interface
+(`declare module 'aekasha'`), so the type checker knows each component's data everywhere. The
+[ECS example](hub:examples/ecs#2-adding-it-to-the-component-map) shows how.
 
 The transform is a component too. Write it with [`setTransform`](api:ECSWorld.setTransform)
 (physics bodies included) and the engine syncs it onto the entity's Three.js object before the

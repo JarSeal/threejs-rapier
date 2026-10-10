@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../../_engine/core/ECS';
-import { ComponentType } from '../../../_engine/core/ECS/ECSCoreComponents';
+import { SpinComponentType } from './SpinComponent';
 import { ECSSystemStage } from '../../../_engine/core/ECS/SystemStages';
 
 // #region spin-system (shown in the Hub: hub/pages/examples/ecs/)
@@ -10,7 +10,7 @@ const turn = new THREE.Quaternion();
 
 /** Turns every entity with a SPIN component by its speed × the frame's time */
 export const spinSystem = (world: ECSWorld, dt: number) => {
-  for (const [entityId, spin] of world.getStorage(ComponentType.SPIN)) {
+  for (const [entityId, spin] of world.getStorage(SpinComponentType.SPIN)) {
     const rotation = world.getRotation(entityId);
     if (!rotation) continue;
     axis.set(spin.axis.x, spin.axis.y, spin.axis.z).normalize();

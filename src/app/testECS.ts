@@ -3,10 +3,12 @@ import type { MeshProps } from '../_engine/core/MeshManager';
 import { createMeshEntity } from '../_engine/core/MeshManager';
 import { ECSWorld, getECSWorld } from '../_engine/core/ECS';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
-import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { createLightEntity } from '../_engine/core/LightManager';
 import { createCameraEntity } from '../_engine/core/CameraManager';
-import { registerHoverToolEffect } from '../toolkit/ecs/effects/HoverEffect';
+import {
+  HoverToolComponentType,
+  registerHoverToolEffect,
+} from '../toolkit/ecs/effects/HoverEffect';
 
 export const scene = async () => {
   const updateLoaderFn = getLoaderStatusUpdater();
@@ -142,7 +144,7 @@ export const scene = async () => {
   const ballId = createMeshEntity(redBallProps);
 
   // Add the Hover behavior
-  ecsWorld.addComponent(ballId, ComponentType.HOVER, {
+  ecsWorld.addComponent(ballId, HoverToolComponentType.HOVER, {
     speed: 2.0, // How fast it bobs
     amplitude: 0.5, // How high it bobs
     baseY: 1.0, // The center point of the hover
@@ -179,7 +181,7 @@ export const scene = async () => {
   registerHoverToolEffect(uiWorld);
   const ball2Id = createMeshEntity(redBallProps, undefined, uiWorld);
   uiWorld.setTransform(ball2Id, { pos: { x: 4, y: 6, z: -5 } });
-  uiWorld.addComponent(ball2Id, ComponentType.HOVER, {
+  uiWorld.addComponent(ball2Id, HoverToolComponentType.HOVER, {
     speed: 3.14, // How fast it bobs
     amplitude: 0.85, // How high it bobs
     baseY: 6.0, // The center point of the hover

@@ -6,8 +6,6 @@ import type { PhysicsSimTierData, PhysicsTierPolicyMemberData } from '../Physics
 import type { PhysicsWireframeColors } from '../Config';
 import type { EntityDebugData, ManagedByData } from './ECSRegistry';
 import { CoreComponentType as CoreType } from './ECSRegistry';
-import type { AppComponentData } from '../../../AppECSRegistry';
-import { AppComponentType as AppType } from '../../../AppECSRegistry';
 import type { CharacterObject } from '../Character/CharacterTypes';
 import type { LodData } from '../Lod/LodTypes';
 import type { InstancedMeshSlotData } from '../Instancing/InstancedMeshPoolTypes';
@@ -115,15 +113,44 @@ export interface CoreComponentData {
     colorOverrides?: PhysicsWireframeColors;
   };
   [CoreType.DEBUG_TAG_IS_DEBUG_CAMERA]: boolean;
+  /** An ECS stress test entity drawn as one instance of the test's InstancedMesh
+   * (utils/ECSStressTest.ts). */
+  [CoreType.DEBUG_STRESS_TEST_INSTANCE]: { mesh: THREE.InstancedMesh; index: number };
+  /** An ECS stress test entity's bobbing (utils/ECSStressTest.ts). */
+  [CoreType.DEBUG_STRESS_TEST_HOVER]: {
+    speed: number;
+    amplitude: number;
+    baseY: number;
+    time: number;
+  };
 }
 
-// --- Union Types of the core components and app components for the World ---
-export const ComponentType = {
-  ...CoreType,
-  ...AppType,
-} as const;
-export type ComponentType = (typeof ComponentType)[keyof typeof ComponentType];
-export type ComponentData = CoreComponentData & AppComponentData;
+/**
+ * Every component type's data, by its key: the engine's own, plus the keys app and toolkit
+ * modules add by augmenting `'aekasha'`.
+ * @remarks Augment only `'aekasha'`, never a deep path to this file: the same interface augmented
+ * through two specifiers in one program loses keys without an error.
+ * @example
+ * ```ts
+ * export const SpinComponentType = { SPIN: 'APP_SPIN' } as const;
+ *
+ * declare module 'aekasha' {
+ *   interface ComponentDataMap {
+ *     [SpinComponentType.SPIN]: { speed: number };
+ *   }
+ * }
+ * ```
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- the declaration merging target
+export interface ComponentDataMap extends CoreComponentData {}
+
+/** The engine's own component keys (the same object as `CoreComponentType`). App and
+ * toolkit keys live in their own modules' key objects. */
+export const ComponentType = CoreType;
+/** Any component key the program knows: the engine's and every augmented one. */
+export type ComponentType = keyof ComponentDataMap;
+/** Every component type's data, by its key ({@link ComponentDataMap}). */
+export type ComponentData = ComponentDataMap;
 
 /** This just makes shit faster... */
 export const OBJECT3D_TAGS = [
