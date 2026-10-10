@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-5 implemented, Phase 6 steps 1, 2 and 4 (step 3, the Firefox run, pending)
+Status: in progress | Phases 1-6 implemented
 Category: Documentation, Dev tooling, Standards
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md (the standard they apply)
@@ -529,7 +529,7 @@ Documents only.
 - Not run: `yarn verify:scenes`. The engine changes are type exports and comments (erased under
   `verbatimModuleSyntax`), and `bundle.json` and every chunk are within the baseline.
 
-### Phase 6: the cross-browser determinism run — steps 1, 2, 4 done
+### Phase 6: the cross-browser determinism run — done
 
 1. `scenes.ts`: `--browser chromium|firefox` (default `chromium`). Firefox:
    - `firefox.launch` from playwright-core (the install hint `npx playwright-core install
@@ -548,7 +548,7 @@ Documents only.
 4. CLAUDE.md's `verify:scenes` entry, and the refactoring verification for p610 and p614 (which
    change simulation code): `--browser firefox` before the PR.
 
-**As built (steps 1, 2 and 4; step 3 not run yet):**
+**As built:**
 
 - Run on macOS (Apple M1), not the WSL2 machine §2.6 was grounded on: no scene baselines existed
   there, and Playwright's Firefox (revision 1543, Firefox 155) wasn't installed (`npx playwright-core
@@ -580,9 +580,13 @@ Documents only.
   Writing the generated files only when they change would prevent it (not in this plan).
 - Step 4: CLAUDE.md's `verify:scenes` entry, p610's and p614's "Done when", the standards page's
   simulation section and the quick start's dev-only "Check your changes".
-- **Step 3 is pending:** the full `yarn verify:scenes --browser firefox` (about 72 page loads on the
-  GPU) runs before Phase 8, then its findings (issue files, `browsers: ['firefox']` entries) are
-  added here. Phase 7 doesn't depend on it.
+- Step 3: `yarn verify:scenes --browser firefox` over every scene, **72 of 72 passed in 312 s**:
+  every probe hash equals Chromium's (the `webgpu` baseline), in all three physics targets (the
+  SAB, message and main-thread probe configs all applied in Firefox). No findings, so no issue file
+  and no `browsers: ['firefox']` entry. Even the `unstableHash` runs (`space`'s worker targets,
+  `thirdPersonGymScene`) matched: their non-determinism is between loads, not between engines. No
+  Firefox-only console errors (the allowed ones are the texture array / atlas scenes' own); 5
+  distinct `console.warn`s, which don't fail a run.
 
 ### Phase 7: the CLAUDE.md split
 
