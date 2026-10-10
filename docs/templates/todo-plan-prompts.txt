@@ -11,7 +11,6 @@ Fix or tweak these list items:
 - The on-screen tools' left top corner groups should have equal spacing. Now the AE symbol (about button) and the undo/redo buttons are in the same group but the view switchers are in a separate group. They should be in the same group.
 - Try to avoid plan document references in the actual jsDoc description. They will end up on the documentation page and I don't want that. I want to publish the Hub at one point and I want it to be clean.
 - In the Hub, make the A-Z index its own sub page in the Documentation. Also in there make Issues and Versions be one main menu element ("Versions & Issues") to save space on the main menu and be more clear. Use the Versions icon for it. Leave the Issues quick link on the Hub's home page. Also add the changelog as its own page (as a sub page under the main menu). The main page for Versions & Issues can show the versions and then have cards for Issues and Changelog.
-- Add an instruction to CLAUDE.mdn (or make it a rule or something) that for every epic there should be the instructions for which plans can be implemented in shared branch and which should have their own branch / PR. Also add a rule that when a plan phase ends, you should tell which...
 
 If any of these fixes/tweaks are large refactorings/fixes then produce a separate plan for each large one.
 

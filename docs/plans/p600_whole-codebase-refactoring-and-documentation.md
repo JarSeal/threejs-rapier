@@ -478,14 +478,26 @@ other once their blockers land, and can run in parallel branches.
   codenames from the sun's and the moon's sequences, chosen when the major merges. The app gets
   the bump its migration needs. The import codemod and the Hub migration guide ship with the
   major; no long-lived re-export shims.
-  - Stage B's plans can merge to `main` one by one only if each leaves the tree compiling and the
-    app working. They then share the major: the first merge bumps it, the next ones add to the
-    same changelog entry until the major is tagged. p606 decides whether Stage B instead runs on
-    one long-lived branch.
+  - The majors land with p606 and p607 together (p606 D5), on the `stage-b` integration branch
+    below; p608-p611 are then minor or patch bumps (from p606 on, consumers import entries, so
+    the moves are internal).
 - **Stage C** plans are patch or minor bumps per part (documentation and internal refactors are
   patches; a new public API is a minor).
-- Every child plan is its own branch and PR, and runs `yarn checkVersions --against main`. The
-  exception is Stage A's document plans, which may share a branch (p602 and p603 do).
+
+### Branches and PRs
+
+Every PR into `main` runs `yarn checkVersions --against main` and bumps what it changed (one bump
+per merge).
+
+| Plans | Branch | Merges into | PR |
+| --- | --- | --- | --- |
+| Stage A (p601-p605) | each its own; the document plans p602 and p603 shared one | `main` | one per branch (all merged) |
+| p606 | `layering-invasion-and-public-entry` | `stage-b` (cut from `main` when p606 is done) | into `stage-b` after p606's last phase: reviewed alone, its versions and changelog entry already in |
+| p607 | its own, from `stage-b` | `stage-b` | into `stage-b` after p607's last phase; it adds to p606's changelog entry |
+| `stage-b` | — | `main` | right after p607's PR merges: the engine and toolkit majors (codenames chosen then) and the app minor |
+| p608, then p609; p610 and p611 after p608 | each its own, from `main` | `main` | one per plan when its last phase is done; p608 opens with no other branch open (its codemod reruns on a fresh `main`) |
+| Stage C (p612-p620) | each its own, from `main` | `main` | one per plan; they can run in parallel once their blockers land |
+| Stage D (p621) | its own | `main` | closes the epic |
 
 ## 12. Risks and open questions
 
