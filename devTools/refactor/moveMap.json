@@ -2059,6 +2059,11 @@
       "action": "move",
       "plan": "p608"
     },
+    "src/_engine/workers/physicsWorker.test.ts": {
+      "to": "src/_engine/features/physics/worker/PhysicsWorker.test.ts",
+      "action": "move",
+      "plan": "p608"
+    },
     "src/_engine/workers/physicsWorker.ts": {
       "to": "src/_engine/features/physics/worker/PhysicsWorker.ts",
       "action": "move",

@@ -169,6 +169,7 @@ const ENGINE_RULES: MoveRule[] = [
   { from: `${E}core/Physics/ENGINES.ts`, to: `${F}physics/backends/Engines.ts` },
   { from: `${E}core/Physics/EngineRapier.ts`, to: `${F}physics/backends/rapier/EngineRapier.ts` },
   { from: `${E}workers/physicsWorker.ts`, to: `${F}physics/worker/PhysicsWorker.ts` },
+  { from: `${E}workers/physicsWorker.test.ts`, to: `${F}physics/worker/PhysicsWorker.test.ts` },
   { from: `${E}workers/physics/`, to: `${F}physics/worker/` },
   { from: `${E}core/Debug/_dbg__PhysicsAPI.ts`, to: `${F}physics/debug/_dbg__PhysicsAPI.ts` },
   {
