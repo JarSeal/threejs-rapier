@@ -24,8 +24,7 @@ const initLogger = () => {
 // @TODO: add setLogger that sets a custom logger to replace the default
 
 /**
- * Returns the logger
- * @returns ({@link logger})
+ * Returns the logger, the console (a custom one isn't supported yet), set on the first call
  */
 export const getLogger = () => {
   initLogger();

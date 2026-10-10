@@ -76,7 +76,7 @@ The `<head>` is for metadata only. Nothing else in it reaches the built page, be
 | `aek:featured`    | `true` to feature the page on the homepage: `::: cards <path> featured` shows only those ([Cards](#cards)).                       |
 | `aek:image`       | The page's picture on its card ([Cards](#cards)): `scene:<sceneId>` for a scene's Hub image, or an image path from the repo root. |
 | `aek:group`       | The group a `::: cards <path> group=<name>` shows the page in: the Features page's `Core`, `World`, `Performance` and `Tools`.    |
-| `aek:covers`      | A feature page's CLAUDE.md Architecture sections, comma-separated, by heading without its parenthetical (`Debug system`).         |
+| `aek:covers`      | A feature page's CLAUDE.md sections, comma-separated, by heading without its parenthetical (`Debug system`).                      |
 
 The nav is built from these tags alone, so there's no separate menu list to keep in sync. A misspelt `aek:` name gives a warning.
 
@@ -154,7 +154,7 @@ The renderer is created in [src/index.ts](repo:src/index.ts#L10).
 
 ### CLAUDE.md sections
 
-A feature page names the CLAUDE.md Architecture sections it covers in its head, and `::: claude-md` links them:
+A feature page names the CLAUDE.md sections it covers in its head, and `::: claude-md` links them. The sections are the root file's (`.claude/CLAUDE.md`) `###` headings under `## Architecture`, and the `##` headings of every nested `CLAUDE.md` (a subsystem's notes next to its code, `src/_engine/core/SkyBox/CLAUDE.md`). A name can be in both: the root keeps a section's rules that apply everywhere, its nested file the detail.
 
 ```html
 <meta name="aek:covers" content="Physics" />
@@ -165,13 +165,13 @@ A feature page names the CLAUDE.md Architecture sections it covers in its head, 
 :::
 ```
 
-- In dev, it renders a line with a link to each section, opening the editor at its heading. In `yarn hub:build`, it renders nothing: CLAUDE.md is the contributors' notes, not the public's.
+- In dev, it renders a line with a link to each section, opening the editor at its heading (a nested file's link names the file). In `yarn hub:build`, it renders nothing: CLAUDE.md is the contributors' notes, not the public's.
 - The directive takes no content.
 
 The build checks the coverage both ways (when it runs in the repo, where CLAUDE.md is):
 
 - A name in `aek:covers` that CLAUDE.md doesn't have fails the build, so a renamed section fails it until `aek:covers` follows.
-- An Architecture section that no page covers is a warning at its line in CLAUDE.md. Sections that aren't features (the folder split, plans, the bootstrap flow, the Hub itself, the build config notes) are listed in `hub.config.ts`'s `coverageIgnore`. A new subsystem section goes into a feature page's `aek:covers`, or into `coverageIgnore` when it isn't a feature.
+- A section that no page covers is a warning at its line in its CLAUDE.md. Sections that aren't features (the folder split, plans, the bootstrap flow, the Hub itself, the build config notes) are listed in `hub.config.ts`'s `coverageIgnore`. A new subsystem section goes into a feature page's `aek:covers`, or into `coverageIgnore` when it isn't a feature.
 
 ## Local-only content
 
@@ -320,7 +320,7 @@ The search box (⌘K, Ctrl+K or `/`) searches every page except the homepage. `y
 - **A heading with an id is a search result.** Each section from a heading to the next is one result, with the headings above it as the breadcrumb. The text before a page's first heading is the page's own result, along with its `<title>`, `aek:tags` and `aek:description`. Headings make a long page easier to search as well as to read.
 - **The title, headings and tags weigh the most.** Put the words a reader would search for in `aek:tags`, especially those the page doesn't spell out (`rapier` on the physics page).
 - **Code blocks add their identifiers, not their keywords.** Identifiers are split at camelCase too, so `mesh` finds `createMeshEntity`.
-- **The API is searched by name.** Every engine and toolkit module, export and class or interface member is a result of its own, weighted like a title and split at camelCase, with its kind and its summary's first sentence. Only the name is searched: the summary is shown, not indexed, which keeps the index under 1 MB.
+- **The API is searched by name.** Every engine and toolkit module, export and class or interface member is a result of its own, weighted like a title and split at camelCase, with its kind and its summary's first sentence (clipped to 120 characters). Only the name is searched: the summary is shown, not indexed, which keeps the index under 1 MB.
 - **Content with the class `hubSearchSkip` is left out**, headings included: the cards, the API lists (indexed their own way) and the Version page's changelog, which the browser's own find searches on that page.
 - **`yarn hub:build` prints the index's size.** Over 1 MB it warns. The index is loaded whole on first use, so keep it lean.
 
@@ -526,7 +526,7 @@ The same checks run in dev and in `yarn hub:build`. In dev, an error shows the e
 | `::: cards: unknown argument "…"`                      | Use `featured` or `group=<name>`.                     |
 | `Dead link repo:…: no such file from the repo root`    | The file moved. Fix the path after `repo:`.           |
 | `Dead link repo:…: no heading #x in …`                 | The heading was renamed. Use one listed.              |
-| `aek:covers: CLAUDE.md has no Architecture section …`  | The section was renamed. Use one listed.              |
+| `aek:covers: no CLAUDE.md has a section …`             | The section was renamed. Use one listed.              |
 | `aek:image: no such file from the repo root: …`        | Fix the path, or use `scene:<sceneId>`.               |
 | `aek:image: not a PNG, JPEG or WebP: …`                | Convert the image to one of those.                    |
 | Warning: `Slot "…" has no ….md: it stays empty`        | Add the `.md`, or remove the slot.                    |
@@ -548,4 +548,4 @@ The same checks run in dev and in `yarn hub:build`. In dev, an error shows the e
 
 ## Keeping it current
 
-A change that adds, changes or removes an engine or toolkit feature or public API updates its Hub content in the same branch: the feature page, the example page and its scene, and the snippets they include. A `#region` marker in engine, toolkit or app code means a page includes that code, so renaming or removing it breaks the page. Run `yarn hub:build` before you commit. It catches the links and includes your change broke, and warns about a new CLAUDE.md Architecture section that no feature page covers. When a change makes an example scene look different, save its Hub image again.
+A change that adds, changes or removes an engine or toolkit feature or public API updates its Hub content in the same branch: the feature page, the example page and its scene, and the snippets they include. A `#region` marker in engine, toolkit or app code means a page includes that code, so renaming or removing it breaks the page. Run `yarn hub:build` before you commit. It catches the links and includes your change broke, and warns about a new CLAUDE.md section that no feature page covers. When a change makes an example scene look different, save its Hub image again.

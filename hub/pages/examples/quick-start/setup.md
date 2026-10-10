@@ -47,6 +47,11 @@ yarn verify:scenes      # every scene vs. your last good run
   are kept on your machine (`.cache/verify/scenes/`), because snapshots depend on the GPU: record
   them on `main` with `--update`, then run it on your branch. `--only <scene id>` and
   `--config quick` keep a run short; the full run takes up to an hour.
+- `yarn verify:scenes --browser firefox` runs the debug configurations in Firefox (WebGL2) and
+  compares only their determinism hashes, with your Chromium baseline: a difference means the
+  simulation depends on the JavaScript engine. Run it after changing simulation code, once the
+  Chromium run passes (so a difference is the browser's, not your change's). It needs
+  Playwright's Firefox once: `npx playwright-core install firefox`.
 
 Both verify commands write to one log, which you can follow from any terminal:
 

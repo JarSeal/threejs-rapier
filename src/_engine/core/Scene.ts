@@ -1,11 +1,14 @@
 import * as THREE from 'three/webgpu';
-import { deleteGeometry, GeoProps } from './Geometry';
-import { deleteMaterial, MatProps } from './Material';
+import type { GeoProps } from './Geometry';
+import { deleteGeometry } from './Geometry';
+import type { MatProps } from './Material';
+import { deleteMaterial } from './Material';
 import { lerror, lwarn } from '../utils/Logger';
-import { deleteTexture, getTexture, TextureProps } from './Texture';
+import type { TextureProps } from './Texture';
+import { deleteTexture, getTexture } from './Texture';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
-import { LightProps } from './LightManager';
+import type { LightProps } from './LightManager';
 import type { ImportAssetParams } from './Import/ImportTypes';
 import {
   clearSkyBox,
@@ -15,11 +18,11 @@ import {
 } from './SkyBox/SkyBox';
 import type { SkyBoxDef } from './SkyBox/SkyBoxTypes';
 import generatedAppData from '../generatedAppData.json';
-import { CameraProps } from '../schemas/cameraSchema';
-import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import type { CameraProps } from '../schemas/cameraSchema';
+import type { CoreEntityOpts } from '../schemas/_helperSchemas';
 import type { SceneSpatialDomainEntry } from '../schemas/spatialDomainSchema';
 import type { ImpostorDef } from '../schemas/impostorSchema';
-import { MeshProps } from './MeshManager';
+import type { MeshProps } from './MeshManager';
 import { deleteEntity } from '../utils/ECSHelpers';
 import { getECSWorld, getEntityIdByAppId } from './ECS';
 import type { PostFxPassProps } from './PostFX/PostFXTypes';

@@ -1,5 +1,6 @@
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../core/Config';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import type { DebugKeyShortcutsTab } from '../core/Debug/_dbg__DebugKeyShortcuts';
 
 type LightGUIModule = typeof import('../core/Debug/_dbg__DebugTools');
@@ -138,7 +139,7 @@ export const initDebugTools = () => {
 /**
  * Getter for the debugToolsState object
  * @param loadFromLS (boolean) optional flag to get the debugToolsState from the LS
- * @returns debugToolsState {@link debugToolsState}
+ * @returns the Debug tools tab's state, or its defaults while the debug module isn't loaded
  */
 export const getDebugToolsState = (loadFromLS?: boolean) =>
   useDebug(debugGUI, true)?._getDebugToolsState(loadFromLS) || defaultDebugToolsState;

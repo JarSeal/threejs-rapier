@@ -1,4 +1,4 @@
-import { type Scene } from 'three/webgpu';
+import type { Scene } from 'three/webgpu';
 import {
   getConfig,
   IS_DEBUG_ENV,

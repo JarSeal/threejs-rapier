@@ -1,5 +1,6 @@
 import { getConfig, IS_DEBUG_ENV } from '../core/Config';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
 type PostFxProfilerModule = typeof import('../core/Debug/_dbg__PostFXProfiler');
 let profiler: DebugModuleRef<PostFxProfilerModule> | null = null;
@@ -32,7 +33,7 @@ export const setPostFxMeasureEnabled = async (enabled: boolean) => {
 export const isPostFxMeasureEnabled = () => useDebug(profiler)?._isPostFxMeasureEnabled() || false;
 
 /**
- * Returns the smoothed per-PostFX pass CPU and GPU times, or null when not measuring.
- * @returns ({@link PostFxStats} | null)
+ * Returns the smoothed per-PostFX pass CPU and GPU times (`PostFxStats`), or null when not
+ * measuring.
  */
 export const getPostFxPassStats = () => useDebug(profiler)?._getPostFxPassStats() || null;

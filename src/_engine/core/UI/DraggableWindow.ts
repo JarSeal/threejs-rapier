@@ -1,5 +1,7 @@
-import { CMP, TCMP } from '../../utils/CMP';
-import { lsGetItem, lsSetItem, StorageValue } from '../../utils/LocalAndSessionStorage';
+import type { TCMP } from '../../utils/CMP';
+import { CMP } from '../../utils/CMP';
+import type { StorageValue } from '../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lerror } from '../../utils/Logger';
 import { getWindowSize } from '../../utils/Window';
 import { getConfig, IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../Config';
@@ -8,7 +10,8 @@ import { addResizer } from '../MainLoop';
 import styles from './DraggableWindow.module.scss';
 import { getSvgIcon, type SvgIconKey } from './icons/SvgIcon';
 
-type Units = 'px' | '%' | 'vw' | 'vh';
+/** The CSS unit of a window's position or size value. */
+export type Units = 'px' | '%' | 'vw' | 'vh';
 
 export type DraggableWindowData = { [key: string]: unknown };
 
@@ -203,7 +206,7 @@ type Layer = 'APP' | 'DEBUG';
 /** Checks whether a window's target (eg. an entity, by the window's `data`) exists in the
  * current scene. Not persisted (functions can't go into LS), so registered next to each window's
  * content function. */
-type SceneTargetResolver = (data?: DraggableWindowData) => boolean;
+export type SceneTargetResolver = (data?: DraggableWindowData) => boolean;
 
 const LS_KEY = 'AEK_popupWindows';
 /** The kinds' geometries, in the same LS object as the windows */
@@ -1464,6 +1467,8 @@ export const registerDraggableWindowCmp = (
 };
 
 /**
+ * @param id (string) window kind (a window's id when it has no kind)
+ * @param resolver ((data) => boolean) whether the window's target exists in the current scene
  * @deprecated Use {@link registerDraggableWindow}'s `sceneTargetResolver` (or
  * {@link registerDraggableWindowKind}'s).
  *
@@ -1471,8 +1476,6 @@ export const registerDraggableWindowCmp = (
  * the window stays open (rebuilt for the next scene) when the resolver returns true for the
  * window's `data`, and closes otherwise. It is also checked when restoring the window on reload.
  * One registration covers every window of the kind.
- * @param id (string) window kind (a window's id when it has no kind)
- * @param resolver ((data) => boolean) whether the window's target exists in the current scene
  */
 export const registerDraggableWindowSceneTargetResolver = (
   id: string,
@@ -1482,13 +1485,13 @@ export const registerDraggableWindowSceneTargetResolver = (
 };
 
 /**
+ * @param id (string) window kind (a window's id when it has no kind)
+ * @param registerContentFn ((data) => TCMP) builds the content from the window's `data`
  * @deprecated Use {@link registerDraggableWindow}'s `content` (or
  * {@link registerDraggableWindowKind}'s).
  *
  * Registers the content function of a window, for the opens without `content` (eg. a restore from
  * LS). One registration covers every window of the kind.
- * @param id (string) window kind (a window's id when it has no kind)
- * @param registerContentFn ((data) => TCMP) builds the content from the window's `data`
  */
 export const registerDraggableWindowContentFn = (
   id: string,

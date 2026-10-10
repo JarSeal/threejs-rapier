@@ -7,7 +7,7 @@
 // Both maps have +y at the square's centre. Full: the equator on the diamond |u| + |v| = 1, -y at
 // the four corners. Hemi: the horizon on the square's edge (a full map's upper half turned 45° and
 // scaled to fill it), anything below the horizon clamped onto it.
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { abs, cross, float, max, select, vec2, vec3 } from 'three/tsl';
 
 /** Above this |y| a frame's up reference is -z instead of +y (the frame looks straight down or up). */

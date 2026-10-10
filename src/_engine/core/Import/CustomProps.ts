@@ -103,7 +103,6 @@ const toShapeParams = (props: Record<string, unknown>, type: ColliderParams['typ
  * unknown `rigidType` → 'FIXED'.
  * @param userData the node's custom props
  * @param override optional {@link ImportPhysicsParams} that wins field-by-field
- * @returns {@link ParsedCustomProps}
  */
 export const parseCustomProps = (
   userData: Record<string, unknown>,

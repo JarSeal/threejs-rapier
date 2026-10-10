@@ -1,9 +1,5 @@
-import {
-  closeDraggableWindow,
-  getDraggableWindow,
-  openDraggableWindow,
-  OpenDraggableWindowProps,
-} from './DraggableWindow';
+import type { OpenDraggableWindowProps } from './DraggableWindow';
+import { closeDraggableWindow, getDraggableWindow, openDraggableWindow } from './DraggableWindow';
 
 export type DialogProps = Omit<
   OpenDraggableWindowProps,

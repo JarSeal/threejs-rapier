@@ -57,6 +57,7 @@ import {
   CodeWriter,
   getObjectMembers,
   getTabledMembers,
+  getTabledVariants,
   MEMBER_POSITION_PREFIX,
   printHeritage,
   printSignature,
@@ -722,6 +723,13 @@ const renderSymbol = (ctx: Ctx, symbol: DeclarationReflection) => {
         [...indexRows(ctx, symbol), ...memberRows(ctx, getTabledMembers(symbol))],
         'Properties'
       );
+      for (const variant of getTabledVariants(symbol)) {
+        html += renderTable(
+          'Property',
+          memberRows(ctx, variant.members),
+          `Properties (${variant.label})`
+        );
+      }
       html += renderFunctionType(ctx, symbol.type);
       html += renderCommentTail(ctx, symbol.comment, line);
       break;
@@ -955,9 +963,22 @@ const createLinkResolver =
   };
 
 /**
+ * A stored summary's length (p605 Phase 5): the result shows a line or two, and the summaries are
+ * the index's largest stored field. Cut at a word, with an ellipsis.
+ */
+const SEARCH_SUMMARY_MAX_LENGTH = 120;
+
+const clipSearchSummary = (text: string) => {
+  if (text.length <= SEARCH_SUMMARY_MAX_LENGTH) return text;
+  const cut = text.slice(0, SEARCH_SUMMARY_MAX_LENGTH + 1);
+  const space = cut.lastIndexOf(' ');
+  return `${cut.slice(0, space > 0 ? space : SEARCH_SUMMARY_MAX_LENGTH).replace(/[\s,;:.(]+$/, '')}…`;
+};
+
+/**
  * The search's API documents (§2.4): each module, symbol and class or interface member, found by
- * its name, with its kind and its summary's first sentence for the result (stored, not indexed:
- * the index stays under p552's 1 MB). Empty values are left out, not stored.
+ * its name, with its kind and its summary's first sentence for the result (stored, not indexed,
+ * and clipped: the index stays under p552's 1 MB). Empty values are left out, not stored.
  */
 const createSearchDocs = (index: ApiIndex): HubSearchExtraDoc[] => {
   const doc = (
@@ -967,7 +988,7 @@ const createSearchDocs = (index: ApiIndex): HubSearchExtraDoc[] => {
     kind: string,
     summary: string
   ): HubSearchExtraDoc => {
-    const text = toPlainText(summary);
+    const text = clipSearchSummary(toPlainText(summary));
     return {
       path: pagePath,
       ...(anchor && { anchor }),

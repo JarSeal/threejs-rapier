@@ -34,6 +34,10 @@ rule (p602 D1, D3, D9, D10).
   writes the new paths).
 - **The entry points:** `aekasha` (TS `paths` + Vite alias) with the public exports p602 Phase 2
   listed; the app (about 40 deep import paths today) switches to them.
+- **`@example` blocks compile** (the coding standards' JSDoc rule, `_DONE_p605` Phase 1, which
+  left the check here because it needs the `aekasha` alias): extract each `@example` of the
+  documented API, prepend its entry's import (examples leave imports out) and run `tsc` on it, in
+  `yarn test` or `yarn verify:baselines --docs` so the Stop hook runs it. 2 `@example`s exist today.
 - **Boundary lint** (`import/no-restricted-paths`, `no-restricted-imports`): errors in the engine
   and the toolkit, warnings in the app until p608.
 - Decide whether Stage B runs on one long-lived branch or merges plan by plan (p600 §11).

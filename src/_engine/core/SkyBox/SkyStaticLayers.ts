@@ -53,7 +53,10 @@ let bake: StaticLayersBake | null = null;
 let request: 'NOW' | 'THROTTLED' | null = null;
 let lastBakeMs = -Infinity;
 
-/** @internal Debug hooks around every bake (the static layers folder's stats). */
+/**
+ * Debug hooks around every bake (the static layers folder's stats).
+ * @internal
+ */
 export type StaticLayersBakeHooks = { onBakeStart: () => void; onBakeEnd: (cpuMs: number) => void };
 let bakeHooks: StaticLayersBakeHooks | null = null;
 export const _setStaticLayersBakeHooks = (hooks: StaticLayersBakeHooks | null) => {

@@ -1,9 +1,11 @@
-import { CMP, classes, TCMP } from '../../utils/CMP';
+import type { TCMP } from '../../utils/CMP';
+import { CMP, classes } from '../../utils/CMP';
 import './DropDown.scss';
 
 export type DropDownOption = { value: string; label: string };
 
-type ClassProp = string | string[];
+/** A class name, or several, for one of the drop-down's elements. */
+export type ClassProp = string | string[];
 
 export type DropDownProps = {
   /** The options, or a getter re-read on every open (and refresh). */
@@ -77,7 +79,6 @@ const swallowNextKeyUp = (key: string) => {
  * Space or a click picks, and Escape, Tab or a click outside closes it without a change. The
  * list's keys reach no key binding (their keyups included).
  * @param props (object) {@link DropDownProps}
- * @returns {@link TDropDown}
  */
 export const createDropDown = (props: DropDownProps): TDropDown => {
   const placement = props.placement || 'bottom';

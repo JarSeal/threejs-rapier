@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Refactoring, Documentation, Toolkit, App
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage C)
-Blocked by: p605_coding-standards-and-documentation-tooling.md, p609_toolkit-and-app-restructure.md
+Blocked by: p609_toolkit-and-app-restructure.md
 Blocks: p621_hub-docs-readme-and-claude-md-final.md
 
 # Review: Toolkit and App Code — Stub

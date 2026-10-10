@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createGeometry, deleteGeometry } from '../../_engine/core/Geometry';
 import { createSeededRandom } from './seededRandom';

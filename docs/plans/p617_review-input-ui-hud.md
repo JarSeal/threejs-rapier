@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Refactoring, Documentation, UI, Input
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage C)
-Blocked by: p605_coding-standards-and-documentation-tooling.md, p610_character-and-input-action-architecture.md
+Blocked by: p610_character-and-input-action-architecture.md
 Blocks: p621_hub-docs-readme-and-claude-md-final.md
 
 # Review: Input, UI Kit and HUD — Stub
@@ -21,6 +21,7 @@ Applies p600 §5 (the per-file review standard) and p605's JSDoc style to every 
 ## Inputs
 
 - p602 D5, p610, the p800 prompt in `docs/templates/todo-plan-prompts.txt`.
+- p605 Phase 5's `notExported` warnings in scope (`yarn hub:build` lists each with its file and line; export the type with a summary or change the signature): `icons` (`UI/icons/SvgIcon.ts`, the value `SvgIconKey` is `keyof typeof`).
 
 ## Done when
 

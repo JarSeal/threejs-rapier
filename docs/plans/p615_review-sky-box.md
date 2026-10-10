@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Refactoring, Documentation, Sky box
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage C)
-Blocked by: p605_coding-standards-and-documentation-tooling.md, p608_engine-folder-restructure.md
+Blocked by: p608_engine-folder-restructure.md
 Blocks: p621_hub-docs-readme-and-claude-md-final.md
 
 # Review: Sky Box — Stub
@@ -15,7 +15,7 @@ Applies p600 §5 (the per-file review standard) and p605's JSDoc style to every 
 ## Scope
 
 - `SkyBox/` (10 files) and `SkyBox/layers/` (8; 47 of 79 exports documented), its debug folders (17 files: structure and docs only, p800 rewrites the panels).
-- The CLAUDE.md sky box section becomes the folder's nested `CLAUDE.md` (p605).
+- The folder's nested `CLAUDE.md` (the sky box section, moved there verbatim by `_DONE_p605`) is checked against the code.
 
 ## Inputs
 

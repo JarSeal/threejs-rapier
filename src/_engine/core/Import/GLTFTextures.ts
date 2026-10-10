@@ -1,11 +1,12 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { lwarn } from '../../utils/Logger';
 import type { TextureMapKeys } from '../Material';
 import { doesTextureExist, getTextureRegistry, saveTexture, type TexOpts } from '../Texture';
 import type { CollectedGLTFTextures } from './GLTFTextureCollect';
 import { retagAssetOwner } from '../Assets/AssetOwners';
 
-type TextureSlots = Partial<Record<TextureMapKeys, string>>;
+/** A primitive's registered texture ids, by material map key. */
+export type TextureSlots = Partial<Record<TextureMapKeys, string>>;
 
 export type RegisteredGLTFTextures = {
   textureIds: string[];

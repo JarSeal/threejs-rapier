@@ -59,7 +59,6 @@ export const registerLineManager = () => {
  * A line wider than 1px needs the thick-line backend, which is loaded on demand: until it
  * arrives the line draws 1px and then upgrades itself. Await `preloadFatLineBackend()`
  * first when the width must be right on the first frame.
- *
  * @example
  * // Build once
  * const outline = createLines({ segments: box3EdgesToSegments(box), color: 0x00ffff });

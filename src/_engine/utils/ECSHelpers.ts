@@ -1,16 +1,13 @@
 import * as THREE from 'three/webgpu';
 
-import { ECSWorld, getECSWorld } from '../core/ECS';
-import {
-  ComponentData,
-  ComponentType,
-  ECSTransformProp,
-  Transform,
-} from '../core/ECS/ECSCoreComponents';
+import type { ECSWorld } from '../core/ECS';
+import { getECSWorld } from '../core/ECS';
+import type { ComponentData, ECSTransformProp, Transform } from '../core/ECS/ECSCoreComponents';
+import { ComponentType } from '../core/ECS/ECSCoreComponents';
 import { llog } from './Logger';
 import { IS_DEBUG_ENV } from '../core/Config';
-import { EntityDebugData } from '../core/ECS/ECSRegistry';
-import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import type { EntityDebugData } from '../core/ECS/ECSRegistry';
+import type { CoreEntityOpts } from '../schemas/_helperSchemas';
 
 // Reuse scratch objects to prevent GC pressure
 const _v1 = new THREE.Vector3();

@@ -1,24 +1,20 @@
 import * as THREE from 'three/webgpu';
-import {
+import type {
   ComponentData,
-  ComponentType,
   ECSPosition,
   ECSRotation,
   ECSTransformProp,
-  Transform,
 } from './ECS/ECSCoreComponents';
+import { ComponentType, Transform } from './ECS/ECSCoreComponents';
 import { existsOrThrow } from '../utils/assert';
-import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
+import type { RigidBodyAPI } from './Physics/PhysicsAPITypes';
 import { getConfig, IS_DEBUG_ENV, IS_PROD_TEST_MODE } from './Config';
 import { CoreComponentType } from './ECS/ECSRegistry';
-import {
-  getECSStorageLSOverride,
-  ECSStorageMode,
-  IComponentStorage,
-} from './ECS/ECSComponentStorage';
+import type { ECSStorageMode, IComponentStorage } from './ECS/ECSComponentStorage';
+import { getECSStorageLSOverride } from './ECS/ECSComponentStorage';
 import { TypedArrayTransformStore } from './ECS/TypedArrayTransformStore';
 import { ECSSystemStage } from '../../AppECSRegistry';
-import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import type { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
 import { lerror } from '../utils/Logger';
 
@@ -125,7 +121,7 @@ export class ECSWorld {
   private static onDeleteEntityHooks: Map<ComponentType, ComponentHook[]> = new Map();
   private static transformResetListeners: TransformResetListener[] = [];
 
-  /** * Global registration methods.
+  /** Global registration methods.
    * Managers call these once at app startup.
    */
   public static registerPlugin(plugin: WorldPlugin) {
@@ -539,7 +535,6 @@ export class ECSWorld {
 
   /**
    * Removes a component from an entity.
-   * @param entityId The ID of the entity.
    * @param type The type of component to remove.
    */
   public removeComponent(entityId: number, type: ComponentType): void {
@@ -592,7 +587,7 @@ export class ECSWorld {
     return storage;
   }
 
-  /** * Hard reset of the entire engine state.
+  /** Hard reset of the entire engine state.
    * Everything is wiped, and ID counters start over.
    */
   public clearWorld(): void {

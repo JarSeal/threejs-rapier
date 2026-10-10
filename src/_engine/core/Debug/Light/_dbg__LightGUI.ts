@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { ButtonApi, ListBladeApi, Pane } from 'tweakpane';
+import type { ButtonApi, ListBladeApi } from 'tweakpane';
+import { Pane } from 'tweakpane';
 import { getECSWorld, ECSWorld, getEntityIdByAppId, getStableAppId } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import { CMP } from '../../../utils/CMP';
@@ -20,11 +21,11 @@ import {
   updateDraggableWindowsOfKind,
 } from '../../UI/DraggableWindow';
 import { isCurrentlyLoading } from '../../SceneLoader';
+import type { ShadowQuality } from '../../LightManager';
 import {
   setLightEnabled,
   setLightFrustumCullingEnabled,
   setLightObjectCullingEnabled,
-  ShadowQuality,
 } from '../../LightManager';
 import { getCurrentSceneId, getRootScene } from '../../Scene';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
@@ -35,7 +36,7 @@ import {
 } from '../_dbg__ClearLSButtons';
 import { getActiveCameraId } from '../../CameraManager';
 import { getLightCharacteristics } from '../../../utils/helpers';
-import { BladeController, View } from '@tweakpane/core';
+import type { BladeController, View } from '@tweakpane/core';
 import { FOUR_PX_TO_8K_LIST } from '../../../utils/constants';
 import { getRendererOptions } from '../../Renderer';
 import { refreshSpatialRadius } from '../../Spatial/SpatialIndexSystem';
@@ -1430,9 +1431,9 @@ export const clearLightFromLS = (appId: string) => {
   lsSetItem(LS_LIGHTS_KEY, currentData);
 };
 
-/** * Helper for saving specific light debug properties to LocalStorage.
- * @param K - A generic extending the keys of the debug state.
- * @param value - Automatically typed based on the key provided.
+/** Helper for saving specific light debug properties to LocalStorage.
+ * @template K A generic extending the keys of the debug state.
+ * @param value Automatically typed based on the key provided.
  */
 const saveLightToLS = <K extends keyof LightEntityDebugState>(
   entityId: number,

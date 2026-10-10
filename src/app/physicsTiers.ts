@@ -6,7 +6,8 @@ import {
   getActiveCameraId,
   setMainCamera,
 } from '../_engine/core/CameraManager';
-import { ECSWorld, getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
+import type { ECSWorld } from '../_engine/core/ECS';
+import { getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createKeyBinding } from '../_engine/core/Input/KeyboardInput';

@@ -36,7 +36,7 @@ const isRemoteUrl = (fileName: string) => /^([a-z][a-z\d+.-]*:|\/\/)/i.test(file
 /**
  * Resolves an asset JSON's `fileName` (and a texture's `path`). Returns `{ error }` for a relative
  * file name that is combined with `path`, leaves `src/` or doesn't exist.
- * @param jsonFile The asset JSON, absolute or relative to the repo root
+ * @param params.jsonFile The asset JSON, absolute or relative to the repo root
  */
 export const resolveAssetSource = (params: {
   jsonFile: string;

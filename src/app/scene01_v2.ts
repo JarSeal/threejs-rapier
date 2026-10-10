@@ -7,9 +7,9 @@ import { importAssetAsync } from '../_engine/core/Import/ImportRegistry';
 import { spawnImportedAsset } from '../_engine/core/Import/SpawnImported';
 import { createMeshEntity, getMeshByAppId } from '../_engine/core/MeshManager';
 import { createGroupEntity, addToGroupEntity } from '../_engine/core/GroupManager';
-import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import { createSkyBox } from '../_engine/core/SkyBox/SkyBox';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
+import { getPhysicsSimClock, getPhysicsState } from '../_engine/core/PhysicsAPI';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { llog } from '../_engine/utils/Logger';
 
@@ -305,9 +305,13 @@ export const scene = async () =>
     );
 
     // Pass the scene id: while a scene loads there is no current scene to default to
+    // The spin follows the physics world's simulated time (2 rad/s), not counted frames: a load
+    // spends a varying number of frames with physics held, and the scene runner's snapshot needs
+    // the same angle on every load.
     createSceneAppLooper(() => {
-      sphere.rotation.y -= transformAppSpeedValue(2);
-      sphere.rotation.z -= transformAppSpeedValue(2);
+      const angle = -2 * getPhysicsSimClock() * getPhysicsState().timestepRatio;
+      sphere.rotation.y = angle;
+      sphere.rotation.z = angle;
     }, SCENE01_V2_SCENE_ID);
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });

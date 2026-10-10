@@ -72,7 +72,10 @@ export type EnvBake = {
 let envBake: EnvBake | null = null;
 let isBakeRequested = false;
 
-/** @internal Debug hooks around every bake (the Environment folder's stats). */
+/**
+ * Debug hooks around every bake (the Environment folder's stats).
+ * @internal
+ */
 export type EnvBakeHooks = { onBakeStart: () => void; onBakeEnd: (cpuMs: number) => void };
 let bakeHooks: EnvBakeHooks | null = null;
 export const _setEnvBakeHooks = (hooks: EnvBakeHooks | null) => {

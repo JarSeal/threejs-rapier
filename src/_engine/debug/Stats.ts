@@ -1,6 +1,7 @@
-import { type Renderer } from 'three/webgpu';
+import type { Renderer } from 'three/webgpu';
 import { IS_DEBUG_ENV } from '../core/Config';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
 export type StatsOptions = {
   /** @deprecated Unused: the Statistics tab keeps its folder states in `AEK_debugStatsUI`. */
@@ -54,7 +55,7 @@ export const registerStatsModule = async () => {
 /**
  * Initializes statistics for debugging
  * @param config ({@link StatsOptions}) optional configurations for stats
- * @returns ({@link Stats} | null)
+ * @returns the stats-gl `Stats` instance, or nothing while the debug module isn't loaded
  */
 export const initStats = (config?: StatsOptions) => useDebug(debugGUI)?._initStats(config);
 
@@ -77,14 +78,13 @@ export const startCustomMeasurements = () => {
 };
 
 /**
- * Returns the stats 'stats-gl' instance
- * @returns ({@link Stats} | null)
+ * Returns the stats-gl `Stats` instance
+ * @returns it, or nothing while the debug module isn't loaded
  */
 export const getStats = () => useDebug(debugGUI)?._getStats();
 
 /**
  * Returns the stats configurations
- * @returns {@link StatsOptions}
  */
 export const getStatsConfig = () => useDebug(debugGUI)?._getStatsConfig();
 

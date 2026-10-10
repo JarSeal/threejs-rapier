@@ -12,7 +12,11 @@ import type { BindingMeta, EnabledInDebugCam, TargetList } from './InputSharedTy
 // Only gestures that start on the canvas count (touches on the HUD/debug UI are ignored).
 // Browsers also emulate mouse events after a tap, so a tap can fire MOUSE_CLICK bindings too.
 
-type TouchBindingBase = BindingMeta & {
+/**
+ * The fields every touch binding type shares (see {@link TouchTapBinding} and the other
+ * `Touch*Binding`s).
+ */
+export type TouchBindingBase = BindingMeta & {
   id: string;
   enabled?: boolean; // default true
   sceneId?: string;

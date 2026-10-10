@@ -5,7 +5,8 @@ import { lerror, lwarn } from '../utils/Logger';
 import { isDebugEnvironment } from './Config';
 import { lsGetItem } from '../utils/LocalAndSessionStorage';
 import { existsOrThrow } from '../utils/assert';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
 let r: THREE.WebGPURenderer | null = null;
 let rendererCreatedCallbacks: ((renderer: THREE.WebGPURenderer) => void)[] = [];

@@ -4,7 +4,8 @@ import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 import { existsOrThrow } from '../../utils/assert';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lwarn } from '../../utils/Logger';
-import { getConfig, PhysicsWireframeColors } from '../Config';
+import type { PhysicsWireframeColors } from '../Config';
+import { getConfig } from '../Config';
 import { ECSWorld, getStableAppId } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import {
@@ -13,14 +14,14 @@ import {
   preloadFatLineBackend,
   type LineObject,
 } from '../LineManager';
-import {
+import type {
   ColliderAPI,
   HeightFieldData,
   PhysRotation,
   PhysVector,
   RigidBodyAPI,
-  ShapeType,
 } from '../Physics/PhysicsAPITypes';
+import { ShapeType } from '../Physics/PhysicsAPITypes';
 import { DebugBodyFlag, DebugColliderFlag } from '../Physics/PhysicsDebugStateBuffer';
 import {
   getPhysicsDebugStateBuffer,

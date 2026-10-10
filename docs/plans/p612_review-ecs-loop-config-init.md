@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Refactoring, Documentation, ECS
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage C)
-Blocked by: p605_coding-standards-and-documentation-tooling.md, p608_engine-folder-restructure.md
+Blocked by: p608_engine-folder-restructure.md
 Blocks: p621_hub-docs-readme-and-claude-md-final.md
 
 # Review: ECS, Main Loop, Config and Init — Stub
@@ -22,6 +22,7 @@ Applies p600 §5 (the per-file review standard) and p605's JSDoc style to every 
 ## Inputs
 
 - p200, p604 §4, p600 §2.
+- p605 Phase 5's `notExported` warnings in scope (`yarn hub:build` lists each with its file and line; export the type with a summary or change the signature): `ECSSystemStage` and `AppComponentData` (`src/AppECSRegistry.ts`, the app's extension point, outside the documented API) named by `ECSWorld.addSystem` and `ComponentData`.
 
 ## Done when
 

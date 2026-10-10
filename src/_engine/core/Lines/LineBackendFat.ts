@@ -161,9 +161,12 @@ const hardRoundCapCoverage = Fn(() => {
   return float(1);
 });
 
-/** @internal Screen-space thick-line material. Width (and a dashable material's dash and
+/**
+ * Screen-space thick-line material. Width (and a dashable material's dash and
  * gap) are uniforms; colour and opacity come from the owning LineObject's colour graph
- * (colorNode/opacityNode). */
+ * (colorNode/opacityNode).
+ * @internal
+ */
 export class LineNodeMaterial extends THREE.NodeMaterial {
   readonly isLineNodeMaterial = true;
   readonly lineWidth = uniform(1);
@@ -226,9 +229,12 @@ const QUAD_POSITIONS = [
 const QUAD_UVS = [-1, 2, 1, 2, -1, 1, 1, 1, -1, -1, 1, -1, -1, -2, 1, -2];
 const QUAD_INDEX = [0, 2, 1, 2, 3, 1, 2, 4, 3, 4, 5, 3, 4, 6, 5, 6, 7, 5];
 
-/** @internal A thick line is a Mesh, so it is marked for anything that must tell it apart
+/**
+ * A thick line is a Mesh, so it is marked for anything that must tell it apart
  * from a real mesh (eg. the ECS object tagging). Not `isLine`: the renderer reads that as
- * "draw as a line strip". */
+ * "draw as a line strip".
+ * @internal
+ */
 export class FatLineSegments extends THREE.Mesh<THREE.InstancedBufferGeometry, LineNodeMaterial> {
   readonly isFatLineSegments = true;
 
@@ -324,6 +330,9 @@ class FatLineBackend implements LineBackend {
   }
 }
 
-/** @internal `dashable` builds the dash variant of the material (LineProps.dash). */
+/**
+ * `dashable` builds the dash variant of the material (LineProps.dash).
+ * @internal
+ */
 export const createFatLineBackend = (positions: Float32Array, dashable: boolean): LineBackend =>
   new FatLineBackend(positions, dashable);

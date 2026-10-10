@@ -14,6 +14,7 @@ const hubConfig: HubConfig = {
     'Plans logic and structure',
     'Bootstrap flow',
     'Ækasha Hub',
+    'Verify commands',
     'Build config notes',
   ],
 };

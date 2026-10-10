@@ -369,6 +369,33 @@ export const getTabledMembers = (symbol: DeclarationReflection): DeclarationRefl
   return [];
 };
 
+/**
+ * A union alias's object variants, each with its own table (`CameraProps`: one per camera type,
+ * as `typedoc-plugin-zod` expands a `z.union`), labelled by the discriminant when every variant has
+ * the same literal-typed key (`type: 'PERSPECTIVE'`), else by its position
+ */
+export const getTabledVariants = (symbol: DeclarationReflection) => {
+  if (symbol.type?.type !== 'union') return [];
+  const variants = symbol.type.types
+    .map((t) =>
+      t.type === 'intersection'
+        ? t.types.flatMap((part) => getObjectMembers(part))
+        : getObjectMembers(t)
+    )
+    .filter((members) => members.length);
+  const literalOf = (members: DeclarationReflection[], name: string) => {
+    const type = members.find((member) => member.name === name)?.type;
+    return type?.type === 'literal' ? printLiteral(type.value) : null;
+  };
+  const key = variants[0]
+    ?.map((member) => member.name)
+    .find((name) => variants.every((members) => literalOf(members, name) !== null));
+  return variants.map((members, i) => ({
+    members,
+    label: key ? `${key}: ${literalOf(members, key)}` : `variant ${i + 1} of ${variants.length}`,
+  }));
+};
+
 /** A conditional type a branch per line: `A extends B\n  ? T\n  : F`, nested ones indented */
 const printConditionalLines = (
   w: CodeWriter,
@@ -395,7 +422,9 @@ const printConditionalLines = (
  * gets a line per member or branch
  */
 export const printTypeAlias = (symbol: DeclarationReflection) => {
-  const options: PrintOptions = { collapseObjects: getTabledMembers(symbol).length > 0 };
+  const options: PrintOptions = {
+    collapseObjects: getTabledMembers(symbol).length > 0 || getTabledVariants(symbol).length > 0,
+  };
   const w = new CodeWriter().write(`type ${symbol.name}`);
   printTypeParameters(w, symbol.typeParameters, {});
   w.write(' = ');

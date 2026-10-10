@@ -1,7 +1,15 @@
 import { fork } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { JSONOutput, MinimalNode, MinimalSourceFile } from 'typedoc';
+import type {
+  DeclarationReflection,
+  JSONOutput,
+  MinimalNode,
+  MinimalSourceFile,
+  ProjectReflection,
+  Reflection,
+  SignatureReflection,
+} from 'typedoc';
 import { hashContent } from '../hash';
 import { HUB_API_CACHE_FILE, PACKAGE_JSON_FILE, ROOT, toRepoPath, TSCONFIG_FILE } from '../paths';
 
@@ -21,10 +29,16 @@ import { HUB_API_CACHE_FILE, PACKAGE_JSON_FILE, ROOT, toRepoPath, TSCONFIG_FILE 
  * seconds at a time (the app's requests too) and keeps hundreds of MB. Its builds take the last
  * good model whatever its inputs (`getLastApiModel`), and its rebuilds convert in a child process
  * (`extractApiModelInChildProcess`), which writes the cache file this process then reads.
+ *
+ * After the conversion it runs TypeDoc's validation (p605 S5; `convert()` alone runs none):
+ * `notExported` (a public signature naming a type the API doesn't export), never `notDocumented`
+ * (the docs ratchet in `yarn verify:baselines` gates presence). A warning about a member inherited
+ * from another class is dropped: it's the base class's comment (three's, mostly). The model has
+ * `typedoc-plugin-zod` (`typedocOptions.plugin`): a `z.infer` / `z.input` alias shows its fields.
  */
 
-/** Bump when the options below or the cache file's shape change */
-const EXTRACT_VERSION = 2;
+/** Bump when the options below, the validation or the cache file's shape change */
+const EXTRACT_VERSION = 3;
 
 /** The folders the entry points are in; the engine also imports `src/`'s own files */
 const SOURCE_DIRS = ['src/_engine', 'src/toolkit'].map((dir) => path.join(ROOT, dir));
@@ -152,6 +166,51 @@ const findModuleFile = (message: string, project: JSONOutput.ProjectReflection) 
   return fileName ? path.join(ROOT, fileName) : undefined;
 };
 
+/** The reflection a validation warning is about, by its friendly name (TypeDoc 0.28's messages) */
+const VALIDATION_OWNER_REGEXES = [
+  /^Failed to resolve link to .+? in comment for (.+?)(?:\. You may have wanted .*)?$/s,
+  /^The comment for (.+?) links to "/,
+  /, is referenced by (.+?) but not included in the documentation/,
+];
+
+/**
+ * Validation warnings name their reflection but carry no position: this finds it, drops the
+ * warnings about inherited members (or their parameters) and adds the file and line
+ */
+const locateValidationMessages = (project: ProjectReflection, messages: ApiExtractMessage[]) => {
+  const byName = new Map<string, Reflection>();
+  for (const reflection of Object.values(project.reflections)) {
+    // A signature has its declaration's name: the declaration is the one to find
+    const name = reflection.getFriendlyFullName();
+    if (!byName.has(name) || reflection.isDeclaration()) byName.set(name, reflection);
+  }
+  const find = (name: string) => {
+    for (let n = name; n; n = n.includes('.') ? n.slice(0, n.lastIndexOf('.')) : '') {
+      const reflection = byName.get(n);
+      if (reflection) return reflection;
+    }
+    return undefined;
+  };
+  return messages.filter((message) => {
+    const owner = VALIDATION_OWNER_REGEXES.map((regex) => message.message.match(regex)?.[1]).find(
+      Boolean
+    );
+    const reflection = owner ? find(owner) : undefined;
+    const chain: Reflection[] = [];
+    for (let r = reflection; r; r = r.parent) chain.push(r);
+    const declarations = chain.filter(
+      (r): r is DeclarationReflection | SignatureReflection => r.isDeclaration() || r.isSignature()
+    );
+    if (declarations.some((r) => r.inheritedFrom)) return false;
+    const source = declarations.find((r) => r.sources?.length)?.sources?.[0];
+    if (source) {
+      message.file = source.fullFileName;
+      message.line = source.line;
+    }
+    return true;
+  });
+};
+
 const convert = async (): Promise<{
   project: JSONOutput.ProjectReflection | null;
   messages: ApiExtractMessage[];
@@ -206,10 +265,16 @@ const convert = async (): Promise<{
     // Required with `disableGit`; the Hub builds its own links from the file and line
     sourceLinkTemplate: '{path}#L{line}',
     logLevel: 'Warn',
+    // `invalidLink` is off: the Hub's renderer reports every `{@link}` that links nowhere already
+    // (`comments.ts`), and TypeDoc's would repeat each one
+    validation: { notExported: true, invalidLink: false, notDocumented: false },
   });
   app.logger = new CapturingLogger();
   const project = await app.convert();
   if (!project) return { project: null, messages };
+  const converted = messages.splice(0);
+  app.validate(project);
+  messages.unshift(...converted, ...locateValidationMessages(project, messages.splice(0)));
   const json = app.serializer.projectToObject(
     project,
     ROOT as Parameters<typeof app.serializer.projectToObject>[1]

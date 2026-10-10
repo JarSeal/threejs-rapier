@@ -96,7 +96,10 @@ export class LineObject {
   readonly id: string;
   /** Kept on scene switches (see LineProps.persistent). */
   readonly persistent: boolean;
-  /** @internal Set by LineManager while an entity owns this line. */
+  /**
+   * Set by LineManager while an entity owns this line.
+   * @internal
+   */
   entityBinding: LineEntityBinding | null = null;
   private backend: LineBackend;
   private readonly buffer: LineBuffer;
@@ -123,7 +126,10 @@ export class LineObject {
   private warnedStaleBounds = false;
   private warnedNotDashable = false;
 
-  /** @internal Use `createLines`. */
+  /**
+   * Use `createLines`.
+   * @internal
+   */
   constructor(id: string, props: LineProps) {
     this.id = id;
     this.persistent = props.persistent ?? false;

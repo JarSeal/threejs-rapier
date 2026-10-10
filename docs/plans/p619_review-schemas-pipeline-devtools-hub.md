@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Refactoring, Documentation, Dev tooling
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage C)
-Blocked by: p605_coding-standards-and-documentation-tooling.md, p608_engine-folder-restructure.md
+Blocked by: p608_engine-folder-restructure.md
 Blocks: p621_hub-docs-readme-and-claude-md-final.md
 
 # Review: Schemas, Data Pipeline, Dev Tools and Hub Generator — Stub
@@ -21,6 +21,7 @@ Applies p600 §5 (the per-file review standard) and p605's JSDoc style to every 
 ## Inputs
 
 - p602 D3, p605.
+- p605 Phase 5: the Hub's search index is 1,006 kB, under its 1 MB warning after clipping the API summaries to 120 characters; the next cut is the stored `path` (about 130 kB: 255 page paths repeated per document), a path table on both sides of `searchProtocol.ts`. The schemas' shape keys have no JSDoc yet, so the zod-expanded fields show "No description".
 
 ## Done when
 

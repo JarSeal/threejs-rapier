@@ -1,5 +1,6 @@
 import { IS_DEBUG_ENV } from '../core/Config';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
 type AxesGizmoModule = typeof import('../core/Debug/_dbg__AxesGizmo');
 let debugGizmo: DebugModuleRef<AxesGizmoModule> | null = null;

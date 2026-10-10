@@ -43,5 +43,5 @@ dynamic character.
 
 - The dynamic character is one controller behind the contract; the input schemes are brains;
   actions replace direct key reads in gameplay code; the gamepad works through the action layer.
-- p601's runner passes; a recorded input run of the gym gives the same character path before and
+- p601's runner passes, and its Firefox run (`yarn verify:scenes --browser firefox`, p605 Phase 6) gives Chromium's hashes; a recorded input run of the gym gives the same character path before and
   after.

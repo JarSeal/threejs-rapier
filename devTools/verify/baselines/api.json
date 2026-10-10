@@ -246,6 +246,7 @@
       "lightObjectCullingSystem": "Function"
     },
     "src/_engine/core/ECS/ObjectFrustumCullingSystem.ts": {
+      "BoundingVolumeProvider": "TypeAlias",
       "getMeshWorldBoundingSphere": "Variable",
       "MAX_SPOT_ANGLE": "Variable",
       "objectFrustumCullingSystem": "Function",
@@ -262,7 +263,9 @@
       "deleteGeometry": "Function",
       "doesGeoExist": "Function",
       "freeGeometryGPUMemory": "Function",
+      "GeoBaseProps": "TypeAlias",
       "GeoDebugData": "TypeAlias",
+      "GeometryDeleteListener": "TypeAlias",
       "GeoProps": "TypeAlias",
       "GeoTypes": "TypeAlias",
       "getAllGeometries": "Function",
@@ -339,7 +342,8 @@
     },
     "src/_engine/core/Import/GLTFTextures.ts": {
       "RegisteredGLTFTextures": "TypeAlias",
-      "registerGLTFTextures": "Function"
+      "registerGLTFTextures": "Function",
+      "TextureSlots": "TypeAlias"
     },
     "src/_engine/core/Import/ImportRegistry.ts": {
       "getImportedAsset": "Function",
@@ -384,7 +388,8 @@
       "TransferableCompressedImage": "TypeAlias",
       "TransferableImage": "TypeAlias",
       "TransferableTexture": "TypeAlias",
-      "TransferredSource": "TypeAlias"
+      "TransferredSource": "TypeAlias",
+      "Vector2Like": "TypeAlias"
     },
     "src/_engine/core/Input/DefaultDebugKeyBindings.ts": {
       "DebugKeyBindingConfig": "TypeAlias",
@@ -422,6 +427,7 @@
       "getKeyChordLabel": "Function",
       "isChordHeld": "Function",
       "KeyBinding": "TypeAlias",
+      "KeyBindingBase": "TypeAlias",
       "KeyBindingType": "TypeAlias",
       "KeyChord": "TypeAlias",
       "KeyHeldBinding": "TypeAlias",
@@ -436,6 +442,7 @@
       "createMouseBinding": "Function",
       "deleteMouseBinding": "Function",
       "MouseBinding": "TypeAlias",
+      "MouseBindingBase": "TypeAlias",
       "MouseBindingType": "TypeAlias",
       "MouseButton": "TypeAlias",
       "MouseClickBinding": "TypeAlias",
@@ -451,6 +458,7 @@
       "setTouchBindingEnabled": "Function",
       "setTouchInputsEnabled": "Function",
       "TouchBinding": "TypeAlias",
+      "TouchBindingBase": "TypeAlias",
       "TouchBindingType": "TypeAlias",
       "TouchDragBinding": "TypeAlias",
       "TouchPinchBinding": "TypeAlias",
@@ -712,6 +720,7 @@
       "GLTFLodChainsExtras": "TypeAlias",
       "readGLTFLodChains": "Function",
       "serializeLodChain": "Function",
+      "TransferableLevelAttributes": "TypeAlias",
       "TransferableLodChain": "TypeAlias"
     },
     "src/_engine/core/Lod/LodChainOptions.ts": {
@@ -833,6 +842,7 @@
       "transformTimeValue": "Function"
     },
     "src/_engine/core/Material.ts": {
+      "AllowTextureStrings": "TypeAlias",
       "createMaterial": "Function",
       "decMaterialRef": "Function",
       "deleteMaterial": "Function",
@@ -983,6 +993,7 @@
       "PhysicsProtocolType": "Enum",
       "PhysicsQueryKind": "TypeAlias",
       "PhysicsQueryObserver": "TypeAlias",
+      "PhysicsResponse": "TypeAlias",
       "PhysicsState": "TypeAlias",
       "PhysicsUpProtocol": "TypeAlias",
       "PhysicsWorkerTarget": "TypeAlias",
@@ -1100,6 +1111,9 @@
       "initPhysicsEngine": "Function",
       "setPhysicsPauseTime": "Function",
       "ValidProtocolTypes": "Variable"
+    },
+    "src/_engine/core/Physics/PhysicsWallClock.ts": {
+      "readPhysicsWallClock": "Function"
     },
     "src/_engine/core/PhysicsAPI.ts": {
       "addPhysicsStepGate": "Function",
@@ -1259,7 +1273,8 @@
     },
     "src/_engine/core/PropertyLoader.ts": {
       "LoadableProps": "Interface",
-      "loadPersistentProps": "Function"
+      "loadPersistentProps": "Function",
+      "PropType": "TypeAlias"
     },
     "src/_engine/core/Raycast.ts": {
       "castRayFromAngle": "Function",
@@ -1355,6 +1370,7 @@
       "hasFirstSceneBeenLoaded": "Function",
       "isCurrentlyLoading": "Function",
       "loadScene": "Function",
+      "LoadSceneProps": "TypeAlias",
       "SceneLoader": "TypeAlias",
       "ScenePrimitiveAssets": "TypeAlias",
       "setCurrentSceneLoader": "Function",
@@ -1461,6 +1477,7 @@
       "fromLegacySkyBoxProps": "Function",
       "isLegacySkyBoxProps": "Function",
       "LEGACY_SKYBOX_WARNING": "Variable",
+      "LegacySkyBoxParams": "TypeAlias",
       "LegacySkyBoxProps": "TypeAlias"
     },
     "src/_engine/core/SkyBox/presets.ts": {
@@ -1506,6 +1523,7 @@
       "SKYBOX_DEBUG_OVERRIDES_LS_KEY": "Variable",
       "SKYBOX_MANAGER_ID": "Reference",
       "SKYBOX_PRESET_NAMES": "Reference",
+      "SkyBoxChangeListener": "TypeAlias",
       "SkyBoxChangeReason": "TypeAlias",
       "SkyBoxDef": "Reference",
       "SkyBoxPresetDef": "Reference",
@@ -1517,6 +1535,7 @@
       "SkyBoxAmbientLightDef": "TypeAlias",
       "SkyBoxAtmosphereDef": "TypeAlias",
       "SkyBoxBaseDef": "TypeAlias",
+      "SkyBoxBaseInput": "TypeAlias",
       "SkyBoxBaseType": "TypeAlias",
       "SkyBoxCloudsDef": "TypeAlias",
       "SkyBoxDayNightDef": "TypeAlias",
@@ -1585,6 +1604,7 @@
     "src/_engine/core/SkyBox/SkyLights.ts": {
       "AMBIENT_LIGHT_DEFAULTS": "Variable",
       "deleteSkyLights": "Function",
+      "DiscKind": "TypeAlias",
       "EXTRA_SUN_LIGHT_DEFAULTS": "Variable",
       "getDiscLightDefaults": "Function",
       "getSkyLightIds": "Function",
@@ -1688,6 +1708,7 @@
       "setSpatialGridCellSize": "Function",
       "setSpatialGridOracleEnabled": "Function",
       "SpatialDomainOptions": "Interface",
+      "SpatialDomainOptionsOverride": "TypeAlias",
       "SpatialDomainRebuildStats": "TypeAlias",
       "spatialIndexRebuildSystem": "Function",
       "SpatialRadiusProvider": "TypeAlias",
@@ -1772,12 +1793,15 @@
       "registerDraggableWindowKind": "Function",
       "registerDraggableWindowSceneTargetResolver": "Function",
       "removeDraggableWindow": "Function",
+      "SceneTargetResolver": "TypeAlias",
       "toggleCollapse": "Function",
       "toggleDraggableWindow": "Function",
+      "Units": "TypeAlias",
       "updateDraggableWindow": "Function",
       "updateDraggableWindowsOfKind": "Function"
     },
     "src/_engine/core/UI/DropDown.ts": {
+      "ClassProp": "TypeAlias",
       "createDropDown": "Function",
       "DropDownOption": "TypeAlias",
       "DropDownProps": "TypeAlias",
@@ -1795,7 +1819,11 @@
       "hasToaster": "Function",
       "removeToast": "Function",
       "removeToaster": "Function",
-      "ToastProps": "TypeAlias"
+      "ToastDirection": "TypeAlias",
+      "ToasterProps": "TypeAlias",
+      "ToasterSettings": "TypeAlias",
+      "ToastProps": "TypeAlias",
+      "ToastType": "TypeAlias"
     },
     "src/_engine/core/ViewManager.ts": {
       "addViewChangeListener": "Function",
@@ -1817,7 +1845,9 @@
       "toggleViewPlay": "Function",
       "unregisterView": "Function",
       "ViewCameraRig": "TypeAlias",
+      "ViewChangeListener": "TypeAlias",
       "ViewDef": "TypeAlias",
+      "ViewFrameListener": "TypeAlias",
       "ViewFrameListenerPhase": "TypeAlias"
     },
     "src/_engine/core/Viewports.ts": {
@@ -2261,6 +2291,7 @@
     "src/_engine/utils/cameras/followObjectCameraRig.ts": {
       "createFollowObjectCameraRig": "Function",
       "deleteFollowObjectCameraRig": "Function",
+      "FollowObjectCameraParams": "TypeAlias",
       "registerFollowObjectCameraRigSystem": "Function"
     },
     "src/_engine/utils/CMP.ts": {
@@ -2342,6 +2373,7 @@
       "isPNG": "Function",
       "loadDebugModule": "Function",
       "loadDebugModuleAsync": "Function",
+      "RemovalTypes": "TypeAlias",
       "removeGeometryFromMemory": "Function",
       "removeMaterialFromMemory": "Function",
       "removeObjectAndChildrenFromMemory": "Function",
@@ -2364,6 +2396,7 @@
     "src/_engine/utils/LocalAndSessionStorage.ts": {
       "lsGetItem": "Function",
       "lsGetKeysWithPrefix": "Function",
+      "LSKeyListener": "TypeAlias",
       "lsRemoveItem": "Function",
       "lsSetItem": "Function",
       "lsSubscribe": "Function",
@@ -2406,6 +2439,9 @@
       "IntervalWindowConfig": "TypeAlias",
       "IntervalWindowKind": "TypeAlias",
       "IntervalWindowSnapshot": "TypeAlias"
+    },
+    "src/_engine/utils/StatsClock.ts": {
+      "readStatsClock": "Function"
     },
     "src/_engine/utils/UI/PercentagePieHtml.ts": {
       "createPercentagePie": "Function",
@@ -2554,6 +2590,7 @@
     "src/toolkit/materials/triplanarProjection.ts": {
       "blendProjectionGradients": "Function",
       "blendProjections": "Function",
+      "ProjectionPattern": "TypeAlias",
       "readBooleanDefines": "Function",
       "triplanarProjection": "Function",
       "TriplanarProjection": "TypeAlias",

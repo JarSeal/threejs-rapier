@@ -24,7 +24,19 @@ fi
 # Nothing changed in the code (src/, the Hub, the dev tools; new files included) — skip.
 [[ -z "$(git status --porcelain -- src hub devTools vite.config.ts vitest.config.ts)" ]] && exit 0
 
-yarn lint --fix >/dev/null 2>&1
+# Autofix, then report what's left: --fix exits 1 with the errors it couldn't fix (warnings don't
+# block: --quiet), 2 when ESLint itself failed
+LINT_OUT=$(yarn -s lint --fix --quiet 2>&1)
+LINT_STATUS=$?
+if [[ $LINT_STATUS -eq 1 ]]; then
+  echo "Lint errors. Fix before finishing:" >&2
+  echo "$LINT_OUT" | sed "s|$PWD/||" | head -30 >&2
+  exit 2
+elif [[ $LINT_STATUS -ne 0 ]]; then
+  echo "Lint failed to run:" >&2
+  echo "$LINT_OUT" | tail -10 >&2
+  exit 2
+fi
 
 # The root project, then the Hub's browser TS (hub/tsconfig.json)
 if ! OUT=$(yarn tsc --noEmit 2>&1 && yarn tsc -p hub --noEmit 2>&1); then
@@ -46,6 +58,23 @@ if [[ -n "$(git status --porcelain -- src devTools vitest.config.ts)" ]]; then
     echo "Unit tests failed. Fix before finishing:" >&2
     echo "$TEST_OUT" | grep -E '(FAIL|×|AssertionError|Error:|❯ .*:[0-9]+:[0-9]+)' | head -30 >&2
     echo "$TEST_OUT" | tail -5 >&2
+    exit 2
+  fi
+fi
+
+# The docs ratchet (p605): no folder of the documented API gets more undocumented exports or
+# members than devTools/verify/baselines/docs.json records. TypeDoc converts (about 6 s) only when
+# its inputs changed; --docs writes no progress log, so it never empties another run's.
+if [[ -n "$(git status --porcelain -- src/_engine src/toolkit)" ]]; then
+  DOCS_OUT=$(NO_COLOR=1 yarn -s verify:baselines --docs 2>&1)
+  DOCS_STATUS=$?
+  if [[ $DOCS_STATUS -eq 1 ]]; then
+    echo "Undocumented exports added. Document them before finishing:" >&2
+    echo "$DOCS_OUT" | sed -n '/^docs.json:/,$p' | head -40 >&2
+    exit 2
+  elif [[ $DOCS_STATUS -ne 0 ]]; then
+    echo "The docs ratchet failed to run:" >&2
+    echo "$DOCS_OUT" | tail -10 >&2
     exit 2
   fi
 fi

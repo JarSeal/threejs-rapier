@@ -5,7 +5,8 @@ import { getCurrentSceneId, getRootScene } from '../Scene';
 import { getNextSceneId, isCurrentlyLoading } from '../SceneLoader';
 import { isDebugEnvironment } from '../Config';
 import { lsGetItem } from '../../utils/LocalAndSessionStorage';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
+import type { DebugModuleRef } from '../../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../../utils/helpers';
 import { deepMerge, isIndexObject } from '../../utils/deepMerge';
 import { ECSWorld, getECSWorld } from '../ECS';
 import { getRenderer } from '../Renderer';
@@ -126,11 +127,20 @@ export type SkyBoxUpdate = {
 };
 
 export type SkyBoxChangeReason = 'activate' | 'update' | 'clear';
-type SkyBoxChangeListener = (active: ActiveSkyBox | null, reason: SkyBoxChangeReason) => void;
+/**
+ * A listener for {@link onSkyBoxChange}: the active sky box (null once cleared) and why it changed.
+ */
+export type SkyBoxChangeListener = (
+  active: ActiveSkyBox | null,
+  reason: SkyBoxChangeReason
+) => void;
 
 export { SKYBOX_MANAGER_ID } from './SkyLights';
 
-/** @internal The debug tab's override store: `{ [sceneId]: { [skyBoxId]: SkyBoxOverrides } }`. */
+/**
+ * The debug tab's override store: `{ [sceneId]: { [skyBoxId]: SkyBoxOverrides } }`.
+ * @internal
+ */
 export const SKYBOX_DEBUG_OVERRIDES_LS_KEY = 'AEK_debugSkyBox';
 
 /** Definitions by scene, in registration order. */
@@ -196,7 +206,10 @@ export const getSceneDefaultSkyBoxId = (sceneId: string) => {
   return sceneDefs.keys().next().value ?? null;
 };
 
-/** @internal Debug accessor: the registry (read it, don't change it). */
+/**
+ * Debug accessor: the registry (read it, don't change it).
+ * @internal
+ */
 export const _getSkyBoxRegistry = (): ReadonlyMap<string, ReadonlyMap<string, SkyBoxDef>> =>
   registry;
 

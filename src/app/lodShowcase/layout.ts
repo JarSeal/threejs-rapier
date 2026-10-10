@@ -68,8 +68,6 @@ export type ShowcaseLane = {
  * The start camera's pose from the scene's camera JSON, as a private camera. Not the scene's own
  * camera object: when a scene loads again, that one hasn't turned to its `lookAtPoint` yet while
  * the scene file runs.
- * @param sceneData the scene's data
- * @param appId the start camera's appId
  */
 export const getStartCamera = (sceneData: SceneData, appId: string) => {
   const entry = sceneData.cameras?.find(

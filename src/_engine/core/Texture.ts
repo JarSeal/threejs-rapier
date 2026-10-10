@@ -293,9 +293,9 @@ const createTexture = (
 
 /**
  * Loads one or more textures in the background.
- * @param texData - array of objects: { id?: string; fileName?: string; texOpts?: {@link TexOpts} }[]
- * @param updateStatusFn - optional status update function
- * @param onErrorAction - optional on error action
+ * @param texData array of objects: { id?: string; fileName?: string; texOpts?: {@link TexOpts} }[]
+ * @param updateStatusFn optional status update function
+ * @param onErrorAction optional on error action
  */
 export const loadTextures = (
   texData: {

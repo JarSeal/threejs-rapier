@@ -1,7 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry, GeoProps, GeoTypes } from '../../core/Geometry';
-import { createMaterial, Materials, MatProps } from '../../core/Material';
-import { createMeshEntity, getMeshByAppId, MeshProps } from '../../core/MeshManager';
+import type { GeoProps, GeoTypes } from '../../core/Geometry';
+import { createGeometry } from '../../core/Geometry';
+import type { Materials, MatProps } from '../../core/Material';
+import { createMaterial } from '../../core/Material';
+import type { MeshProps } from '../../core/MeshManager';
+import { createMeshEntity, getMeshByAppId } from '../../core/MeshManager';
 import { getECSWorld, type ECSWorld } from '../../core/ECS';
 import { createPhysicsEntity } from '../../core/PhysicsManager';
 import type { ColliderParams, RigidBodyParams } from '../../core/Physics/PhysicsAPITypes';

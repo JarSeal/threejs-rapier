@@ -1,12 +1,11 @@
 import Rapier from '@dimforge/rapier3d-compat';
 import type { Collider, RigidBody, RigidBodyType } from '@dimforge/rapier3d-compat';
 import { getPhysicsEngine } from './PhysicsUtils';
-import {
+import type {
   ColliderAPI,
   ColliderParams,
   CollisionEventRecord,
   ContactForceEventRecord,
-  ContactForceEventSnapshot,
   EventQueue,
   HeightFieldData,
   InteractionGroupsAPI,
@@ -26,17 +25,20 @@ import {
   RigidBodyAttachState,
   RigidBodyParams,
   RigidBodyPose,
-  RigidBodyTypeAPI,
   ShapeCastHitAPI,
   ShapeParams,
   ShapeType,
   TempContactForceEvent,
   WorldAPI,
+} from './PhysicsAPITypes';
+import {
+  ContactForceEventSnapshot,
+  RigidBodyTypeAPI,
   type PhysicsBodyActivity,
   type PhysicsQueryObserver,
 } from './PhysicsAPITypes';
 import type { RayDebugOpts } from '../RayDebugTypes';
-import { LoopState } from '../MainLoop';
+import type { LoopState } from '../MainLoop';
 import { lwarn } from '../../utils/Logger';
 import { existsOrThrow } from '../../utils/assert';
 
@@ -1756,7 +1758,10 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
     this.isCreatedFixed = rb.isFixed();
   }
 
-  /** @internal Points the proxy at its re-created Rapier body (reattachRigidBody, p352). */
+  /**
+   * Points the proxy at its re-created Rapier body (reattachRigidBody, p352).
+   * @internal
+   */
   _rebind(rb: Rapier.RigidBody) {
     this.rb = rb;
   }
@@ -2192,7 +2197,10 @@ class EngineColliderProxyAPI implements ColliderAPI {
     );
   }
 
-  /** @internal Points the proxy at its re-created Rapier collider (reattachRigidBody, p352). */
+  /**
+   * Points the proxy at its re-created Rapier collider (reattachRigidBody, p352).
+   * @internal
+   */
   _rebind(coll: Rapier.Collider) {
     this.coll = coll;
   }

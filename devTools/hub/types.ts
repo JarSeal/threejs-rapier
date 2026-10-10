@@ -10,8 +10,9 @@ export type HubConfig = {
   /** The homepage's `<meta name="description">` when its page sets none */
   description: string;
   /**
-   * CLAUDE.md Architecture sections that aren't features (p555 §2.5), by heading without its
-   * parenthetical: the coverage check doesn't ask a page's `aek:covers` for them
+   * CLAUDE.md sections that aren't features (p555 §2.5, the root's Architecture sections and the
+   * nested files' `## ` ones), by heading without its parenthetical: the coverage check doesn't ask
+   * a page's `aek:covers` for them
    */
   coverageIgnore: string[];
 };
@@ -70,8 +71,9 @@ export type HubPage = {
   /** `aek:group`: the group a `::: cards <path> group=<name>` shows it in (the Features page's) */
   group: string;
   /**
-   * `aek:covers`: the CLAUDE.md Architecture sections the page covers (p555 §2.5), by heading
-   * without its parenthetical (`Debug system`). `::: claude-md` links them in dev.
+   * `aek:covers`: the CLAUDE.md sections the page covers (p555 §2.5; the root's Architecture
+   * sections and the nested files' `## ` ones), by heading without its parenthetical (`Debug
+   * system`). `::: claude-md` links them in dev.
    */
   covers: string[];
   /**

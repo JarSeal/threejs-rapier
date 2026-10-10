@@ -1,16 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
-import {
-  DebugModuleRef,
-  getLightCharacteristics,
-  loadDebugModule,
-  useDebug,
-} from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { getLightCharacteristics, loadDebugModule, useDebug } from '../utils/helpers';
 import { ComponentType, Transform } from './ECS/ECSCoreComponents';
 import { IS_DEBUG_ENV } from './Config';
 import { loadPersistentProps } from './PropertyLoader';
-import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import type { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import { lerror, lwarn } from '../utils/Logger';

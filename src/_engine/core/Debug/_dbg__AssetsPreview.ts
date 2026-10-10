@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { CMP, type TCMP } from '../../utils/CMP';
 import { getTextureArrayInfo } from '../TextureArray';
 import { getTextureAtlasInfo, type TextureAtlasInfo } from '../TextureAtlas';

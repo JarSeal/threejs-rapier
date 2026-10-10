@@ -1,4 +1,4 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import type { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { getRenderer } from '../Renderer';
 import type { KTX2WorkerSettings } from '../Assets/AssetsAPITypes';

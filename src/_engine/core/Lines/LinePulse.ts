@@ -26,8 +26,11 @@ export const LINE_PULSE_MAX_COLORS = 4;
  * by the line time system (LineSystem.ts). */
 export const lineTimeUniform = uniform(0);
 
-/** @internal The uniforms one line's colour graphs read. setColor and pulses write the
- * same set, so there is only ever one writer of a line's colour. */
+/**
+ * The uniforms one line's colour graphs read. setColor and pulses write the
+ * same set, so there is only ever one writer of a line's colour.
+ * @internal
+ */
 export const createLineColorUniforms = () => ({
   colors: Array.from({ length: LINE_PULSE_MAX_COLORS }, () => uniform(new THREE.Color(0xffffff))),
   count: uniform(1),
@@ -38,8 +41,11 @@ export const createLineColorUniforms = () => ({
 
 export type LineColorUniforms = ReturnType<typeof createLineColorUniforms>;
 
-/** @internal Which graph a style needs; a change of key means a pipeline rebuild. Anything
- * with a single colour is STATIC — setColor is the one-colour pulse. */
+/**
+ * Which graph a style needs; a change of key means a pipeline rebuild. Anything
+ * with a single colour is STATIC — setColor is the one-colour pulse.
+ * @internal
+ */
 export const colorGraphKey = (style: LineColorStyle) =>
   style.type === 'PULSE' && style.colors.length > 1
     ? `PULSE:${style.easing ?? 'SMOOTH'}:${style.mode ?? 'CYCLE'}`
@@ -68,7 +74,10 @@ const pickColor = (u: LineColorUniforms, index: FloatNode) =>
       index.lessThan(1.5).select(u.colors[1], index.lessThan(2.5).select(u.colors[2], u.colors[3]))
     );
 
-/** @internal The colour node for a style's graph key. */
+/**
+ * The colour node for a style's graph key.
+ * @internal
+ */
 export const createLineColorNode = (u: LineColorUniforms, style: LineColorStyle): LineColorNode => {
   if (colorGraphKey(style) === 'STATIC') return u.colors[0];
   const easing = style.type === 'PULSE' ? style.easing ?? 'SMOOTH' : 'SMOOTH';
@@ -95,10 +104,13 @@ export const createLineColorNode = (u: LineColorUniforms, style: LineColorStyle)
   return mix(pickColor(u, from), pickColor(u, to), ease(k, easing));
 };
 
-/** @internal A stable [0, 1) phase offset from a line id, for `autoPhase`: FNV-1a, then the
+/**
+ * A stable [0, 1) phase offset from a line id, for `autoPhase`: FNV-1a, then the
  * murmur3 finaliser. Without the finaliser, ids differing only in their last character
  * (`box_1`, `box_2`) differ only in the low bits and land ~0.004 cycles apart — a grid of
- * them would still pulse in unison. */
+ * them would still pulse in unison.
+ * @internal
+ */
 export const hashLinePhase = (id: string) => {
   let h = 0x811c9dc5;
   for (let i = 0; i < id.length; i++) {

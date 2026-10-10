@@ -5,14 +5,15 @@ import { IS_DEBUG_ENV } from './Config';
 import { getCurrentSceneId } from './Scene';
 import { getNextSceneId } from './SceneLoader';
 
-type PropType = 'LIGHT' | 'CAMERA';
+/** Which kind of saved props {@link loadPersistentProps} reads. */
+export type PropType = 'LIGHT' | 'CAMERA';
 
 export interface LoadableProps {
   appId?: string;
   [key: string]: unknown;
 }
 
-/** * Generic property loader.
+/** Generic property loader.
  * Merges hardcoded props with LocalStorage data (in debug) and eventually files.
  */
 export const loadPersistentProps = <T extends LoadableProps>(

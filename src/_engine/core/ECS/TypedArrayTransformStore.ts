@@ -1,6 +1,6 @@
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { Transform } from './ECSCoreComponents';
-import { IComponentStorage } from './ECSComponentStorage';
+import type { IComponentStorage } from './ECSComponentStorage';
 
 /** Float32 fields per entity: position(3) + quaternion(4) + scale(3). */
 export const TRANSFORM_FIELD_COUNT = 10;

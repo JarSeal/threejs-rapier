@@ -18,7 +18,7 @@ export interface FollowToolData {
   offset: THREE.Vector3;
   /** Fixed offset for the Light Target relative to the leader (ignored for Point Lights) */
   targetOffset: THREE.Vector3;
-  /** * Follow speed.
+  /** Follow speed.
    * Higher = snappier, Lower = lazier.
    * Use 0 for instant snapping.
    */

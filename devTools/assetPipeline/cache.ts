@@ -105,8 +105,8 @@ const KEY_MEMO_LIMIT = 1000;
 
 /**
  * An encode's cache key (SHA-256, hex).
- * @param files Every source file the encode reads, in a fixed order
- * @param params Every other input: the settings that apply, the asset's own inputs and the
+ * @param input.files Every source file the encode reads, in a fixed order
+ * @param input.params Every other input: the settings that apply, the asset's own inputs and the
  * output's logical path (so the key decides the output's name too)
  */
 export const getCacheKey = (input: {

@@ -4,6 +4,50 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-10 — coding-standards-and-documentation-tooling
+
+### Engine 4.15.1 (Afternoon)
+
+**Changed**
+
+- Every import used only as a type is an `import type` (`verbatimModuleSyntax`), so a type import can't load a module into the physics worker. The built bundle is the same byte for byte.
+- Wall-clock reads in the physics and character code go through two `@internal` clocks: `readStatsClock` (`utils/StatsClock.ts`) for profiling (step timing, write-back latency, step-gate hold time, ray stats) and `readPhysicsWallClock` (`core/Physics/PhysicsWallClock.ts`) for the characters' game time, which p610 replaces. Same values as before.
+- Types that public signatures already named are exported with a summary, so the API reference links them: `LoadSceneProps`, the toaster's `ToasterSettings`, `ToasterProps`, `ToastType` and `ToastDirection` (the module-private `Direction` until now), the input bindings' bases, the listener types (`ViewChangeListener`, `ViewFrameListener`, `SkyBoxChangeListener`, `GeometryDeleteListener`, `LSKeyListener`), `RemovalTypes` and 16 more.
+- JSDoc: `@param` tags name their parameter, `@internal` is an empty tag with its reason in the summary, type parameters are `@template`, and unresolved `{@link}`s are backticks. `friction` and `restitution` document Rapier's defaults (0.5 and 0).
+
+### Toolkit 1.4.1 (Crescent)
+
+**Changed**
+
+- `import type` for type-only imports, as in the engine.
+- `ProjectionPattern` (`materials/triplanarProjection.ts`), the type `blendProjections` takes, is exported with a summary.
+
+### App 1.9.1 (Preschooler)
+
+**Fixed**
+
+- `scene01V2`: the red wireframe sphere's spin follows the physics world's simulated time (`getPhysicsSimClock`, 2 rad/s as before), not the frames counted from the scene's first one. A load spends a varying number of frames with physics held, so the sphere was one frame off on some loads and failed the scene runner's snapshot.
+
+**Changed**
+
+- `import type` for type-only imports, and JSDoc fixes, as in the engine.
+
+### Project
+
+**Added**
+
+- The coding standards (`hub/pages/documentation/coding-standards/`, on the Hub under Documentation): layering, the public API and `@internal`, naming, size, async and disposal, per-frame code, the smallest build, the simulation rules, type hygiene, tests and the JSDoc style, each naming the check that enforces it. CLAUDE.md has one line per rule.
+- Lint rules, as errors on a clean tree: `consistent-type-imports` and `no-import-type-side-effects`, with `verbatimModuleSyntax` in `tsconfig.json`; the simulation rules (`SIMULATION_FILES` in `eslint.config.js`: no `Math.random`, `performance.now()`, `Date.now()` or `new Date` in the physics and character code, the known violations allow-listed with the plan that removes them); JSDoc's shape (`eslint-plugin-jsdoc` 63.3.3, pinned: the newest that runs on `.nvmrc`'s Node 22.13.0).
+- The documentation ratchet: per folder, the undocumented exports and members may not grow. `docs.json` (format 2) lists them by name, and a failure names each new one with its file and line. `yarn verify:baselines --docs` checks only that, without the bundle build (about 1 s on a cached model), and the Stop hook runs it when the engine or the toolkit changed. `--update` refuses a grown count without `--allow-docs-drop`.
+- `yarn verify:scenes --browser firefox`: the debug configurations in Playwright's Firefox (WebGL2), each probe hash compared with the Chromium baseline's; no snapshots, no baseline of its own. The first run: 72 of 72 hashes equal Chromium's, in all three physics targets.
+- The Hub's API extraction runs TypeDoc's `notExported` validation (a public signature naming a type the API doesn't export; 56 found, 31 fixed, the rest listed in their review plans), and loads `typedoc-plugin-zod` 1.4.3, so a `z.infer` type shows its fields. A union's object variants get a table each. Stored search summaries are clipped at 120 characters, keeping the index under 1 MB.
+
+**Changed**
+
+- The hooks report lint: the Stop hook and the per-edit lint fix what they can and fail with the errors left, where before they only autofixed.
+- CLAUDE.md is split: the subsystems contained in one folder (sky box, LOD, impostors, spatial index, instancing, the debug tooling, the editor views, the Hub, its generator, the asset pipeline, dev files, the verify commands, the plans) have a `CLAUDE.md` next to their code, and the root keeps a map of them. The root went from 123 kB to 44 kB. The Hub reads the nested files' `##` sections like the root's Architecture sections, and the move map scans them for moving paths.
+- The move map is regenerated (`RemovalTypes` has its split target).
+
 ## 2026-10-09 — architecture-and-gameplay-contracts
 
 ### Project

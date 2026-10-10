@@ -3,27 +3,35 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import z from 'zod';
-import { SceneAsset, SceneAssetSchema } from '../src/_engine/schemas/sceneSchema';
-import { CameraAsset, CameraAssetSchema } from '../src/_engine/schemas/cameraSchema';
-import { LightAsset, LightAssetSchema } from '../src/_engine/schemas/lightSchema';
-import { GeoAsset, GeoAssetSchema } from '../src/_engine/schemas/geometrySchema';
-import { TextureAsset, TextureAssetSchema } from '../src/_engine/schemas/textureSchema';
-import {
-  TextureArrayAsset,
-  TextureArrayAssetSchema,
-} from '../src/_engine/schemas/textureArraySchema';
-import { MaterialAsset, MaterialAssetSchema } from '../src/_engine/schemas/materialSchema';
-import { MeshAsset, MeshAssetSchema } from '../src/_engine/schemas/meshSchema';
-import { ImportedAsset, ImportedAssetSchema } from '../src/_engine/schemas/importedAssetSchema';
-import { SkyBoxAsset, SkyBoxAssetSchema } from '../src/_engine/schemas/skyBoxSchema';
-import { PostFxAsset, PostFxAssetSchema } from '../src/_engine/schemas/postFxSchema';
+import type { SceneAsset } from '../src/_engine/schemas/sceneSchema';
+import { SceneAssetSchema } from '../src/_engine/schemas/sceneSchema';
+import type { CameraAsset } from '../src/_engine/schemas/cameraSchema';
+import { CameraAssetSchema } from '../src/_engine/schemas/cameraSchema';
+import type { LightAsset } from '../src/_engine/schemas/lightSchema';
+import { LightAssetSchema } from '../src/_engine/schemas/lightSchema';
+import type { GeoAsset } from '../src/_engine/schemas/geometrySchema';
+import { GeoAssetSchema } from '../src/_engine/schemas/geometrySchema';
+import type { TextureAsset } from '../src/_engine/schemas/textureSchema';
+import { TextureAssetSchema } from '../src/_engine/schemas/textureSchema';
+import type { TextureArrayAsset } from '../src/_engine/schemas/textureArraySchema';
+import { TextureArrayAssetSchema } from '../src/_engine/schemas/textureArraySchema';
+import type { MaterialAsset } from '../src/_engine/schemas/materialSchema';
+import { MaterialAssetSchema } from '../src/_engine/schemas/materialSchema';
+import type { MeshAsset } from '../src/_engine/schemas/meshSchema';
+import { MeshAssetSchema } from '../src/_engine/schemas/meshSchema';
+import type { ImportedAsset } from '../src/_engine/schemas/importedAssetSchema';
+import { ImportedAssetSchema } from '../src/_engine/schemas/importedAssetSchema';
+import type { SkyBoxAsset } from '../src/_engine/schemas/skyBoxSchema';
+import { SkyBoxAssetSchema } from '../src/_engine/schemas/skyBoxSchema';
+import type { PostFxAsset } from '../src/_engine/schemas/postFxSchema';
+import { PostFxAssetSchema } from '../src/_engine/schemas/postFxSchema';
 import {
   AssetsConfigSchema,
   type AssetOptimize,
   type TexturePack,
 } from '../src/_engine/schemas/assetsConfigSchema';
 import { toUniqueJsIdentifier } from '../src/_engine/utils/jsIdentifier';
-import { MetaSchema } from '../src/_engine/schemas/_saveDataSchema';
+import type { MetaSchema } from '../src/_engine/schemas/_saveDataSchema';
 import {
   isLegacySkyBoxProps,
   LEGACY_SKYBOX_WARNING,
@@ -1267,7 +1275,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
 
       if (!addedFirstImport) {
         sceneFileImports +=
-          "import { type SceneData } from './core/Scene.ts';\nimport { type ScenePrimitiveAssets } from './core/SceneLoader.ts';\n";
+          "import type { SceneData } from './core/Scene.ts';\nimport type { ScenePrimitiveAssets } from './core/SceneLoader.ts';\n";
         addedFirstImport = true;
       }
       const basePath = getBasePath(fullPath);

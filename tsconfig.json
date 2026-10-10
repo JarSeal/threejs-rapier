@@ -15,6 +15,7 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "verbatimModuleSyntax": true,
     "noEmit": true,
     "typeRoots": ["./src/types", "./node_modules/@types"],
     // Only these @types are global; the rest come in through imports. Without the list, every
@@ -29,7 +30,8 @@
     "out": "docs-api",
     "theme": "default",
     "excludePrivate": true,
-    "readme": "none"
+    "readme": "none",
+    "plugin": ["typedoc-plugin-zod"]
   },
   "exclude": ["node_modules"],
   "include": ["src/**/*", "devTools/**/*.ts", "vite.config.ts", "vitest.config.ts", "vite-env.d.ts"]

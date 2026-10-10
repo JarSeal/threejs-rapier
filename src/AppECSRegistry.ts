@@ -1,12 +1,13 @@
 // NOTE! Import only types and everything with "import type ..."
 import type * as THREE from 'three/webgpu';
-import { HoverComponentData, HoverToolComponentType } from './toolkit/ecs/effects/HoverEffect';
-import { FollowComponentData, FollowToolComponentType } from './toolkit/ecs/effects/FollowTool';
-import {
-  SunShadowFitComponentData,
-  SunShadowFitComponentType,
-} from './toolkit/ecs/effects/SunShadowFit';
-import { SpinComponentData, SpinComponentType } from './app/examples/ecs/SpinComponent';
+import type { HoverComponentData } from './toolkit/ecs/effects/HoverEffect';
+import { HoverToolComponentType } from './toolkit/ecs/effects/HoverEffect';
+import type { FollowComponentData } from './toolkit/ecs/effects/FollowTool';
+import { FollowToolComponentType } from './toolkit/ecs/effects/FollowTool';
+import type { SunShadowFitComponentData } from './toolkit/ecs/effects/SunShadowFit';
+import { SunShadowFitComponentType } from './toolkit/ecs/effects/SunShadowFit';
+import type { SpinComponentData } from './app/examples/ecs/SpinComponent';
+import { SpinComponentType } from './app/examples/ecs/SpinComponent';
 
 /**
  * App and toolkit components (app specific)

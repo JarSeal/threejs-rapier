@@ -1,12 +1,13 @@
-import {
+import type {
   ColliderAPI,
   EngineAPIType,
   PhysicsEngine,
-  PhysicsProtocolType,
   PhysicsState,
   RigidBodyAPI,
 } from './PhysicsAPITypes';
+import { PhysicsProtocolType } from './PhysicsAPITypes';
 import { ENGINES } from './ENGINES';
+import { readPhysicsWallClock } from './PhysicsWallClock';
 
 let curEngineObj: unknown = null;
 let curEngineKey: string | null = null;
@@ -65,7 +66,7 @@ export const getColliderShapeName = (enumNumber: number) => {
 };
 
 export const setPhysicsPauseTime = (physicsState: PhysicsState) => {
-  const now = performance.now();
+  const now = readPhysicsWallClock();
   if (physicsState.pausedTime > 0) {
     physicsState.pauseDurationTotal += now - physicsState.pausedTime;
   }

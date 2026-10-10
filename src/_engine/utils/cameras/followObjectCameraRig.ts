@@ -1,14 +1,18 @@
 import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../core/ECS';
 import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
-import { XYZObject } from '../commontTypes';
+import type { XYZObject } from '../commontTypes';
 import { smoothDampVec3 } from '../helpers';
 
 const DEFAULT_OFFSET = { x: 0, y: 5, z: 10 };
 const DEFAULT_LERP_SMOOTH_TIME = 0.1;
 const DEFAULT_DAMP_SMOOTH_TIME = 0.2;
 
-type FollowObjectCameraParams = {
+/**
+ * {@link createFollowObjectCameraRig}'s options: the camera, the mesh it follows, and how it
+ * follows it.
+ */
+export type FollowObjectCameraParams = {
   id: string;
   camera: THREE.Camera;
   targetMesh: THREE.Mesh;

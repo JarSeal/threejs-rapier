@@ -1,6 +1,6 @@
 import { vec2, abs, max, fract, fwidth, smoothstep, oneMinus, mix } from 'three/tsl';
 // The real generic `Node<T>` typings (the `three/tsl` `Node` is a loose local shim)
-import { type Node, type NodeMaterial } from 'three/webgpu';
+import type { Node, NodeMaterial } from 'three/webgpu';
 import { blendProjections, readBooleanDefines, triplanarProjection } from './triplanarProjection';
 
 // Plus sign proportions as fractions of one cell (hardcoded, not exposed as inputs)

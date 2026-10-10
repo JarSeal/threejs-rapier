@@ -119,7 +119,7 @@ export const buildListItems = <T extends object>(config: ListConfig<T>): Debugge
   ];
 };
 
-/** "Reset <list> list". */
+/** The "Reset <list> list" button: drops the list's overrides, back to the definition's. */
 export const buildResetListButton = <T extends object>(
   config: ListConfig<T>
 ): DebuggerPaneItem => ({

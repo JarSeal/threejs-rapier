@@ -2,13 +2,13 @@
 
 // Only import worker-safe modules here (no Config.ts, Logger.ts or utils/helpers.ts: those
 // touch `window`/`document`, directly or through their imports).
-import {
+import type {
   AssetsDownProtocol,
-  AssetsProtocolType,
   AssetsUpProtocol,
   AssetsWorkerCapabilities,
   AssetsWorkerReadyMessage,
 } from '../core/Assets/AssetsAPITypes';
+import { AssetsProtocolType } from '../core/Assets/AssetsAPITypes';
 import { AssetsSourceError } from './assets/assetsFetch';
 import { assetsSwitchGLTF } from './assets/assetsSwitchGLTF';
 import { assetsSwitchSimplify } from './assets/assetsSwitchSimplify';

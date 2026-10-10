@@ -21,7 +21,8 @@ import type {
   SkyBoxSunSchema,
 } from '../../schemas/skyBoxSchema';
 
-type SkyBoxBaseInput = z.input<typeof SkyBoxBaseSchema>;
+/** A base layer as the schema takes it, before its defaults. */
+export type SkyBoxBaseInput = z.input<typeof SkyBoxBaseSchema>;
 
 /** A sky box's base layer. A texture base can be given an already-loaded texture in code. */
 export type SkyBoxBaseDef =
@@ -51,7 +52,8 @@ export type SkyBoxMoonDef = z.input<typeof SkyBoxMoonSchema>;
 /** A moon's managed directional light. */
 export type SkyBoxMoonLightDef = z.input<typeof SkyBoxMoonLightSchema>;
 
-/** The moon's texture. */
+/** A moon's picture: a file or a registered texture id, drawn as its face or wrapped round its
+ * sphere (`projection`). */
 export type SkyBoxMoonTextureDef = NonNullable<SkyBoxMoonDef['texture']>;
 
 /** The stars layer (and its optional Milky Way). */

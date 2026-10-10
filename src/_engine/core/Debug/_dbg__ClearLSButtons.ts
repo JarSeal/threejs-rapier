@@ -1,4 +1,5 @@
-import { CMP, TCMP } from '../../utils/CMP';
+import type { TCMP } from '../../utils/CMP';
+import { CMP } from '../../utils/CMP';
 import { getSvgIcon, type SvgIconKey } from '../UI/icons/SvgIcon';
 import { openDialog } from '../UI/DialogWindow';
 import { closeDraggableWindow } from '../UI/DraggableWindow';

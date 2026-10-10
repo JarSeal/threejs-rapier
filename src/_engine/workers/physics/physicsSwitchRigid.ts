@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
+import type {
   EngineAPIType,
-  PhysicsProtocolType,
   PhysicsUpProtocol,
   PhysRotation,
   PhysVector,
@@ -9,7 +8,8 @@ import {
   RigidBodyPose,
   WorldAPI,
 } from '../../core/Physics/PhysicsAPITypes';
-import { PhysicsTransformBuffer } from '../../core/Physics/PhysicsTransformBuffer';
+import { PhysicsProtocolType } from '../../core/Physics/PhysicsAPITypes';
+import type { PhysicsTransformBuffer } from '../../core/Physics/PhysicsTransformBuffer';
 
 /** Copies a pose into plain objects, so it posts as exactly these fields. */
 const toPlainPose = (pos: PhysVector, rot: PhysRotation): RigidBodyPose => ({

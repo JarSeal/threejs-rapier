@@ -6,7 +6,7 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 // Static, unlike the main thread's on-demand import: the worker bundle can't be code-split
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import {
+import type {
   AssetsDownProtocol,
   AssetsLoadGLTFRequest,
   DracoWorkerSettings,
@@ -19,17 +19,15 @@ import {
   setGLTFDecoders,
 } from '../../core/Import/GLTFExtensions';
 import { collectGLTFTextures } from '../../core/Import/GLTFTextureCollect';
-import { serializeGeometry, TransferableGeometry } from '../../core/Import/GeometryTransfer';
+import type { TransferableGeometry } from '../../core/Import/GeometryTransfer';
+import { serializeGeometry } from '../../core/Import/GeometryTransfer';
 import {
   readGLTFLodChains,
   serializeLodChain,
   type TransferableLodChain,
 } from '../../core/Lod/LodChainGLTF';
-import {
-  collectImageTransferables,
-  serializeTexture,
-  TransferableImage,
-} from '../../core/Import/TextureTransfer';
+import type { TransferableImage } from '../../core/Import/TextureTransfer';
+import { collectImageTransferables, serializeTexture } from '../../core/Import/TextureTransfer';
 import { fetchAsset } from './assetsFetch';
 
 let gltfLoader: GLTFLoader | null = null;

@@ -570,7 +570,7 @@ out(EDGE_HEADER);
 for (const e of [...splitFileImports, ...deletedImports]) out(edgeRow(e));
 out();
 
-// Paths outside the import graph: docs, Hub pages, configs and devTools strings
+// Paths outside the import graph: docs, CLAUDE.md files, Hub pages, configs and devTools strings
 const movedPaths = Object.entries(moveMap)
   .filter(([from, e]) => e.to !== from)
   .map(([from]) => from)
@@ -588,8 +588,8 @@ const docFiles = [...allTracked].filter(
     /^(hub\/pages\/.*\.(md|html)|docs\/(techniques|issues)\/.*\.md|devTools\/(?!refactor\/).*\.ts)$/.test(
       f
     ) ||
+    path.posix.basename(f) === 'CLAUDE.md' ||
     [
-      '.claude/CLAUDE.md',
       'readme.md',
       'vite.config.ts',
       'vitest.config.ts',
@@ -607,7 +607,7 @@ for (const file of docFiles) {
 out('## Paths outside the import graph');
 out();
 out(
-  `Mentions of a moving file's path (from the repo root, or from ${code('src/_engine/')}) in the Hub pages (${code('<<<')} includes, ${code('repo:')} links), the docs, CLAUDE.md, the readme, the configs and the devTools: the codemod rewrites the exact ones, the rest are fixed by hand. ${code('yarn hub:build')} fails on a stale include or link.`
+  `Mentions of a moving file's path (from the repo root, or from ${code('src/_engine/')}) in the Hub pages (${code('<<<')} includes, ${code('repo:')} links), the docs, the CLAUDE.md files, the readme, the configs and the devTools: the codemod rewrites the exact ones, the rest are fixed by hand. ${code('yarn hub:build')} fails on a stale include or link.`
 );
 out();
 out('| File | Mentions | Distinct paths |');

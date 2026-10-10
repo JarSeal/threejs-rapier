@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Refactoring, Documentation, LOD, Rendering
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage C)
-Blocked by: p605_coding-standards-and-documentation-tooling.md, p608_engine-folder-restructure.md
+Blocked by: p608_engine-folder-restructure.md
 Blocks: p621_hub-docs-readme-and-claude-md-final.md
 
 # Review: LOD, Spatial Index, Instancing and Lines — Stub
@@ -20,6 +20,7 @@ Applies p600 §5 (the per-file review standard) and p605's JSDoc style to every 
 ## Inputs
 
 - p600 §2; the LOD sections of CLAUDE.md (they become nested files).
+- p605 Phase 5's `notExported` warnings in scope (`yarn hub:build` lists each with its file and line; export the type with a summary or change the signature): `Vec2Node` / `Vec3Node` (`Lod/Impostors/Octahedral.ts`'s local TSL aliases, named by `encodeOctahedralNode` / `decodeOctahedralNode`).
 
 ## Done when
 

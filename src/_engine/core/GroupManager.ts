@@ -5,7 +5,7 @@ import { ThreeEuler, ThreeQuoternion } from '../utils/helpers';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { setTransform } from '../utils/ECSHelpers';
 import { lerror, lwarn } from '../utils/Logger';
-import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import type { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { CoreComponentType } from './ECS/ECSRegistry';
 

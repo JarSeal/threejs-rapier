@@ -1,12 +1,12 @@
 /// <reference lib="webworker" />
 
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
-import {
+import type {
   AssetsDownProtocol,
   AssetsLoadHDRTextureRequest,
   AssetsLoadTextureRequest,
-  AssetsProtocolType,
 } from '../../core/Assets/AssetsAPITypes';
+import { AssetsProtocolType } from '../../core/Assets/AssetsAPITypes';
 import { fetchAsset } from './assetsFetch';
 
 let hdrLoader: HDRLoader | null = null;

@@ -1,5 +1,6 @@
 import type * as THREE from 'three/webgpu';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugModuleRef } from '../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import { isProfilerLoadedInThisMode } from './Profiler';
 
 /** Profiler window tab id of the GPU memory and draw-call tab. */
@@ -63,5 +64,8 @@ export const registerGPUMemorySource = (source: GPUMemorySource) => {
   };
 };
 
-/** @internal The registered sources (the GPU memory tab). */
+/**
+ * The registered sources (the GPU memory tab).
+ * @internal
+ */
 export const _getGPUMemorySources = (): ReadonlyMap<string, GPUMemorySource> => sources;

@@ -21,24 +21,21 @@ import {
   initPhysicsEngine,
   ValidProtocolTypes,
 } from './Physics/PhysicsUtils';
+import { readPhysicsWallClock } from './Physics/PhysicsWallClock';
 import { lerror, lwarn } from '../utils/Logger';
+import { readStatsClock } from '../utils/StatsClock';
 // Always-safe thin wrapper: a no-op outside debug builds and tree-shaken out of production.
 import { updatePhysicsPanel } from '../debug/Stats';
+import type { LoopState } from './MainLoop';
 import {
   addVisibilityChangeFn,
   getFixedFrameDelta,
   getReadOnlyLoopState,
-  LoopState,
   toggleMainPlay,
 } from './MainLoop';
-import {
-  DebugModuleRef,
-  initWorker,
-  loadDebugModule,
-  loadDebugModuleAsync,
-  useDebug,
-} from '../utils/helpers';
-import {
+import type { DebugModuleRef } from '../utils/helpers';
+import { initWorker, loadDebugModule, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type {
   ColliderAPI,
   CollBorderRadiusResponse,
   CollHeightsResponse,
@@ -52,7 +49,6 @@ import {
   InteractionGroupsAPI,
   PhysicsState,
   PhysicsDownProtocol,
-  PhysicsProtocolType,
   PhysicsUpProtocol,
   PhysRay,
   PhysVector,
@@ -142,7 +138,6 @@ import {
   CollHalfExtentsResponse,
   CollCollisionGroupsResponse,
   CollSolverGroupsResponse,
-  ContactForceEventSnapshot,
   TempContactForceEvent,
   EventsPushMessage,
   JointAPI,
@@ -160,6 +155,10 @@ import {
   RigidDetachResponse,
   RigidReadPositionsResponse,
   RigidReattachResponse,
+} from './Physics/PhysicsAPITypes';
+import {
+  PhysicsProtocolType,
+  ContactForceEventSnapshot,
   type PhysicsBodyActivity,
   type RigidBodyAttachState,
 } from './Physics/PhysicsAPITypes';
@@ -169,7 +168,7 @@ import {
   type IntervalCounterSnapshot,
 } from '../utils/stats/IntervalCounterStats';
 import { RAY_STATS_WINDOWS, RAY_TESTER_ID_PREFIX, type RayDebugOpts } from './RayDebugTypes';
-import { ShapeType } from '@dimforge/rapier3d-compat';
+import type { ShapeType } from '@dimforge/rapier3d-compat';
 import { existsOrThrow } from '../utils/assert';
 
 let physicsState: PhysicsState = {
@@ -409,7 +408,7 @@ export const stepPhysics = (
     // accumulator rather than trying to simulate the whole paused duration in one go. The
     // timer restarts from now, whatever paused it, so the next frame's dt is one frame long.
     physicsState.isPaused = false;
-    physicsState.pauseDurationTotal += performance.now() - physicsState.pausedTime;
+    physicsState.pauseDurationTotal += readPhysicsWallClock() - physicsState.pausedTime;
     physicsState.pausedTime = 0;
     accDelta = 0;
     simClockEpoch++;
@@ -486,9 +485,9 @@ export const stepPhysics = (
         }
         // Timed around step() alone: onBeforeStep above runs app/ECS work, and including it
         // would reproduce exactly the contamination that made the legacy PHY panel misleading.
-        const subStepStart = performance.now();
+        const subStepStart = readStatsClock();
         engAPI?.step();
-        stepMs += performance.now() - subStepStart;
+        stepMs += readStatsClock() - subStepStart;
       }
     } finally {
       subStepIndex = -1;
@@ -534,7 +533,7 @@ export const stepPhysics = (
       substepCommands,
       isOneWay: true,
       // Only stamped while measuring; the worker derives dispatchMs from it.
-      sentAt: trackStats ? performance.now() : undefined,
+      sentAt: trackStats ? readStatsClock() : undefined,
     });
     stampStepBatch(stepsTaken);
     // SHARED_MEMORY has no per-step return message, so the stats are polled here instead,
@@ -559,7 +558,7 @@ const readSharedStepStats = () => {
   lastPhysicsStepDurationMs = stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.STEP_MS];
   lastPhysicsMessagingLatency = {
     dispatchMs: stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.DISPATCH_MS],
-    writeBackMs: performance.now() - stepEndAt,
+    writeBackMs: readStatsClock() - stepEndAt,
   };
   bodyActivity.awake = stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.AWAKE_BODIES];
   bodyActivity.sleeping = stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.SLEEPING_BODIES];
@@ -713,7 +712,7 @@ const physicsQueryObserver: PhysicsQueryObserver = {
           maxToi,
           null,
           debug,
-          performance.now()
+          readStatsClock()
         );
       }
     }
@@ -783,7 +782,7 @@ export const getPhysicsRayStats = (): Readonly<PhysicsRayStats> => physicsRaySta
 
 /** Resets the physics ray statistics. The scene loader calls it on every scene enter. */
 export const resetPhysicsRayStats = () => {
-  const now = performance.now();
+  const now = readStatsClock();
   physicsRaysStats.reset(now);
   physicsShapeCastsStats.reset(now);
   physicsRayStats.pendingQueries = 0;
@@ -889,7 +888,7 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
       lastPhysicsStepDurationMs = data.stepDuration;
       lastPhysicsMessagingLatency = {
         dispatchMs: data.dispatchMs ?? 0,
-        writeBackMs: data.stepEndAt !== undefined ? performance.now() - data.stepEndAt : 0,
+        writeBackMs: data.stepEndAt !== undefined ? readStatsClock() - data.stepEndAt : 0,
       };
       if (data.awakeBodies !== undefined && data.sleepingBodies !== undefined) {
         bodyActivity.awake = data.awakeBodies;
@@ -974,18 +973,18 @@ const dispatchPushedEvents = (data: EventsPushMessage) => {
 // WORKER LOGIC -- [ END ] -----------------------
 
 const setPhysicsPauseTime = () => {
-  const now = performance.now();
+  const now = readPhysicsWallClock();
   if (physicsState.pausedTime > 0) {
     physicsState.pauseDurationTotal += now - physicsState.pausedTime;
   }
   physicsState.pausedTime = now;
 };
 
-/** Get the current phys game time, that is the performance.now()
+/** Get the current phys game time, that is the wall clock (`readPhysicsWallClock`)
  * adjusted with the total pause time.
  */
 export const getPhysGameTime = () => {
-  const now = performance.now();
+  const now = readPhysicsWallClock();
   let currentTotalPauseDuration = physicsState.pauseDurationTotal;
 
   // If currently paused, add the time since the last pause began
@@ -1202,12 +1201,12 @@ let stepGateHeldSince: number | null = null;
 const noteStepGateHeld = (held: boolean) => {
   if (held) {
     if (stepGateHeldSince !== null) return;
-    stepGateHeldSince = performance.now();
+    stepGateHeldSince = readStatsClock();
     stepGateStats.waits++;
     return;
   }
   if (stepGateHeldSince === null) return;
-  stepGateStats.heldMs += performance.now() - stepGateHeldSince;
+  stepGateStats.heldMs += readStatsClock() - stepGateHeldSince;
   stepGateHeldSince = null;
 };
 
@@ -1251,7 +1250,7 @@ export const addPhysicsStepGate = (step: number): (() => void) => {
 export const getPhysicsStepGateStats = () => ({
   waits: stepGateStats.waits,
   heldMs:
-    stepGateStats.heldMs + (stepGateHeldSince === null ? 0 : performance.now() - stepGateHeldSince),
+    stepGateStats.heldMs + (stepGateHeldSince === null ? 0 : readStatsClock() - stepGateHeldSince),
 });
 
 /**
@@ -2973,8 +2972,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   /** Bumped by every detach and reattach (p352), so a reply to an older one is ignored. */
   private attachGeneration = 0;
 
-  /** @internal detachRigidBody: the slot is the worker's to reuse from now on. Returns the
-   * detach's generation. */
+  /**
+   * detachRigidBody: the slot is the worker's to reuse from now on. Returns the
+   * detach's generation.
+   * @internal
+   */
   _detach() {
     this.slot = -1;
     this.pendingPos = undefined;
@@ -2984,18 +2986,27 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     return ++this.attachGeneration;
   }
 
-  /** @internal reattachRigidBody, before its request. Returns the reattach's generation. */
+  /**
+   * reattachRigidBody, before its request. Returns the reattach's generation.
+   * @internal
+   */
   _beginReattach() {
     return ++this.attachGeneration;
   }
 
-  /** @internal Whether no detach/reattach has been requested since `generation`'s. */
+  /**
+   * Whether no detach/reattach has been requested since `generation`'s.
+   * @internal
+   */
   _isAttachGeneration(generation: number) {
     return this.attachGeneration === generation;
   }
 
-  /** @internal reattachRigidBody's reply: the new slot, and its pose read until a transform
-   * write-back includes it (as at creation). */
+  /**
+   * reattachRigidBody's reply: the new slot, and its pose read until a transform
+   * write-back includes it (as at creation).
+   * @internal
+   */
   _attach(slot: number, pose: RigidBodyPose) {
     this.slot = slot;
     const visibleAt = getWriteVisibleStep();

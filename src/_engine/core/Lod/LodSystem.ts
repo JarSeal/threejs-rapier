@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 import { ECSWorld, getECSWorld } from '../ECS';
-import { ComponentData, ComponentType } from '../ECS/ECSCoreComponents';
+import type { ComponentData } from '../ECS/ECSCoreComponents';
+import { ComponentType } from '../ECS/ECSCoreComponents';
 import type { IComponentStorage } from '../ECS/ECSComponentStorage';
 import { reconcileObject3DVisibility } from '../ECS/ECSCoreSystems';
 import { getActiveCamera, getMainCamera } from '../CameraManager';
@@ -11,7 +12,8 @@ import { decMaterialRef, getMaterialRegistry, incMaterialRef } from '../Material
 import { preWarmMesh, setMeshGeometry, setMeshMaterial } from '../MeshManager';
 import { getConservativeGeometryRadius } from '../Spatial/SpatialIndexSystem';
 import { lwarn } from '../../utils/Logger';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
+import type { DebugModuleRef } from '../../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../../utils/helpers';
 import { getInstancedLodBounds } from './LodBounds';
 import { clearLodObjectFade, enableLodDither, LOD_FADE_OPAQUE, setLodObjectFade } from './LodFade';
 import type { LodData, LodResolvedLevel, LodTarget } from './LodTypes';
@@ -939,9 +941,7 @@ export type LodMeasure = {
  * The sphere the selection measures a `LOD` entity by, in world space (level 0's bounds), without
  * the camera terms: for the debug overlay's per-entity loop. False when there is nothing to
  * measure.
- * @param entityId the entity
  * @param lod its `LOD` data
- * @param world the entity's world
  * @param out written in place
  */
 export const getLodWorldSphere = (
@@ -969,8 +969,6 @@ const _measureTerms: CameraTerms = { k: 0, isOrtho: false, position: new THREE.V
  * Measures a `LOD` entity the way the selection does, against {@link getLodSelectionCamera} now:
  * for the debug tools (the overlay and the LOD window). Writes into `out`; false when there is
  * nothing to measure (no `LOD`, no levels, no mesh or Transform, no usable camera).
- * @param entityId the entity
- * @param world the entity's world
  * @param out written in place
  */
 export const measureLodEntity = (entityId: number, world: ECSWorld, out: LodMeasure) => {

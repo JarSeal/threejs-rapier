@@ -9,12 +9,14 @@ import { characterTestObstacles } from '../_engine/utils/world/characterTestObje
 import { importAssetAsync } from '../_engine/core/Import/ImportRegistry';
 import { spawnImportedAsset } from '../_engine/core/Import/SpawnImported';
 import type { ImportedAssetManifest } from '../_engine/core/Import/ImportTypes';
-import { ComponentType, Transform } from '../_engine/core/ECS/ECSCoreComponents';
+import type { Transform } from '../_engine/core/ECS/ECSCoreComponents';
+import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { getQuatFromAngle } from '../_engine/utils/helpers';
 import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
-import { ECSWorld, getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
+import type { ECSWorld } from '../_engine/core/ECS';
+import { getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
 import { getScene, registerOnSceneExit } from '../_engine/core/Scene';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 import { getCameraByAppId } from '../_engine/core/CameraManager';
@@ -72,9 +74,8 @@ const snapToStep = (value: number, step: number) => Math.round(value / step) * s
  * covers the area around it wherever it goes. The light's direction and distance stay as authored
  * (its position - target offset). The frustum moves in whole shadow map texels in light space, or
  * shadow edges would shimmer as it slides. The light is looked up lazily: a scene's JSON lights are
- * created after its scene function runs.
- * @param centerOffset shifts the frustum center from the followed entity (eg. toward where the
- * camera sees more ground)
+ * created after its scene function runs. `centerOffset` shifts the frustum center from the
+ * followed entity (eg. toward where the camera sees more ground).
  */
 const followWithSun = (
   sunAppId: string,

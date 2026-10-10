@@ -2,7 +2,7 @@ import { CMP, type TCMP } from '../../utils/CMP';
 import styles from './DebuggerGUI.module.scss';
 import { lsRemoveItem } from '../../utils/LocalAndSessionStorage';
 import { lerror } from '../../utils/Logger';
-import { type AnyDebuggerTabDef } from '../../debug/DebuggerGUI';
+import type { AnyDebuggerTabDef } from '../../debug/DebuggerGUI';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import { _buildDebuggerPane } from './_dbg__DebuggerPaneBuilder';
@@ -53,7 +53,6 @@ type MountedTab = {
  * cleanup, and runs `refreshIntervalMs` only while the host is visible. The owner keeps its own
  * menu, ordering and state (the debug drawer and the profiler window each use one host).
  * @param opts ({@link TabHostOpts})
- * @returns {@link TabHost}
  */
 export const createTabHost = (opts: TabHostOpts): TabHost => {
   const { getContainer, isVisible, onMount, label = 'Debugger tab' } = opts;

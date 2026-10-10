@@ -1,6 +1,5 @@
-import {
+import type {
   PhysicsDownProtocol,
-  PhysicsProtocolType,
   PhysicsUpProtocol,
   RayColliderIntersectionAPI,
   WorldAPI,
@@ -9,6 +8,7 @@ import {
   WorldCastShapeResponse,
   WorldIntersectionsWithRayResponse,
 } from '../../core/Physics/PhysicsAPITypes';
+import { PhysicsProtocolType } from '../../core/Physics/PhysicsAPITypes';
 import { getCollOrRigidId } from '../../core/Physics/PhysicsUtils';
 
 export const physicsSwitchWorld = async (

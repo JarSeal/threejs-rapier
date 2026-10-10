@@ -5,8 +5,10 @@ import { ComponentType } from '../ECS/ECSCoreComponents';
 import { IS_DEBUG_ENV } from '../Config';
 import { lwarn } from '../../utils/Logger';
 import { MAX_SPOT_ANGLE } from '../ECS/ObjectFrustumCullingSystem';
-import { ReadonlyVec3, SpatialGrid } from './SpatialGrid';
-import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
+import type { ReadonlyVec3 } from './SpatialGrid';
+import { SpatialGrid } from './SpatialGrid';
+import type { DebugModuleRef } from '../../utils/helpers';
+import { loadDebugModuleAsync, useDebug } from '../../utils/helpers';
 import { getCurrentSceneId } from '../Scene';
 import { getNextSceneId, isCurrentlyLoading } from '../SceneLoader';
 import type { SceneSpatialDomainEntry } from '../../schemas/spatialDomainSchema';
@@ -579,7 +581,7 @@ export function setSpatialGridCellSize(world: ECSWorld, cellSize: number, sceneI
  * Gets the settings of a registration without its scope, and the scope separately: `sceneId`
  * for a scene's settings, undefined for the world settings (p349 §3.5).
  */
-type SpatialDomainOptionsOverride = (
+export type SpatialDomainOptionsOverride = (
   world: ECSWorld,
   requested: Omit<SpatialDomainOptions, 'sceneId'>,
   sceneId: string | undefined
