@@ -28,17 +28,13 @@ export type PartKey = 'engine_metadata' | 'toolkit_metadata' | 'app_metadata';
 type PartMeta = { version?: string; codename?: string; fullName?: string; name?: string };
 export type Pkg = { version?: string } & Partial<Record<PartKey, PartMeta>>;
 
+// `src/generated/` is in no part: the gatherer rebuilds it from the app's JSON files
 export const PARTS: { key: PartKey; label: string; tagPrefix: string; paths: string[] }[] = [
   {
     key: 'engine_metadata',
     label: 'Engine',
     tagPrefix: 'engine-v',
-    // The generated files are rebuilt from the app's JSON files, so they are app changes
-    paths: [
-      'src/_engine',
-      ':(exclude)src/_engine/generatedAppData.json',
-      ':(exclude)src/_engine/generatedAppFns.ts',
-    ],
+    paths: ['src/_engine'],
   },
   { key: 'toolkit_metadata', label: 'Toolkit', tagPrefix: 'toolkit-v', paths: ['src/toolkit'] },
   {

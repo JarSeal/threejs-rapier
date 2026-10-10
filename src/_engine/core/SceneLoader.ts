@@ -58,7 +58,7 @@ import {
   getEntityIdByAppId,
 } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
-import { sceneFileObjects } from '../generatedAppFns';
+import { sceneFileObjects } from '../../generated/generatedAppFns';
 import { getTexture, loadTextureAsync } from './Texture';
 import { createMaterial, getMaterial } from './Material';
 import { textureMapKeys } from '../utils/constants';

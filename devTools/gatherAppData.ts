@@ -90,11 +90,10 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
 export const generatedAppFnsFilename = 'generatedAppFns.ts';
-export const OUTPUT_FILE_DATA = path.resolve(
-  __dirname,
-  `../src/_engine/${generatedAppDataJSONFilename}`
-);
-export const OUTPUT_FILE_FN = path.resolve(__dirname, `../src/_engine/${generatedAppFnsFilename}`);
+/** The gatherer's outputs: app data, handed to the engine through `InitEngine` (p606) */
+export const OUTPUT_DIR = path.resolve(__dirname, '../src/generated');
+export const OUTPUT_FILE_DATA = path.join(OUTPUT_DIR, generatedAppDataJSONFilename);
+export const OUTPUT_FILE_FN = path.join(OUTPUT_DIR, generatedAppFnsFilename);
 
 const JSON_ENDING_SIGNATURES = {
   scene: '.scene.json',
@@ -1275,7 +1274,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
 
       if (!addedFirstImport) {
         sceneFileImports +=
-          "import type { SceneData } from './core/Scene.ts';\nimport type { ScenePrimitiveAssets } from './core/SceneLoader.ts';\n";
+          "import type { SceneData } from '../_engine/core/Scene.ts';\nimport type { ScenePrimitiveAssets } from '../_engine/core/SceneLoader.ts';\n";
         addedFirstImport = true;
       }
       const basePath = getBasePath(fullPath);

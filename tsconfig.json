@@ -45,7 +45,7 @@
   },
   "typedocOptions": {
     "entryPoints": ["src/_engine/**/*.ts", "src/toolkit/**/*.ts"],
-    "exclude": ["**/_dbg__*", "**/generatedApp*", "**/*.test.ts", "**/index.ts"],
+    "exclude": ["**/_dbg__*", "**/*.test.ts", "**/index.ts"],
     "out": "docs-api",
     "theme": "default",
     "excludePrivate": true,

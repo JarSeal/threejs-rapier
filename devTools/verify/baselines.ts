@@ -9,7 +9,7 @@
  *   and the main chunk's modules summed per group (three, Rapier, each engine folder, toolkit,
  *   app; the visualizer's rendered and gzip sizes, before minification, as p600 §2.4 counts).
  * - `api.json`: every export of the documented API (the Hub's TypeDoc model: `src/_engine` and
- *   `src/toolkit` minus `_dbg__*`, `generatedApp*`, tests and the entries) by module, with its kind,
+ *   `src/toolkit` minus `_dbg__*`, tests and the entries) by module, with its kind,
  *   and each public entry's (`aekasha`, `aekasha/*`, p606) export names, read from its file.
  * - `docs.json`: documented / total exports and class and interface members per folder (the
  *   Hub's coverage rule: re-exports don't count), as p600 §2.5 counts them, and each folder's

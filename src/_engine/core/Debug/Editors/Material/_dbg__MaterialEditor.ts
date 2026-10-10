@@ -17,7 +17,7 @@ import { getGeneratedAppData } from '../../../Scene';
 import { createMaterial, deleteMaterial, type MatProps } from '../../../Material';
 import { getTexture, loadTextureAsync, type TextureProps } from '../../../Texture';
 import { getHUDRootCMP, KEEP_IN_VIEWS_CLASS } from '../../../HUD';
-import { tslMaterialFileObjects } from '../../../../generatedAppFns';
+import { tslMaterialFileObjects } from '../../../../../generated/generatedAppFns';
 import type { MaterialAsset } from '../../../../schemas/materialSchema';
 import { textureMapKeys } from '../../../../utils/constants';
 import { addDebugToast } from '../../../../debug/DebuggerGUI';

@@ -15,8 +15,8 @@ import { HUB_API_CACHE_FILE, PACKAGE_JSON_FILE, ROOT, toRepoPath, TSCONFIG_FILE 
 
 /**
  * The API model (p553 §2.1): TypeDoc's JSON for the engine and the toolkit, from the
- * `typedocOptions` in `tsconfig.json` (the entry points and the `_dbg__*` / `generatedApp*` /
- * `*.test.ts` / `index.ts` excludes `yarn docs` uses too). It's cached in `.cache/hub/typedoc.json` with a hash of its
+ * `typedocOptions` in `tsconfig.json` (the entry points and the `_dbg__*` / `*.test.ts` /
+ * `index.ts` excludes `yarn docs` uses too). It's cached in `.cache/hub/typedoc.json` with a hash of its
  * inputs (the source files' paths, mtimes and sizes, the configs, the TypeDoc version), and kept
  * in memory, so an unchanged model costs a hash: the conversion takes seconds.
  *
@@ -49,7 +49,7 @@ const LOCK_FILE = path.join(ROOT, 'yarn.lock');
  * `typedocOptions.exclude`: they aren't in the model, so they aren't in its hash. The entries
  * (`index.ts`, p606) only re-export: TypeDoc documents the source files until p619.
  */
-const EXCLUDED_FILE_REGEX = /^(_dbg__|generatedApp|index\.ts$)|\.test\.ts$/;
+const EXCLUDED_FILE_REGEX = /^(_dbg__|index\.ts$)|\.test\.ts$/;
 /** The child process's entry, run through tsx */
 const CHILD_PROCESS_ENTRY = path.join(ROOT, 'devTools', 'hub', 'api', 'extractProcess.ts');
 

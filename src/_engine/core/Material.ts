@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { deleteTexture, getTexture, getTextureRegistry } from './Texture';
 import { getRootScene } from './Scene';
 import { existsOrThrow } from '../utils/assert';
-import { tslMaterialFileObjects } from '../generatedAppFns';
+import { tslMaterialFileObjects } from '../../generated/generatedAppFns';
 import { lerror, lwarn } from '../utils/Logger';
 import type { Node } from 'three/tsl';
 import { color, texture, uniform } from 'three/tsl';

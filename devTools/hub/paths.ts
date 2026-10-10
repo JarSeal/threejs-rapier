@@ -52,7 +52,7 @@ export const FAVICON_FILES = ['favicon.ico', 'favicon.svg', 'apple-touch-icon.pn
 export const PAGE_IMAGES_URL_DIR = '_assets/images/pages/';
 
 /** The app's scenes (p554): the generated data lists them, a scene file's path is from `src/app/` */
-export const APP_DATA_FILE = path.join(ROOT, 'src', '_engine', 'generatedAppData.json');
+export const APP_DATA_FILE = path.join(ROOT, 'src', 'generated', 'generatedAppData.json');
 export const APP_SRC_DIR = path.join(ROOT, 'src', 'app');
 /** The output folder for the scenes' Hub images: `_assets/images/scenes/<sceneId>-<width>.webp` */
 export const SCENE_IMAGES_URL_DIR = '_assets/images/scenes/';

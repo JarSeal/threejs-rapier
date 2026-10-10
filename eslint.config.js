@@ -99,7 +99,7 @@ export default [
   // rule. Types live in TypeScript, never in a tag, and `@param name text` has no hyphen.
   {
     files: ['src/**/*.ts', 'devTools/**/*.ts'],
-    ignores: ['src/_engine/generatedApp*'],
+    ignores: ['src/generated/**'],
     plugins: { jsdoc },
     settings: { jsdoc: { mode: 'typescript' } },
     rules: {

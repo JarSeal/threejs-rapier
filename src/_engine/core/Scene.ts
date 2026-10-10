@@ -17,7 +17,7 @@ import {
   registerSkyBox,
 } from './SkyBox/SkyBox';
 import type { SkyBoxDef } from './SkyBox/SkyBoxTypes';
-import generatedAppData from '../generatedAppData.json';
+import generatedAppData from '../../generated/generatedAppData.json';
 import type { CameraProps } from '../schemas/cameraSchema';
 import type { CoreEntityOpts } from '../schemas/_helperSchemas';
 import type { SceneSpatialDomainEntry } from '../schemas/spatialDomainSchema';

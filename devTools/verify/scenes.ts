@@ -58,7 +58,7 @@ import { compareSnapshots } from './snapshotDiff';
 /** Bump when the baseline file's shape changes: an old one is then ignored */
 const BASELINE_FORMAT_VERSION = 1;
 const CACHE_DIR = path.join(ROOT, '.cache/verify/scenes');
-const GENERATED_DATA = path.join(ROOT, 'src/_engine/generatedAppData.json');
+const GENERATED_DATA = path.join(ROOT, 'src/generated/generatedAppData.json');
 /** `DEBUG_PHYSICS_API_BOOT_LS_KEY` (core/Config.ts, which reads `window` at load: not importable here) */
 const PHYSICS_BOOT_LS_KEY = 'AEK_debugPhysicsApiBoot';
 const VIEWPORT = { width: 1024, height: 576 };

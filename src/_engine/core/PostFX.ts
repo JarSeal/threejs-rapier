@@ -26,7 +26,7 @@ import {
   registerOnAllSceneExits,
 } from './Scene';
 import { getActiveCamera } from './CameraManager';
-import { postFxFileObjects } from '../generatedAppFns';
+import { postFxFileObjects } from '../../generated/generatedAppFns';
 import { lerror, llog, lwarn } from '../utils/Logger';
 import type { DebugModuleRef } from '../utils/helpers';
 import { loadDebugModuleAsync, useDebug } from '../utils/helpers';
