@@ -1,10 +1,19 @@
 import type { TCMP, TStyle } from '../../utils/CMP';
 import { CMP } from '../../utils/CMP';
 
-type ToastType = 'info' | 'warning' | 'alert';
-type Direction = 'up' | 'down' | 'left' | 'right';
+/**
+ * A toast's kind: the settings that can differ per kind (showing time, closable, icon) are keyed by
+ * it.
+ */
+export type ToastType = 'info' | 'warning' | 'alert';
+/** Which way a toaster's toasts line up, or which side a new toast comes in from. */
+export type ToastDirection = 'up' | 'down' | 'left' | 'right';
 
-type ToasterSettings = {
+/**
+ * Where a toaster sits on the screen and how its toasts line up, appear and close (defaults: {@link
+ * DEFAULT_TOASTER_SETTINGS}).
+ */
+export type ToasterSettings = {
   /** Where is the toast positioned (fixed) vertically on the screen? */
   verticalPosition: 'top' | 'center' | 'bottom';
 
@@ -15,13 +24,13 @@ type ToasterSettings = {
   offset: { x: string; y: string };
 
   /** Which way is the toast line forming from the toaster? */
-  toastDirection: Direction;
+  toastDirection: ToastDirection;
 
   /** From which direction is a new toast appearing from to its position?
    * If the toastDirection is vertical then this should be horizontal and
    * vice versa (for the best effect).
    */
-  toastAppearFromDirection: Direction;
+  toastAppearFromDirection: ToastDirection;
 
   /** Minimum width for a single toast (including the unit). */
   toastMinWidth: string;
@@ -66,7 +75,11 @@ type ToasterSettings = {
   closeBtnIcon?: string;
 };
 
-type ToasterProps = {
+/**
+ * {@link createToaster}'s options: its id and class, its settings over {@link
+ * DEFAULT_TOASTER_SETTINGS}, and whether it becomes the default toaster.
+ */
+export type ToasterProps = {
   id?: string;
   className?: string;
   settings?: Partial<ToasterSettings>;
@@ -165,7 +178,7 @@ const SETTLED_TOAST_STYLE: TStyle = {
 };
 
 /** Where a new toast starts its slide from, by `toastAppearFromDirection`. */
-const APPEAR_START_TRANSFORM: Record<Direction, (w: number, h: number) => string> = {
+const APPEAR_START_TRANSFORM: Record<ToastDirection, (w: number, h: number) => string> = {
   down: (_, h) => `translate(0, -${h}px)`,
   up: (_, h) => `translate(0, ${h}px)`,
   left: (w) => `translate(-${w}px, 0)`,
@@ -174,25 +187,27 @@ const APPEAR_START_TRANSFORM: Record<Direction, (w: number, h: number) => string
 
 /** How a new toast pushes the queue, by `toastDirection`: where it is anchored while it
  * appears, and the toaster padding (animated) that makes room for it. */
-const QUEUE_PUSH: Record<Direction, { anchor: TStyle; padding: (w: number, h: number) => TStyle }> =
-  {
-    down: {
-      anchor: { top: 0, left: 0, bottom: 'auto', right: 'auto' },
-      padding: (_, h) => ({ paddingTop: `${h}px` }),
-    },
-    up: {
-      anchor: { top: 'auto', left: 0, bottom: 0, right: 'auto' },
-      padding: (_, h) => ({ paddingBottom: `${h}px` }),
-    },
-    left: {
-      anchor: { top: 0, left: 'auto', bottom: 'auto', right: 0 },
-      padding: (w) => ({ paddingRight: `${w}px` }),
-    },
-    right: {
-      anchor: { top: 0, left: 0, bottom: 'auto', right: 'auto' },
-      padding: (w) => ({ paddingLeft: `${w}px` }),
-    },
-  };
+const QUEUE_PUSH: Record<
+  ToastDirection,
+  { anchor: TStyle; padding: (w: number, h: number) => TStyle }
+> = {
+  down: {
+    anchor: { top: 0, left: 0, bottom: 'auto', right: 'auto' },
+    padding: (_, h) => ({ paddingTop: `${h}px` }),
+  },
+  up: {
+    anchor: { top: 'auto', left: 0, bottom: 0, right: 'auto' },
+    padding: (_, h) => ({ paddingBottom: `${h}px` }),
+  },
+  left: {
+    anchor: { top: 0, left: 'auto', bottom: 'auto', right: 0 },
+    padding: (w) => ({ paddingRight: `${w}px` }),
+  },
+  right: {
+    anchor: { top: 0, left: 0, bottom: 'auto', right: 'auto' },
+    padding: (w) => ({ paddingLeft: `${w}px` }),
+  },
+};
 
 const toasters = new Map<string, Toaster>();
 const toasts = new Map<string, Toast>();

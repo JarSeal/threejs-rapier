@@ -91,7 +91,7 @@ export const AMBIENT_LIGHT_DEFAULTS = {
 const SHADOW_NEAR = 0.5;
 
 /** Which kind of sky disc a directional light follows. */
-type DiscKind = 'SUN' | 'MOON';
+export type DiscKind = 'SUN' | 'MOON';
 
 /** A disc light's defaults, by kind and index. */
 export const getDiscLightDefaults = (kind: DiscKind, index: number) =>

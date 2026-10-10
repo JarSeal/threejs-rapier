@@ -99,7 +99,7 @@ export const readGLTFLodChains = async (gltf: GLTF): Promise<GLTFLodChains> => {
 };
 
 /** A level's vertex arrays: the base's, the ones every level shares, or its own. */
-type TransferableLevelAttributes = 'BASE' | 'SHARED' | Record<string, TransferableAttribute>;
+export type TransferableLevelAttributes = 'BASE' | 'SHARED' | Record<string, TransferableAttribute>;
 
 export type TransferableLodChain = Omit<ExtractedLodChain, 'levels'> & {
   /** `WELDED` only: the vertex arrays every level indexes, sent once */

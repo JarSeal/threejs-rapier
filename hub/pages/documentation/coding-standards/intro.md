@@ -27,7 +27,9 @@ follows them; a file you touch is a good time to fix what it breaks.
 - **Options objects** for a function with more than two parameters or any optional one:
   `createViewport({ id, scene, camera, anchor })`, not positional flags.
 - **No internals in public types:** a public signature names only public types. An internal type
-  leaking into a parameter or a result is an internal that can't change anymore.
+  leaking into a parameter or a result is an internal that can't change anymore. `yarn hub:build`
+  warns about each one (TypeDoc's `notExported` check), with the signature's file and line: export
+  the type with a summary, or change the signature.
 
 ## Naming
 

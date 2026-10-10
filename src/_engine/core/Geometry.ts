@@ -15,7 +15,8 @@ const geometries: {
   };
 } = {};
 
-type GeoBaseProps = {
+/** The props every geometry type shares ({@link GeoProps} adds the type and its params). */
+export type GeoBaseProps = {
   id?: string;
   isPersistent?: boolean;
   preWarm?: boolean;
@@ -92,7 +93,10 @@ export type GeoTypes =
   | THREE.CapsuleGeometry
   | THREE.ConeGeometry;
 
-type GeometryDeleteListener = (id: string, geometry: THREE.BufferGeometry) => void;
+/**
+ * A listener for {@link onGeometryDeleted}: the deleted geometry's id and the disposed geometry.
+ */
+export type GeometryDeleteListener = (id: string, geometry: THREE.BufferGeometry) => void;
 const deleteListeners = new Set<GeometryDeleteListener>();
 
 /**

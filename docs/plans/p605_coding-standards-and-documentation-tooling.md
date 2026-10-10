@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-4 implemented
+Status: in progress | Phases 1-5 implemented
 Category: Documentation, Dev tooling, Standards
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md (the standard they apply)
@@ -444,7 +444,7 @@ Documents only.
   three unchanged (`docs.json` too: TypeDoc already counted the `@internal`-first blocks as
   documented).
 
-### Phase 5: the documentation ratchet and TypeDoc validation
+### Phase 5: the documentation ratchet and TypeDoc validation — done
 
 1. `baselines.ts`:
    - `--docs` collects and diffs `docs.json` alone, without the bundle build or `api.json` (a new
@@ -467,6 +467,67 @@ Documents only.
 5. Verification: `yarn verify:baselines --update` (the new format), then a test run: add an
    undocumented export (the Stop hook fails, naming it), document it (it passes), delete a
    documented one (it passes).
+
+**As built:**
+
+- **`docs.json` format 2** (each file has its own format version now; `bundle.json` and `api.json`
+  stay at 1): per folder the counts plus `undocumented: { exports, members }`, names by the module's
+  file name in the folder (`SceneLoader#LoadSceneProps`, `ECS#ECSWorld.addSystem`; a name exported
+  twice is listed twice and diffed as a multiset). Lines aren't recorded (they'd churn); the report
+  takes them from the model. 55 kB.
+- `--docs` writes no progress log (`setProgressLogEnabled`): the Stop hook runs it, and emptying
+  the log would cut off a `verify:scenes` run someone is tailing. It takes 0.9 s on a cached model,
+  about 5 s when TypeDoc converts. `NO_COLOR` turns the colours off (the hook sets it). A missing or
+  format-1 `docs.json` is "no baseline" and passes, like the other two files.
+- The Stop hook runs it after the tests when `src/_engine/` or `src/toolkit/` changed: exit 1 shows
+  the docs report (exit 2), any other failure "failed to run". The whole hook took 24 s on the test
+  run.
+- **TypeDoc's validation never ran:** `typedocOptions` had no `validation`, but TypeDoc's defaults
+  already have `notExported` and `invalidLink` on; `app.convert()` alone runs no validation (the
+  CLI calls `app.validate()`). The extraction now calls it, with `{ notExported: true, invalidLink:
+  false, notDocumented: false }`. **`invalidLink` is off**, unlike S5: the Hub's renderer already
+  warns about every `{@link}` that links nowhere (`comments.ts`), and TypeDoc's 10 were the same 10.
+  Validation messages carry no position: `locateValidationMessages` finds the reflection by the name
+  in the message (TypeDoc 0.28's English texts) for the file and line, and drops warnings on
+  inherited members. Without that filter the links check reported 93 more, all three's comments on
+  `FatLineSegments` / `LineNodeMaterial`'s inherited members. `EXTRACT_VERSION` 3.
+- **`notExported` found 56 leaks** (47 with the Zod plugin, which removes the `*Schema` constants'
+  ones). 31 were cheap, a type declared in the module whose public signature names it: exported with
+  a summary (`LoadSceneProps`, the listener types, the input bindings' bases, the toaster's
+  settings, props and `ToastDirection`, renamed from the module-private `Direction` since exporting
+  `ToasterSettings` leaked it, …). `api.json` records them. The 17 left need an API decision, so
+  each owning stub's Inputs lists them: p612 (the two `AppECSRegistry` types), p613 (the debug GUI
+  module types, `"three/tsl".Node`), p614 (the four proxy types), p616 (`Vec2Node` / `Vec3Node`),
+  p617 (`icons`), p618 (four types in `_dbg__` modules, `AnyStatsSource`).
+- **The 6 unresolved `{@link}`s Phase 4 left** (module-private or three's names) are backticks
+  now, or their `@returns` is gone where the summary said it. `hub:build`: 288 pages, warnings 10 →
+  17, all `notExported` (`LoadSceneProps` and `RemovalTypes` were 4 of the old 10).
+- **`typedoc-plugin-zod` 1.4.3** (pinned) is in `typedocOptions.plugin`, so `yarn docs` loads it too.
+  A direct `z.infer` / `z.input` alias becomes its fields (`CameraProps`: two 11-field objects; the
+  `geometrySchema` `.extend()` variants: five), and an alias without a comment gets the schema
+  constant's (13 more `schemas` exports count as documented: 38 → 51 of 154). A composed alias
+  (`SkyBoxDef`, `Omit<z.input<…>> & {…}`) stays a reference. `api.json` didn't change: the kinds are
+  the same.
+- **The renderer dropped a union's fields:** an object literal over 60 characters prints as `{ … }`
+  and only a single object or an intersection got a table, so `CameraProps` read `{ … } | { … }`.
+  `getTabledVariants` (`signature.ts`) gives each object variant its own table, labelled by a
+  literal key every variant has (`Properties (type: 'PERSPECTIVE')`), else by position. Their
+  fields show "No description" until p619 documents the shape keys.
+- **The search index crossed 1 MB** (1,053 kB: 30 more API docs and the plugin). The cut Phase 1
+  named: stored API summaries (160 kB, the largest stored field) are clipped at a word to 120
+  characters (`SEARCH_SUMMARY_MAX_LENGTH`), 1,006 kB. The next cut is the stored `path` (130 kB:
+  255 paths repeated per document), recorded in p619's Inputs.
+- `bundle.json` isn't re-recorded: a fresh build moves a dozen chunks' gzip by 1-2 B (new content
+  hashes) and reorders one key, within the tolerance; CLAUDE.md says not to commit that.
+- Test run: an undocumented `export const` in `core/ViewManager.ts` failed the Stop hook with
+  `engine/core: 150 → 151 undocumented exports` and its `file:line name`; `--docs --update` refused
+  it (the file's hash unchanged); documented, it passed; removing a documented export passed (a
+  lower share, no more undocumented).
+- CLAUDE.md: `verify:baselines`' entry, the Stop hook line, the Hub's Documentation (validation, the
+  plugin, variant tables) and Search figures. The standards page names both checks (the ratchet in
+  `jsdoc.md`, `notExported` under Public API), and `docs/techniques/hub-authoring.md` the clip.
+- Not run: `yarn verify:scenes`. The engine changes are type exports and comments (erased under
+  `verbatimModuleSyntax`), and `bundle.json` and every chunk are within the baseline.
 
 ### Phase 6: the cross-browser determinism run
 

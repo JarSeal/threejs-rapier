@@ -45,7 +45,14 @@ export const setFrustumCullingEnabled = (entityId: number, enabled: boolean, wor
 // sphere for the frustum test, or `undefined` to mean "always visible" (used both by lights'
 // infinite-range/degenerate-angle special cases and by anything the provider can't measure).
 
-type BoundingVolumeProvider = (entityId: number, world: ECSWorld) => THREE.Sphere | undefined;
+/**
+ * Returns an entity's world-space bounding sphere for the frustum test, or `undefined` for "always
+ * visible".
+ */
+export type BoundingVolumeProvider = (
+  entityId: number,
+  world: ECSWorld
+) => THREE.Sphere | undefined;
 
 // Three.js clamps SpotLight.angle to < PI/2 internally; this is a defensive backstop against
 // cos(angle) blowing up toward infinity for a near-90-degree cone. Exported so other consumers

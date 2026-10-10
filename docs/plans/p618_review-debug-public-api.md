@@ -21,6 +21,7 @@ Applies p600 §5 (the per-file review standard) and p605's JSDoc style to every 
 ## Inputs
 
 - p602 D4, the p800 prompt.
+- p605 Phase 5's `notExported` warnings in scope (`yarn hub:build` lists each with its file and line; export the type with a summary or change the signature): `PhysicsProbeReport`, `DrawerState`, `DebugKeyShortcutsTab` and `EnvBallOpts` (types in `_dbg__` modules, named by `debug/` entry points) and `AnyStatsSource` (named by `_getStatsSources`).
 
 ## Done when
 

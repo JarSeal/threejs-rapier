@@ -22,6 +22,7 @@ Applies p600 §5 (the per-file review standard) and p605's JSDoc style to every 
 ## Inputs
 
 - p302, p600 §2.
+- p605 Phase 5's `notExported` warnings in scope (`yarn hub:build` lists each with its file and line; export the type with a summary or change the signature): `CameraGUIModule` and `LightGUIModule` (the `_dbg__` modules' types behind the exported `cameraDebugGUI` / `debugGUI` refs) and `"three/tsl".Node` (our `types/three-node-material-helpers.d.ts`, named by `sampleAtlasCell`).
 
 ## Done when
 

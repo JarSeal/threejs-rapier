@@ -4,7 +4,8 @@ import './DropDown.scss';
 
 export type DropDownOption = { value: string; label: string };
 
-type ClassProp = string | string[];
+/** A class name, or several, for one of the drop-down's elements. */
+export type ClassProp = string | string[];
 
 export type DropDownProps = {
   /** The options, or a getter re-read on every open (and refresh). */

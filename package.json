@@ -108,6 +108,7 @@
     "shiki": "4.5.0",
     "tsx": "4.23.13",
     "typedoc": "0.28.20",
+    "typedoc-plugin-zod": "1.4.3",
     "typescript": "5.4.5",
     "vite": "6.4.3",
     "vite-plugin-wasm": "3.4.1",

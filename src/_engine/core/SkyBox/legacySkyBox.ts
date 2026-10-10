@@ -4,7 +4,8 @@
 import type * as THREE from 'three/webgpu';
 import type { SkyBoxBaseDef, SkyBoxDef, SkyBoxEnvDef, SkyBoxOverrides } from './SkyBoxTypes';
 
-type LegacySkyBoxParams = {
+/** The pre-3.0 `{ type, params }` sky box's `params` (see {@link LegacySkyBoxProps}). */
+export type LegacySkyBoxParams = {
   file?: string | THREE.Texture;
   fileNames?: string[] | string;
   /** The legacy JSON name of fileNames. */

@@ -131,7 +131,11 @@ export const triplanarProjection = (
 
 export type TriplanarProjection = ReturnType<typeof triplanarProjection>;
 
-type ProjectionPattern<T> = (coord: Node<'vec2'>, cellSize: Node<'vec2'>) => T;
+/**
+ * A pattern {@link blendProjections} evaluates per projection: the projection plane's coordinate
+ * and cell size in, the value out.
+ */
+export type ProjectionPattern<T> = (coord: Node<'vec2'>, cellSize: Node<'vec2'>) => T;
 
 /**
  * Evaluates `pattern` for the three projections (X uses the yz plane, Y zx, Z xy) and blends the

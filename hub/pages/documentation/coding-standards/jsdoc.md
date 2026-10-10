@@ -70,6 +70,13 @@ parameter as `opts.id`), an empty `@internal`, no types or hyphens in tags, no b
 the summary and the tags, the tags' order, an `@` word in prose in backticks, and a tag or summary
 that only repeats its name. `yarn lint --fix` fixes the layout ones.
 
+Whether an export has a summary is the docs ratchet's: `yarn verify:baselines --docs` fails when a
+folder of the engine or the toolkit has more undocumented exports, or class and interface members,
+than `devTools/verify/baselines/docs.json` records, and names each new one with its file and line.
+A new folder starts at none. Deleting documented code passes, and so does documenting more. The
+repo's Stop hook runs it after an engine or toolkit change, and `--update` records a grown count
+only with `--allow-docs-drop`, so a drop is on purpose and shows in the file's diff.
+
 ### Types
 
 - **Interfaces and object types:** a summary on the type, and a comment on every property a
@@ -78,7 +85,8 @@ that only repeats its name. `yarn lint --fix` fixes the layout ones.
   the union is for, and one on each member type.
 - **Types inferred from a Zod schema:** a summary on the exported alias, and JSDoc on each key of
   the schema's shape. Both the editor's hover and the API reference show the inferred type's
-  fields with those comments. A field also authored in asset JSON files keeps a one-line
+  fields with those comments (a union's, as `CameraProps`'s, in a table per variant). An alias
+  without a summary of its own shows the schema constant's. A field also authored in asset JSON files keeps a one-line
   `.describe()`, which is what the JSON editor's tooltip shows (the generated JSON Schema).
 
 ```ts

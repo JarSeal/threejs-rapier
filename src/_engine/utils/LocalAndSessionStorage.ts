@@ -9,7 +9,8 @@ export type StorageValue =
 let lsAvailable: null | boolean = null;
 let ssAvailable: null | boolean = null;
 
-type LSKeyListener = () => void;
+/** A listener for {@link lsSubscribe}, called after its key was written or removed. */
+export type LSKeyListener = () => void;
 const lsKeyListeners: { [key: string]: Set<LSKeyListener> } = {};
 
 /**

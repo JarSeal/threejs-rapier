@@ -22,6 +22,7 @@ Applies p600 §5 (the per-file review standard) and p605's JSDoc style to every 
 ## Inputs
 
 - p200, p604 §4, p600 §2.
+- p605 Phase 5's `notExported` warnings in scope (`yarn hub:build` lists each with its file and line; export the type with a summary or change the signature): `ECSSystemStage` and `AppComponentData` (`src/AppECSRegistry.ts`, the app's extension point, outside the documented API) named by `ECSWorld.addSystem` and `ComponentData`.
 
 ## Done when
 

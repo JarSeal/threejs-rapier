@@ -13,7 +13,11 @@ export type KeyChord = Modifiers & {
 
 export type KeyBindingType = 'KEY_UP' | 'KEY_DOWN' | 'KEY_HELD';
 
-type KeyBindingBase = BindingMeta & {
+/**
+ * The fields every key binding type shares (see {@link KeyUpDownBinding} and {@link
+ * KeyHeldBinding}).
+ */
+export type KeyBindingBase = BindingMeta & {
   id: string;
   /** Array = "any of these chords triggers this binding". */
   chord: KeyChord | KeyChord[];

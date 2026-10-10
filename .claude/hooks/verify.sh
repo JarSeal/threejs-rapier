@@ -62,4 +62,21 @@ if [[ -n "$(git status --porcelain -- src devTools vitest.config.ts)" ]]; then
   fi
 fi
 
+# The docs ratchet (p605): no folder of the documented API gets more undocumented exports or
+# members than devTools/verify/baselines/docs.json records. TypeDoc converts (about 6 s) only when
+# its inputs changed; --docs writes no progress log, so it never empties another run's.
+if [[ -n "$(git status --porcelain -- src/_engine src/toolkit)" ]]; then
+  DOCS_OUT=$(NO_COLOR=1 yarn -s verify:baselines --docs 2>&1)
+  DOCS_STATUS=$?
+  if [[ $DOCS_STATUS -eq 1 ]]; then
+    echo "Undocumented exports added. Document them before finishing:" >&2
+    echo "$DOCS_OUT" | sed -n '/^docs.json:/,$p' | head -40 >&2
+    exit 2
+  elif [[ $DOCS_STATUS -ne 0 ]]; then
+    echo "The docs ratchet failed to run:" >&2
+    echo "$DOCS_OUT" | tail -10 >&2
+    exit 2
+  fi
+fi
+
 exit 0

@@ -10,7 +10,8 @@ import { addResizer } from '../MainLoop';
 import styles from './DraggableWindow.module.scss';
 import { getSvgIcon, type SvgIconKey } from './icons/SvgIcon';
 
-type Units = 'px' | '%' | 'vw' | 'vh';
+/** The CSS unit of a window's position or size value. */
+export type Units = 'px' | '%' | 'vw' | 'vh';
 
 export type DraggableWindowData = { [key: string]: unknown };
 
@@ -205,7 +206,7 @@ type Layer = 'APP' | 'DEBUG';
 /** Checks whether a window's target (eg. an entity, by the window's `data`) exists in the
  * current scene. Not persisted (functions can't go into LS), so registered next to each window's
  * content function. */
-type SceneTargetResolver = (data?: DraggableWindowData) => boolean;
+export type SceneTargetResolver = (data?: DraggableWindowData) => boolean;
 
 const LS_KEY = 'AEK_popupWindows';
 /** The kinds' geometries, in the same LS object as the windows */

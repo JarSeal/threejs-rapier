@@ -2827,7 +2827,10 @@ export type PhysicsDownProtocol =
 /**
  * Helper utility to extract a specific sub-type from the protocol union
  */
-type PhysicsResponse<T extends PhysicsProtocolType> = Extract<PhysicsDownProtocol, { type: T }>;
+export type PhysicsResponse<T extends PhysicsProtocolType> = Extract<
+  PhysicsDownProtocol,
+  { type: T }
+>;
 
 // --- Extracted Sub-types ---
 // Engine

@@ -137,7 +137,11 @@ export type SceneLoader = {
   phase?: 'START' | 'LOAD' | 'END';
 };
 
-type LoadSceneProps = {
+/**
+ * {@link loadScene}'s options: the scene to load, the function that builds it from its data and
+ * assets, the loader and its status callback.
+ */
+export type LoadSceneProps = {
   sceneId: string;
   nextSceneFn?: ({
     sceneData,

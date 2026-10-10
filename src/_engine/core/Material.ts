@@ -79,7 +79,11 @@ export type TextureMapKeys =
   | 'thicknessMap'
   | 'transmissionMap';
 
-type AllowTextureStrings<T> = T extends unknown
+/**
+ * A material type's parameters, where every texture map key (`map`, `normalMap`, …) also takes a
+ * registered texture's id.
+ */
+export type AllowTextureStrings<T> = T extends unknown
   ? { [K in keyof T]: K extends TextureMapKeys ? T[K] | string : T[K] }
   : never;
 

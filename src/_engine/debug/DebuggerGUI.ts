@@ -395,8 +395,8 @@ export const debuggerListCMP = (def: DebuggerListDef) => {
 };
 
 /**
- * Returns the current drawerState
- * @returns object {@link DrawerState}
+ * Returns the debug drawer's current state
+ * @returns its `DrawerState`, or undefined while the debug module isn't loaded
  */
 export const getDrawerState = () => useDebug(debugGUI)?._getDrawerState();
 

@@ -18,7 +18,11 @@ import type { BindingMeta, EnabledInDebugCam, TargetList } from './InputSharedTy
 
 export type MouseButton = 'LEFT' | 'MIDDLE' | 'RIGHT';
 
-type MouseBindingBase = BindingMeta & {
+/**
+ * The fields every mouse binding type shares (see {@link MouseClickBinding} and the other
+ * `Mouse*Binding`s).
+ */
+export type MouseBindingBase = BindingMeta & {
   id: string;
   enabled?: boolean; // default true
   sceneId?: string;

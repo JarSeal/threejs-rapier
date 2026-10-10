@@ -14,11 +14,21 @@ export const PROGRESS_LOG = path.join(ROOT, '.cache/verify/progress.log');
 export const PROGRESS_LOG_WATCH = `tail -f ${path.relative(ROOT, PROGRESS_LOG)}`;
 
 let isStarted = false;
+let isEnabled = true;
+
+/**
+ * Turns the log off for this run, before its first line: a run that mustn't empty another run's
+ * log (`yarn verify:baselines --docs`, which the Stop hook starts) only prints
+ */
+export const setProgressLogEnabled = (enabled: boolean) => {
+  isEnabled = enabled;
+};
 
 /** Prints a line and appends it to the progress log (a convenience: a failed write is ignored) */
 export const out = (line = '', isError = false) => {
   if (isError) console.error(line);
   else console.log(line);
+  if (!isEnabled) return;
   try {
     if (!isStarted) {
       fs.mkdirSync(path.dirname(PROGRESS_LOG), { recursive: true });

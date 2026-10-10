@@ -5,7 +5,8 @@ import { IS_DEBUG_ENV } from './Config';
 import { getCurrentSceneId } from './Scene';
 import { getNextSceneId } from './SceneLoader';
 
-type PropType = 'LIGHT' | 'CAMERA';
+/** Which kind of saved props {@link loadPersistentProps} reads. */
+export type PropType = 'LIGHT' | 'CAMERA';
 
 export interface LoadableProps {
   appId?: string;

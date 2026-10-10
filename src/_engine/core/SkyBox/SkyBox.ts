@@ -127,7 +127,13 @@ export type SkyBoxUpdate = {
 };
 
 export type SkyBoxChangeReason = 'activate' | 'update' | 'clear';
-type SkyBoxChangeListener = (active: ActiveSkyBox | null, reason: SkyBoxChangeReason) => void;
+/**
+ * A listener for {@link onSkyBoxChange}: the active sky box (null once cleared) and why it changed.
+ */
+export type SkyBoxChangeListener = (
+  active: ActiveSkyBox | null,
+  reason: SkyBoxChangeReason
+) => void;
 
 export { SKYBOX_MANAGER_ID } from './SkyLights';
 

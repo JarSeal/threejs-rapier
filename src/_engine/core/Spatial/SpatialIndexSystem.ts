@@ -581,7 +581,7 @@ export function setSpatialGridCellSize(world: ECSWorld, cellSize: number, sceneI
  * Gets the settings of a registration without its scope, and the scope separately: `sceneId`
  * for a scene's settings, undefined for the world settings (p349 §3.5).
  */
-type SpatialDomainOptionsOverride = (
+export type SpatialDomainOptionsOverride = (
   world: ECSWorld,
   requested: Omit<SpatialDomainOptions, 'sceneId'>,
   sceneId: string | undefined

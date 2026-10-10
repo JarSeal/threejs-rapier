@@ -49,7 +49,8 @@ export const isJPG = (fileName?: unknown) =>
 export const isPNG = (fileName?: unknown) =>
   String(getFileNameExt(fileName)).toLowerCase() === 'png';
 
-type RemovalTypes =
+/** The three objects {@link removeObjectFromMemory} and its siblings dispose. */
+export type RemovalTypes =
   | THREE.Mesh
   | THREE.PerspectiveCamera
   | THREE.OrthographicCamera

@@ -139,7 +139,7 @@ export const initDebugTools = () => {
 /**
  * Getter for the debugToolsState object
  * @param loadFromLS (boolean) optional flag to get the debugToolsState from the LS
- * @returns debugToolsState {@link debugToolsState}
+ * @returns the Debug tools tab's state, or its defaults while the debug module isn't loaded
  */
 export const getDebugToolsState = (loadFromLS?: boolean) =>
   useDebug(debugGUI, true)?._getDebugToolsState(loadFromLS) || defaultDebugToolsState;

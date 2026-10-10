@@ -3,7 +3,8 @@
 // rebuild), so keep it free of imports that touch `window`/`document`.
 import * as THREE from 'three/webgpu';
 
-type Vector2Like = { x: number; y: number };
+/** A texture's `offset`, `repeat` or `center` as plain data, for the worker hop. */
+export type Vector2Like = { x: number; y: number };
 
 /** A CompressedTexture's (eg. a KTX2 texture's) image: its size and its mip levels' block data. */
 export type TransferableCompressedImage = {

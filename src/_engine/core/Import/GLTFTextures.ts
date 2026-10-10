@@ -5,7 +5,8 @@ import { doesTextureExist, getTextureRegistry, saveTexture, type TexOpts } from 
 import type { CollectedGLTFTextures } from './GLTFTextureCollect';
 import { retagAssetOwner } from '../Assets/AssetOwners';
 
-type TextureSlots = Partial<Record<TextureMapKeys, string>>;
+/** A primitive's registered texture ids, by material map key. */
+export type TextureSlots = Partial<Record<TextureMapKeys, string>>;
 
 export type RegisteredGLTFTextures = {
   textureIds: string[];

@@ -99,8 +99,10 @@ export type ViewDef = {
 /** When a view frame listener runs (see {@link addViewFrameListener}). */
 export type ViewFrameListenerPhase = 'BEFORE_UPDATE' | 'AFTER_RENDER';
 
-type ViewFrameListener = (delta: number) => void;
-type ViewChangeListener = (viewId: string, prevViewId: string) => void;
+/** A listener for {@link addViewFrameListener}, called with the frame's delta. */
+export type ViewFrameListener = (delta: number) => void;
+/** A listener for {@link addViewChangeListener}: the new view's id and the previous one's. */
+export type ViewChangeListener = (viewId: string, prevViewId: string) => void;
 
 const views = new Map<string, ViewDef>();
 /** The active editor view, null in the Runtime view (and between two editor views). */
