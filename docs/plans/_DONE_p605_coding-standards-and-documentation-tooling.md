@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-7 implemented
+Status: implemented (Phases 1-8)
 Category: Documentation, Dev tooling, Standards
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage A)
 Blocks: p612_review-ecs-loop-config-init.md, p613_review-rendering-scene-assets.md, p614_review-physics.md, p615_review-sky-box.md, p616_review-lod-spatial-instancing-lines.md, p617_review-input-ui-hud.md, p618_review-debug-public-api.md, p619_review-schemas-pipeline-devtools-hub.md, p620_review-toolkit-and-app-code.md (the standard they apply)
@@ -644,7 +644,7 @@ Documents only.
   name the file. References to root sections (Commands, Workflow, Versioning) are unchanged: the
   root is always loaded.
 
-### Phase 8: versioning and mark done
+### Phase 8: versioning and mark done — done
 
 1. Versions:
    - Engine, toolkit and app **patch** bumps: Phases 2-4 change their source (`import type`, the
@@ -656,6 +656,20 @@ Documents only.
 2. `readme.md`: the `--browser firefox` flag where it lists the verify commands, if it does.
 3. Mark the plan done (`_DONE_p605_…`), update the Stage C plans' references and p600's roadmap
    row.
+
+**As built:**
+
+- Engine 4.15.1, toolkit 1.4.1, app 1.9.1, project 4.15.1; `yarn checkVersions --against main`
+  passes. Phase 5 added public exports after this phase was written: 30 engine types and the
+  toolkit's `ProjectionPattern`, all naming types that public signatures already used, plus two
+  `@internal` clocks. Nothing new can be done with the API, so the bumps stay patches, and
+  `CHANGELOG.md` lists the exports under Changed. The app's section has Phase 3's `scene01V2` fix.
+- `readme.md`: the commands table's `verify:scenes` row names `--browser firefox`, and the
+  `verify:baselines` row the ratchet and `--docs`.
+- The Stage C plans (p612-p620) lost p605 from their `Blocked by` (each keeps its other blocker).
+  p600, `_DONE_p602` and `_DONE_p604` name the new file, and p600 §11's Stage A rule notes this
+  plan's bumps. p615's scope says its nested `CLAUDE.md` is already in place, and p606's scope has
+  the `@example` compile check (Phase 1's As built).
 
 ## 5. Risks and open questions
 

@@ -1,7 +1,7 @@
 Status: stub — not-implemented
 Category: Refactoring, Documentation, UI, Input
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage C)
-Blocked by: p605_coding-standards-and-documentation-tooling.md, p610_character-and-input-action-architecture.md
+Blocked by: p610_character-and-input-action-architecture.md
 Blocks: p621_hub-docs-readme-and-claude-md-final.md
 
 # Review: Input, UI Kit and HUD — Stub
