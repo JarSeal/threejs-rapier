@@ -89,3 +89,6 @@ The technique guide, `docs/techniques/asset-optimization.md`, has every setting:
 - [Budgets](repo:docs/techniques/asset-optimization.md#budgets),
   [Builds and CI](repo:docs/techniques/asset-optimization.md#builds-and-ci) and
   [Troubleshooting](repo:docs/techniques/asset-optimization.md#troubleshooting).
+
+::: claude-md
+:::
