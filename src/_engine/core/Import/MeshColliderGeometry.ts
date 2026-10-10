@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { BufferGeometryUtils } from 'three/examples/jsm/Addons.js';
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { lerror } from '../../utils/Logger';
 import { setMeshCreatePropsToUserData } from '../../utils/helpers';
 import type { ColliderParams } from '../Physics/PhysicsAPITypes';

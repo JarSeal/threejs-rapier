@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { lerror, lwarn } from '../utils/Logger';
-import { HDRLoader } from 'three/examples/jsm/Addons.js';
+import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 import { isHDR, isKTX2 } from '../utils/helpers';
 import {
   loadHDRTextureInWorker,

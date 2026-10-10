@@ -175,6 +175,7 @@ export type {
   ViewFrameListenerPhase,
 } from './core/ViewManager';
 export { InitEngine } from './InitApp';
+export type { InitEngineOptions } from './InitApp';
 export { existsOrThrow } from './utils/assert';
 export { deepMerge } from './utils/deepMerge';
 export {

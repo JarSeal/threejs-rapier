@@ -174,12 +174,14 @@
       "DEBUG_PHYSICS_API_BOOT_LS_KEY": "Variable",
       "DebugPhysicsWireframeConfig": "TypeAlias",
       "DEFAULT_DEBUG_DRAWER_TAB_ORDER": "Variable",
+      "EnvironmentInput": "TypeAlias",
       "Environments": "TypeAlias",
       "getConfig": "Function",
       "getCurrentEnvironment": "Function",
       "getEnv": "Function",
       "getEnvs": "Function",
       "getStartSceneQueryParam": "Function",
+      "initEnvironment": "Function",
       "IS_DEBUG_ENV": "Variable",
       "IS_PROD_ENV": "Variable",
       "IS_PROD_TEST_ENV": "Variable",
@@ -813,6 +815,7 @@
       "addOnWindowBlurFn": "Function",
       "addResizer": "Function",
       "addVisibilityChangeFn": "Function",
+      "addWindowListeners": "Function",
       "deleteAddOnWindowBlurFn": "Function",
       "deleteAllBeforeUnloadFns": "Function",
       "deleteAllOnWindowBlurFns": "Function",
@@ -2093,7 +2096,8 @@
       "UndoRedoSettings": "TypeAlias"
     },
     "src/_engine/InitApp.ts": {
-      "InitEngine": "Function"
+      "InitEngine": "Function",
+      "InitEngineOptions": "TypeAlias"
     },
     "src/_engine/schemas/_helperSchemas.ts": {
       "ColorJSON": "TypeAlias",
@@ -2629,6 +2633,7 @@
       "ImportedAssetManifest",
       "ImportedGeometryInfo",
       "InitEngine",
+      "InitEngineOptions",
       "KeyBinding",
       "LightProps",
       "LoadSceneProps",

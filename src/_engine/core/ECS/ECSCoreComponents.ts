@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { OrbitControls } from 'three/examples/jsm/Addons.js';
+import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 import type { ColliderAPI, RigidBodyAPI } from '../Physics/PhysicsAPITypes';
 import type { PhysicsSimTierData, PhysicsTierPolicyMemberData } from '../Physics/PhysicsTierTypes';

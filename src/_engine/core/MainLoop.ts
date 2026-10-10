@@ -635,24 +635,36 @@ let beforeUnloadFns: { [id: string]: () => void } = {};
 export const addBeforeUnloadFn = (id: string, fn: () => void) => (beforeUnloadFns[id] = fn);
 export const deleteBeforeUnloadFn = (id: string) => delete beforeUnloadFns[id];
 export const deleteAllBeforeUnloadFns = () => (beforeUnloadFns = {});
-window.addEventListener('beforeunload', () => {
-  loopState.isUnloading = true;
-  const keys = Object.keys(beforeUnloadFns);
-  for (let i = 0; i < keys.length; i++) {
-    beforeUnloadFns[keys[i]]();
-  }
-});
 
 let onWindowBlurFns: { [id: string]: () => void } = {};
 export const addOnWindowBlurFn = (id: string, fn: () => void) => (onWindowBlurFns[id] = fn);
 export const deleteAddOnWindowBlurFn = (id: string) => delete onWindowBlurFns[id];
 export const deleteAllOnWindowBlurFns = () => (onWindowBlurFns = {});
-window.addEventListener('blur', () => {
-  const keys = Object.keys(onWindowBlurFns);
-  for (let i = 0; i < keys.length; i++) {
-    onWindowBlurFns[keys[i]]();
-  }
-});
+
+let areWindowListenersAdded = false;
+
+/**
+ * Adds the window's `beforeunload` and `blur` listeners that run the functions added with
+ * {@link addBeforeUnloadFn} and {@link addOnWindowBlurFn}. `InitEngine` calls it first (not at
+ * module load: the engine's modules read no `window` at load); later calls do nothing.
+ */
+export const addWindowListeners = () => {
+  if (areWindowListenersAdded) return;
+  areWindowListenersAdded = true;
+  window.addEventListener('beforeunload', () => {
+    loopState.isUnloading = true;
+    const keys = Object.keys(beforeUnloadFns);
+    for (let i = 0; i < keys.length; i++) {
+      beforeUnloadFns[keys[i]]();
+    }
+  });
+  window.addEventListener('blur', () => {
+    const keys = Object.keys(onWindowBlurFns);
+    for (let i = 0; i < keys.length; i++) {
+      onWindowBlurFns[keys[i]]();
+    }
+  });
+};
 
 // Debug
 type MainLoopGUIModule = typeof import('../core/Debug/_dbg__MainLoop');

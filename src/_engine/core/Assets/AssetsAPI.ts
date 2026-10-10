@@ -189,7 +189,8 @@ const onWorkerMessage = (event: MessageEvent<AssetsDownProtocol>) => {
     );
     return;
   }
-  resolveRequest(data, requestId);
+  // Pending: checked above
+  resolveRequest(requestId, data);
 };
 
 /** Stops the worker for good: in-flight requests fail with CRASHED (and so fall back), queued

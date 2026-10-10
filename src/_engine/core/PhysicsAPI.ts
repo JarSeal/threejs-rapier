@@ -915,7 +915,12 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
     return;
   }
 
-  return resolveRequest(data, requestId, type);
+  if (requestId === undefined) return;
+  if (!resolveRequest(requestId, data) && IS_DEBUG_ENV) {
+    lerror(
+      `Error in physics onWorkerMessage, no pending request ${requestId} (protocol type: ${type}).`
+    );
+  }
 };
 
 let pendingEventPushes: EventsPushMessage[] = [];

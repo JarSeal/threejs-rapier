@@ -1,4 +1,3 @@
-import configFile from '../../CONFIG';
 import type { TCMP } from '../utils/CMP';
 import type {
   PhysicsBackgroundBehavior,
@@ -238,10 +237,12 @@ export type AppConfig = {
   };
 };
 
+// The environment: production until initEnvironment() reads it (InitEngine's first step)
 let curEnvironment: Environments = 'production';
 let envVars: { [key: string]: unknown } = {};
 let isProdTestQueryParam = false;
 let isDebugQueryParam = false;
+let startSceneQueryParam: string | null = null;
 let config: AppConfig = {
   // These are the default values (if the values are not found in ENV variables or CONFIG file)
   debugKeys: [],
@@ -300,32 +301,16 @@ let config: AppConfig = {
   },
 };
 
-// Load url params
-const urlParams = new URLSearchParams(window.location.search);
-isProdTestQueryParam = urlParams.get('isProdTest') === 'true';
-isDebugQueryParam = urlParams.get('isDebug') === 'true';
-const startSceneQueryParam = urlParams.get('startScene') || null;
-
-// Load ENV variables and get curEnvironment
-envVars = import.meta.env;
-if (
-  envVars.VITE_APP_ENV === 'development' ||
-  envVars.VITE_APP_ENV === 'test' ||
-  envVars.VITE_APP_ENV === 'unitTest'
-) {
-  curEnvironment = envVars.VITE_APP_ENV;
-} else {
-  curEnvironment = 'production';
-}
-
 /**
- * Loads all environment variables and configurations. This should be the first thing called in a project.
+ * Merges the app's configuration over the engine defaults (shallowly, per top-level key), then
+ * applies the env var and the debug-only LS overrides. `InitEngine` calls it with its `config`,
+ * after {@link initEnvironment}.
+ * @param appConfig the app's configuration (`InitEngine`'s `config` option)
  */
-export const loadConfig = () => {
-  // Load CONFIG file
+export const loadConfig = (appConfig: AppConfig = {}) => {
   config = {
     ...config,
-    ...configFile,
+    ...appConfig,
   };
 
   // Setup physics ENV configs
@@ -502,10 +487,11 @@ export const isNotCurrentEnvironment = (environment: Environments) =>
 export const isDebugEnvironment = () =>
   (curEnvironment === 'development' || curEnvironment === 'test') && isDebugQueryParam;
 
-/** Whether the current environment is a debug environment or not. */
+/** Whether the current environment is a debug environment or not. False until `InitEngine`
+ * reads the environment (a live binding: read it when it's needed, never into a module-level
+ * constant). */
 // @TODO: Replace the isDebugEnvironment with this
-export const IS_DEBUG_ENV =
-  (curEnvironment === 'development' || curEnvironment === 'test') && isDebugQueryParam;
+export let IS_DEBUG_ENV = false;
 
 /**
  * Checks whether the app is in production test mode or not.
@@ -516,8 +502,7 @@ export const IS_DEBUG_ENV =
  * on the screen when testing production.
  */
 // @TODO: Replace the isProdTestMode with this
-export const IS_PROD_TEST_MODE =
-  (curEnvironment === 'development' || curEnvironment === 'test') && isProdTestQueryParam;
+export let IS_PROD_TEST_MODE = false;
 
 /**
  * The `?startScene=<sceneId>` URL parameter: the scene the first `loadScene` of a page load
@@ -536,9 +521,10 @@ export const getStartSceneQueryParam = () =>
 export const isProductionEnvironment = () =>
   curEnvironment === 'production' || isProdTestQueryParam;
 
-/** Whether the current environment is a production environment or not. */
+/** Whether the current environment is a production environment or not. True until `InitEngine`
+ * reads the environment (a live binding, like {@link IS_DEBUG_ENV}). */
 // @TODO: Replace the isProductionEnvironment with this
-export const IS_PROD_ENV = curEnvironment === 'production' || isProdTestQueryParam;
+export let IS_PROD_ENV = true;
 
 /**
  * Checks whether the app is in production test mode or not.
@@ -562,8 +548,7 @@ export const isProdTestMode = () =>
  * @returns boolean
  */
 // @TODO: Replace the isProdTestMode with this
-export const IS_PROD_TEST_ENV =
-  (curEnvironment === 'development' || curEnvironment === 'test') && isProdTestQueryParam;
+export let IS_PROD_TEST_ENV = false;
 
 /**
  * Returns the current environment.
@@ -571,9 +556,54 @@ export const IS_PROD_TEST_ENV =
  */
 export const getCurrentEnvironment = () => curEnvironment;
 
-/** Current environment */
+/** Current environment: 'production' until `InitEngine` reads the environment (a live binding,
+ * like {@link IS_DEBUG_ENV}). */
 // @TODO: Replace the getCurrentEnvironment with this
-export const CUR_ENV = curEnvironment;
+export let CUR_ENV: Environments = 'production';
+
+/** {@link initEnvironment}'s input: where the environment is read from. */
+export type EnvironmentInput = {
+  /** The URL query string (`?isDebug=true`, `?isProdTest=true`, `?startScene=<sceneId>`). Default:
+   * `window.location.search` where there is a `window`, else none. */
+  search?: string;
+  /** The env vars (`VITE_APP_ENV`, `VITE_PHYS_*`, `VITE_ASSETS_*`, …). Default: `import.meta.env`
+   * (copied: {@link loadConfig} writes the parsed values back). */
+  env?: Record<string, unknown>;
+};
+
+/**
+ * Reads the environment (the env vars and the URL params) and sets the environment flags
+ * ({@link IS_DEBUG_ENV}, {@link IS_PROD_TEST_MODE}, …) from it. `InitEngine` calls it first; no
+ * module reads the environment at load, so before that every flag reads as production. A later
+ * call reads it again.
+ * @param input where to read from (a headless runner or a test passes its own)
+ */
+export const initEnvironment = ({ search, env }: EnvironmentInput = {}) => {
+  const urlParams = new URLSearchParams(
+    search ?? (typeof window !== 'undefined' ? window.location.search : '')
+  );
+  isProdTestQueryParam = urlParams.get('isProdTest') === 'true';
+  isDebugQueryParam = urlParams.get('isDebug') === 'true';
+  startSceneQueryParam = urlParams.get('startScene') || null;
+
+  envVars = { ...(env ?? (import.meta.env as Record<string, unknown> | undefined)) };
+  if (
+    envVars.VITE_APP_ENV === 'development' ||
+    envVars.VITE_APP_ENV === 'test' ||
+    envVars.VITE_APP_ENV === 'unitTest'
+  ) {
+    curEnvironment = envVars.VITE_APP_ENV;
+  } else {
+    curEnvironment = 'production';
+  }
+
+  const isDevOrTest = curEnvironment === 'development' || curEnvironment === 'test';
+  IS_DEBUG_ENV = isDevOrTest && isDebugQueryParam;
+  IS_PROD_TEST_MODE = isDevOrTest && isProdTestQueryParam;
+  IS_PROD_TEST_ENV = IS_PROD_TEST_MODE;
+  IS_PROD_ENV = curEnvironment === 'production' || isProdTestQueryParam;
+  CUR_ENV = curEnvironment;
+};
 
 /**
  * Return app config

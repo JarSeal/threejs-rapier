@@ -6,7 +6,7 @@
       "public": 118,
       "crossEntry": 123,
       "internal": 187,
-      "unreferenced": 196
+      "unreferenced": 197
     },
     "aekasha/character": {
       "public": 7,
@@ -72,7 +72,7 @@
       "public": 16,
       "crossEntry": 0,
       "internal": 1,
-      "unreferenced": 19
+      "unreferenced": 16
     },
     "aekasha/toolkit/geometry": {
       "public": 9,
@@ -1705,6 +1705,10 @@
           "by": [
             "aekasha/lod"
           ]
+        },
+        "ComponentDataMap": {
+          "kind": "Interface",
+          "usage": "unreferenced"
         },
         "ComponentType": {
           "kind": "TypeAlias, Variable",
@@ -10359,10 +10363,6 @@
     },
     "aekasha/toolkit/ecs": {
       "src/toolkit/ecs/effects/FollowTool.ts": {
-        "FollowComponentData": {
-          "kind": "Interface",
-          "usage": "unreferenced"
-        },
         "FollowToolComponentType": {
           "kind": "Enum",
           "usage": "public",
@@ -10387,10 +10387,6 @@
         }
       },
       "src/toolkit/ecs/effects/HoverEffect.ts": {
-        "HoverComponentData": {
-          "kind": "Interface",
-          "usage": "unreferenced"
-        },
         "HoverToolComponentType": {
           "kind": "Enum",
           "usage": "public",
@@ -10479,10 +10475,6 @@
           "by": [
             "app"
           ]
-        },
-        "SunShadowFitComponentData": {
-          "kind": "Interface",
-          "usage": "unreferenced"
         },
         "SunShadowFitComponentType": {
           "kind": "Enum",

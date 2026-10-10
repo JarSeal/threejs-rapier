@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-4 implemented
+Status: in progress | Phases 1-5 implemented
 Category: Architecture, Refactoring
 Epic: p600_whole-codebase-refactoring-and-documentation.md (Stage B, engine major)
 Blocks: p607_sbp-foundation-feature-modules.md, p608_engine-folder-restructure.md, p510_headless-simulation-runtime.md
@@ -407,7 +407,7 @@ what it adds.
   −0.1 kB.
 - `yarn verify:scenes`: 96 passed against the Phase 1 baselines.
 
-### Phase 5: config flows in, the environment is read at init
+### Phase 5: config flows in, the environment is read at init — done
 
 1. `InitEngine({ config, start })` (the `data` option comes in Phase 6); `Config.ts` loses
    `../../CONFIG`; `loadConfig(appConfig)`.
@@ -415,6 +415,47 @@ what it adds.
    that needs the debug env calls `initEnvironment`).
 3. `utils/PromiseResolver.ts` stops importing `Config.ts` (its debug flag is passed in).
 4. Check: importing every engine module in Node (Vitest) reads no `window` at load.
+
+**As built:**
+
+- `InitEngine({ config, start }: InitEngineOptions)` (`start: () => Promise<void>`); `aekasha`
+  exports the type, which carries the entry's `@example`. `loadConfig(appConfig = {})` merges it
+  as `CONFIG.ts` was merged. `src/index.ts` passes `./CONFIG`; `readme.md`'s example 1 and §6
+  follow now (the rest of its update stays in Phase 9). The layout report's "Engine → app" is
+  gone (only the generated data is left, Phase 6).
+- `initEnvironment({ search?, env? })` (`Config.ts`, with the type `EnvironmentInput`; in no
+  entry, p510 decides how a headless runner reaches it). `env` is copied, so `loadConfig`'s
+  write-backs no longer touch `import.meta.env`. `IS_DEBUG_ENV`, `IS_PROD_TEST_MODE`,
+  `IS_PROD_TEST_ENV`, `IS_PROD_ENV` and `CUR_ENV` are `export let`; before init they read as
+  production (`IS_PROD_ENV` is `true`, D4's "all false" meant the debug flags). `InitEngine`
+  runs `initEnvironment()`, `loadConfig(config)`, `addWindowListeners()` first.
+- **Not in §2:** `MainLoop.ts` added its `beforeunload` / `blur` listeners at load. They're in
+  `addWindowListeners()` (idempotent), not `initMainLoop`, which runs only when the root scene
+  has children.
+- Every call made at module load in `src/` was listed (TS AST) and the non-debug callees
+  checked: none reads a flag, `getConfig` or `window`. The load-time readers left are `_dbg__`
+  modules, which load after `InitEngine`.
+- `ECS.ts`: `STORE_DEBUG_DATA` is gone; `addComponent` reads the flags only for `DEBUG_DATA`.
+- `PromiseResolver.ts` imports nothing: `resolveRequest(requestId, value)` (`rejectRequest`'s
+  order) returns whether the request was pending, and `PhysicsAPI`'s `onWorkerMessage` logs a
+  missing one under `IS_DEBUG_ENV`. `AssetsAPI` checks `isRequestPending` first, so its log
+  could never fire. The layout report's "utils → kernel" is gone.
+- Tests: `ECS.test.ts` lost its `window` stub; `Config.test.ts` (the flags before and after
+  `initEnvironment`, `loadConfig`'s merge and env parsing), `PromiseResolver.test.ts`, and
+  `src/_engine/moduleLoad.test.ts`: every engine module (313, `_dbg__` included; the two worker
+  entries left out) imported in Node without a DOM, each failure naming the first `src/` stack
+  frame, and the flags still production after. Checked with a mutation (a `window` read at the
+  end of `LodSystem.ts`). `yarn test` goes from ~0.7 s to ~1.9 s, mostly three's `webgpu`.
+- **Found by the check:** `Texture.ts`, `ECSCoreComponents.ts` and `MeshColliderGeometry.ts`
+  imported three's `Addons.js` barrel, which re-exports `TTFLoader` and its `https://` import of
+  opentype (Node can't load it; the build drops it). They import the modules directly now.
+- **For Phase 8:** `import/no-mutable-exports` needs an exception for `Config.ts`'s flags.
+- `entryExports.json` also catches up with Phase 4 (the removed `*ComponentData` wrappers,
+  `ComponentDataMap`).
+- Baselines: `api.json` gains `initEnvironment`, `EnvironmentInput`, `addWindowListeners`,
+  `InitEngineOptions` and `aekasha`'s `InitEngineOptions`; `bundle.json` unchanged.
+- `yarn verify:scenes`: 96 passed against the Phase 1 baselines (the debug and prodTest
+  configurations set their flags in `InitEngine` in time).
 
 ### Phase 6: the generated code moves out
 

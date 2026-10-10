@@ -198,16 +198,20 @@ import * as THREE from 'three/webgpu';
 import { InitEngine } from './_engine/InitApp';
 import { createRenderer } from './_engine/core/Renderer';
 import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
+import config from './CONFIG';
 
-InitEngine(async () => {
-  await createRenderer({
-    antialias: true,
-    toneMapping: THREE.ACESFilmicToneMapping,
-    enableShadows: true,
-    shadowMapType: THREE.VSMShadowMap,
-  });
-  createSceneLoader({ id: 'main-scene-loader' /* loader UI callbacks… */ });
-  await loadScene({ sceneId: 'myScene' });
+InitEngine({
+  config,
+  start: async () => {
+    await createRenderer({
+      antialias: true,
+      toneMapping: THREE.ACESFilmicToneMapping,
+      enableShadows: true,
+      shadowMapType: THREE.VSMShadowMap,
+    });
+    createSceneLoader({ id: 'main-scene-loader' /* loader UI callbacks… */ });
+    await loadScene({ sceneId: 'myScene' });
+  },
 });
 ```
 
@@ -350,6 +354,8 @@ ecsWorld.addComponent(ballId, SpinComponentType.SPIN, { speed: 2 });
 > Anything that moves physics bodies (poses, velocities, impulses, kinematic targets) goes in an `APP_PHYSICS_STEP` system, so it stays in lockstep with the simulation and deterministic.
 
 ### 6. Configure the app
+
+`InitEngine`'s `config` (example 1) is merged over the engine defaults, one top-level key at a time.
 
 ```ts
 // src/CONFIG.ts

@@ -1,6 +1,8 @@
 import type { Scene } from 'three/webgpu';
 import {
+  type AppConfig,
   getConfig,
+  initEnvironment,
   IS_DEBUG_ENV,
   IS_PROD_TEST_MODE,
   loadConfig,
@@ -12,7 +14,7 @@ import {
   registerDefaultDebugKeyBindings,
   registerDefaultProdTestKeyBindings,
 } from './core/Input/DefaultDebugKeyBindings';
-import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
+import { addWindowListeners, initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
 import {
   createPhysicsAPIDebugGUI,
   registerPhysicsAPIDebugGUI,
@@ -60,15 +62,42 @@ import { registerGPUMemoryDebugGUI } from './debug/GPUMemory';
 import { registerProfiler } from './debug/Profiler';
 import { registerTestBridge } from './debug/TestBridge';
 
+/** {@link InitEngine}'s options. */
+export type InitEngineOptions = {
+  /** The app's configuration, merged over the engine defaults per top-level key (the template
+   * keeps it in `src/CONFIG.ts`). Default: the engine defaults only. */
+  config?: AppConfig;
+  /** The app's start: creates the renderer and the scene loader and loads the first scene. Runs
+   * after the engine's own init (and the debug tools' registration), before the main loop starts. */
+  start: () => Promise<void>;
+};
+
 /**
- * Initializes the engine and injects the start function (startFn) into the engine
- * @param appStartFn (function) app start function, () => Promise<undefined>
+ * Initializes the engine with the app's configuration, then runs the app's `start`. Call it once,
+ * first thing: it reads the environment (the env vars and the `?isDebug` / `?isProdTest` URL
+ * params), so the `IS_*` flags read as production until it runs.
+ * @example
+ * ```ts
+ * import { InitEngine, createRenderer, loadScene } from 'aekasha';
+ * import config from './CONFIG';
+ *
+ * InitEngine({
+ *   config,
+ *   start: async () => {
+ *     await createRenderer({ antialias: true });
+ *     await loadScene({ sceneId: 'myScene' });
+ *   },
+ * });
+ * ```
  */
-export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
+export const InitEngine = async ({ config, start }: InitEngineOptions) => {
   // Start app
   try {
-    // Load env variables and other configurations
-    loadConfig();
+    // The environment first (env vars, URL params): every IS_* flag reads as production before
+    // it. Then the configuration, which reads the debug flag for its LS overrides
+    initEnvironment();
+    loadConfig(config);
+    addWindowListeners();
 
     // Logs the engine, toolkit and app versions (they are in the HTML meta tags too)
     consoleBootText();
@@ -132,7 +161,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerDebugToolsModule();
       // Debug env, and prodTest when enabled there. Before the windows are restored from LS
       await registerProfiler();
-      // A profiler tab (loads where the profiler does). Before appStartFn: its allocation
+      // A profiler tab (loads where the profiler does). Before start: its allocation
       // tracker must see the renderer's init()
       await registerGPUMemoryDebugGUI();
       await registerMainLoopDebugGUI();
@@ -140,14 +169,14 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       if (IS_PROD_TEST_MODE) registerDefaultProdTestKeyBindings();
     }
 
-    // Before appStartFn, so it is ready for the first scene load (it needs no renderer yet)
+    // Before start, so it is ready for the first scene load (it needs no renderer yet)
     initPostFX();
 
     // The scene runner's window.__AEK_TEST__ (?aekTest=true; debug env and prod test mode).
     // Before the first scene load, so it sees that load and its probe report
     await registerTestBridge();
 
-    await appStartFn();
+    await start();
 
     // Start engine/loop if root scene has children
     const rootScene = getRootScene() as Scene;
@@ -158,7 +187,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await createRendererDebugGUI();
       createPhysicsAPIDebugGUI();
       await createAssetsDebugGUI();
-      // After appStartFn: measuring needs the renderer
+      // After start: measuring needs the renderer
       await registerPostFxProfiler();
       // After the profiler: the tab re-applies a persisted measuring override
       await createPostFXDebugGUI();

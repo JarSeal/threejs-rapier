@@ -42,10 +42,6 @@ export type ECSWorldOptions = {
   applyGlobalPlugins?: boolean;
 };
 
-/** DEBUG_DATA is only stored where it is read: debug and prodTest mode (eg. the on-screen tools'
- * camera names). Production never stores it. */
-const STORE_DEBUG_DATA = IS_DEBUG_ENV || IS_PROD_TEST_MODE;
-
 let ecsWorld: ECSWorld;
 
 /** Initializes the default ECS World. */
@@ -527,7 +523,10 @@ export class ECSWorld {
   }
 
   addComponent<K extends ComponentType>(entityId: number, type: K, data: ComponentData[K]): void {
-    if (!STORE_DEBUG_DATA && type === ComponentType.DEBUG_DATA) return;
+    // DEBUG_DATA is only stored where it is read: debug and prodTest mode (eg. the on-screen
+    // tools' camera names). Production never stores it. The flags are read here, not at load:
+    // they're set by InitEngine
+    if (type === ComponentType.DEBUG_DATA && !IS_DEBUG_ENV && !IS_PROD_TEST_MODE) return;
 
     let storage = this.storages.get(type);
     if (!storage) {

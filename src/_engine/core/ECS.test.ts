@@ -1,9 +1,4 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-
-// core/Config.ts reads `window.location.search` at load (a p606 finding: the core isn't headless
-// yet). Only that is stubbed, so a new browser global at load fails here instead of hiding.
-vi.hoisted(() => vi.stubGlobal('window', { location: { search: '' } }));
-
 import { ECSWorld, type ECSWorldOptions } from './ECS';
 import { ComponentType, Transform } from './ECS/ECSCoreComponents';
 import { ECSSystemStage } from './ECS/SystemStages';

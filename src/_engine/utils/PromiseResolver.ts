@@ -1,6 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { isDebugEnvironment } from '../core/Config';
-import { lerror } from './Logger';
 
 type PendingRequest = {
   resolve: (value: any) => void;
@@ -43,21 +41,15 @@ export const createNewResolver = (
   return requestId;
 };
 
-/** Resolves a pending promise. The resolver is fetched with a requestId and is given a value to resolve.
- * Also optional errInfo can be provided. */
-export const resolveRequest = <T>(resolveValue: T, requestId?: number, errInfo?: unknown) => {
-  if (requestId === undefined) return resolveValue;
+/** Resolves a pending promise with a value. Returns whether the request was pending: an unknown
+ * (or already settled) request is a caller's bug or a late reply, which the caller reports. */
+export const resolveRequest = <T>(requestId: number, value: T) => {
   const request = pendingRequests.get(requestId);
-  if (request) {
-    clearTimeout(request.timeoutId);
-    request.resolve(resolveValue);
-    return pendingRequests.delete(requestId);
-  }
-  if (isDebugEnvironment()) {
-    lerror(
-      `Error in resolveRequest, could not find 'resolve' in pendingRequests with requestId: ${requestId}${errInfo !== undefined ? `, addi ${errInfo}` : '.'}`
-    );
-  }
+  if (!request) return false;
+  clearTimeout(request.timeoutId);
+  pendingRequests.delete(requestId);
+  request.resolve(value);
+  return true;
 };
 
 /** Rejects a pending promise that was created with a `reject` function. A request without one
