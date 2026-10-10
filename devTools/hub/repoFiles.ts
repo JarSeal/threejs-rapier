@@ -1,14 +1,14 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './paths';
 
 /**
- * The repo's own files on Hub pages (p555): `repo:` links (`markdown.ts`) and CLAUDE.md's
- * Architecture sections (`claudeMd.ts`, the feature pages' `aek:covers`). No Hub imports, so both
- * can use it.
+ * The repo's own files on Hub pages (p555): `repo:` links (`markdown.ts`) and the CLAUDE.md
+ * sections (`claudeMd.ts`, the feature pages' `aek:covers`). No Hub imports, so both can use it.
  */
 
-/** The agents' architecture notes, whose Architecture sections the feature pages cover */
+/** The agents' root notes, whose Architecture sections the feature pages cover */
 export const CLAUDE_MD_FILE = path.join(ROOT, '.claude', 'CLAUDE.md');
 
 /** `https://github.com/JarSeal/aekasha-js.git` → `https://github.com/JarSeal/aekasha-js` */
@@ -76,20 +76,60 @@ export type ClaudeMdSection = {
   name: string;
   /** The heading as written: `Debug system (dual-layer, lazy-loaded)` */
   heading: string;
+  /** The root {@link CLAUDE_MD_FILE} or a nested `CLAUDE.md`, absolute */
+  file: string;
   line: number;
 };
 
-/** The `### ` sections under CLAUDE.md's `## Architecture`, null when the file isn't there */
+/**
+ * Every `CLAUDE.md` below the repo root that git lists (tracked, or untracked and not ignored, so a
+ * new one counts before it's added), absolute and sorted; none outside a git checkout
+ */
+const listNestedClaudeMdFiles = (): string[] => {
+  let listed: string;
+  try {
+    listed = execFileSync(
+      'git',
+      ['ls-files', '--cached', '--others', '--exclude-standard', '--', '*CLAUDE.md'],
+      { cwd: ROOT, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }
+    );
+  } catch {
+    return [];
+  }
+  return listed
+    .split('\n')
+    .filter((file) => path.posix.basename(file) === 'CLAUDE.md')
+    .map((file) => path.join(ROOT, file))
+    .filter((file) => file !== CLAUDE_MD_FILE && fs.existsSync(file))
+    .sort();
+};
+
+/**
+ * The CLAUDE.md sections (p605 S9): the `### ` sections under the root file's `## Architecture`,
+ * then each nested `CLAUDE.md`'s `## ` sections (a subsystem's notes moved next to its code, under
+ * the same names). Null when the root file isn't there (a build outside the repo).
+ */
 export const readClaudeMdSections = (): ClaudeMdSection[] | null => {
   if (!fs.existsSync(CLAUDE_MD_FILE)) return null;
   const sections: ClaudeMdSection[] = [];
+  const add = (file: string, heading: MarkdownFileHeading) => {
+    const text = toPlainText(heading.text);
+    sections.push({
+      name: text.replace(/\s*\([^)]*\)$/, ''),
+      heading: text,
+      file,
+      line: heading.line,
+    });
+  };
   let isInArchitecture = false;
   for (const heading of readMarkdownHeadings(fs.readFileSync(CLAUDE_MD_FILE, 'utf-8'))) {
     if (heading.level <= 2)
       isInArchitecture = heading.level === 2 && heading.text === 'Architecture';
-    else if (isInArchitecture && heading.level === 3) {
-      const text = toPlainText(heading.text);
-      sections.push({ name: text.replace(/\s*\([^)]*\)$/, ''), heading: text, line: heading.line });
+    else if (isInArchitecture && heading.level === 3) add(CLAUDE_MD_FILE, heading);
+  }
+  for (const file of listNestedClaudeMdFiles()) {
+    for (const heading of readMarkdownHeadings(fs.readFileSync(file, 'utf-8'))) {
+      if (heading.level === 2) add(file, heading);
     }
   }
   return sections;
